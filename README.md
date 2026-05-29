@@ -1,36 +1,54 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# GymTwin AI
 
-## Getting Started
+GymTwin AI is a Next.js workout MVP that generates guided training sessions, tracks progress locally, and offers an optional browser-based Camera Coach for select movements.
 
-First, run the development server:
+## Features
+
+- Workout generator with goal, level, equipment, and coach selection
+- Coach voice guidance using browser speech synthesis
+- Resume active workout from local session state
+- Progress dashboard and workout history
+- Camera Coach inside the workout player
+- Camera Sandbox for tracking iteration and testing
+- Local squat, push-up, and plank tracking in the browser
+
+## Local Development
+
+1. Install dependencies:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Start the app on the local development port used in this project:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run dev -- -p 3001
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+3. Open `http://localhost:3001`.
 
-## Learn More
+## Camera Notes
 
-To learn more about Next.js, take a look at the following resources:
+- Camera access works on `localhost` during development.
+- Production camera access requires HTTPS.
+- MediaPipe model/runtime assets are served from `public/` and must be included in deployment output.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Privacy
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Camera processing stays on device.
+- Video, images, and landmarks are not uploaded.
+- No camera data is sent to a backend service.
 
-## Deploy on Vercel
+## Safety
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- Prototype feedback only.
+- Not medical advice.
+- Stop immediately if you experience pain, dizziness, or chest pain.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## MVP Scope
+
+- Frontend-only Next.js App Router project
+- Local persistence for workout progress and resume state
+- Optional Camera Coach overlay for supported movements only
+- No authentication, payments, or backend services in this MVP

@@ -1,0 +1,288 @@
+export type CoachBrainMood =
+  | "idle"
+  | "listening"
+  | "coaching"
+  | "good"
+  | "warning"
+  | "error"
+  | "celebrating";
+
+export type CoachAnimationHint =
+  | "idle"
+  | "talking"
+  | "listening"
+  | "pointing"
+  | "thumbs_up"
+  | "warning"
+  | "celebrate";
+
+export type CoachBrainInput = {
+  selectedAvatarName: string;
+  screenContext:
+    | "landing"
+    | "setup"
+    | "preview"
+    | "player"
+    | "camera_sandbox"
+    | "summary"
+    | "progress"
+    | "settings";
+  isVoiceListening?: boolean;
+  isCameraActive?: boolean;
+  cameraStatusLabel?: string;
+  trackingConfidence?: number;
+  fullBodyVisible?: boolean;
+  trackingReadinessMessage?: string;
+  trackingLost?: boolean;
+  trackingLostReason?: string;
+  trackingRecoveredAt?: number;
+  placementScore?: number;
+  cameraPlacementMessage?: string;
+  likelyFrontView?: boolean;
+  likelySideView?: boolean;
+  trackingMode?: "squat" | "pushup" | "plank";
+  latestRepQualityLabel?: "clean" | "shallow" | "unstable" | "lost_tracking" | "unknown";
+  latestRepQualityMessage?: string;
+  cleanRepCount?: number;
+  needsWorkRepCount?: number;
+  latestIssue?: "shallow" | "lost_tracking" | "unstable" | "hips_high" | "hips_low" | null;
+  bestCue?: string;
+  plankQualityLabel?: "stable" | "hips_high" | "hips_low" | "lost_tracking" | "unknown";
+  plankQualityMessage?: string;
+  phase?: string;
+  reps?: number;
+  holdSeconds?: number;
+  angleLabel?: string;
+  formFeedback?: string;
+  feedbackSeverity?: "good" | "warning" | "error" | "neutral";
+  workoutScore?: number;
+  formScore?: number;
+  xpEarned?: number;
+  isWorkoutComplete?: boolean;
+};
+
+export type CoachBrainOutput = {
+  mood: CoachBrainMood;
+  message: string;
+  shouldSpeak: boolean;
+  animationHint: CoachAnimationHint;
+};
+
+function hasSafetySignal(formFeedback?: string) {
+  const text = formFeedback?.toLowerCase() ?? "";
+  return text.includes("pain") || text.includes("stop") || text.includes("error");
+}
+
+function normalizePhase(phase?: string) {
+  return phase?.trim().toLowerCase() ?? "";
+}
+
+function getCameraCoachingMessage(input: CoachBrainInput) {
+  const phase = normalizePhase(input.phase);
+
+  if (input.trackingMode === "squat") {
+    if (phase.includes("desc")) return "Control the drop. Keep your chest tall.";
+    if (phase.includes("bottom")) return "Good depth. Drive back up.";
+    if (phase.includes("ris")) return "Push through your heels.";
+    if (phase.includes("stand") || phase.includes("top")) return "Reset strong. Own the next rep.";
+  }
+
+  if (input.trackingMode === "pushup") {
+    if (phase.includes("desc")) return "Lower with control.";
+    if (phase.includes("bottom")) return "Good depth. Press through the floor.";
+    if (phase.includes("ris")) return "Strong press. Keep your core locked.";
+    if (phase === "up" || phase.includes("top")) return "Reset your plank line.";
+  }
+
+  if (input.trackingMode === "plank") {
+    if (phase.includes("stable")) return "Strong line. Keep breathing.";
+    if (phase.includes("hips high")) return "Lower your hips slightly.";
+    if (phase.includes("hips low")) return "Lift your hips and brace your core.";
+    return "Hold still so I can read your posture.";
+  }
+
+  return "Stay sharp. I’m tracking your movement.";
+}
+
+function getSeverityState(feedbackSeverity?: CoachBrainInput["feedbackSeverity"]) {
+  if (feedbackSeverity === "good") {
+    return { mood: "good" as const, animationHint: "thumbs_up" as const };
+  }
+
+  if (feedbackSeverity === "warning") {
+    return { mood: "warning" as const, animationHint: "pointing" as const };
+  }
+
+  return { mood: "coaching" as const, animationHint: "talking" as const };
+}
+
+export function getCoachBrainResponse(input: CoachBrainInput): CoachBrainOutput {
+  if (input.isVoiceListening) {
+    return {
+      mood: "listening",
+      message: "I’m listening. Say a command when you’re ready.",
+      shouldSpeak: false,
+      animationHint: "listening",
+    };
+  }
+
+  if (input.feedbackSeverity === "error" || hasSafetySignal(input.formFeedback)) {
+    return {
+      mood: "error",
+      message: "Safety first. Stop and reset before you continue.",
+      shouldSpeak: false,
+      animationHint: "warning",
+    };
+  }
+
+  if (input.isCameraActive && input.trackingLost) {
+    return {
+      mood: "warning",
+      message: input.trackingLostReason ?? "I lost tracking. Step back into frame and hold still.",
+      shouldSpeak: false,
+      animationHint: "warning",
+    };
+  }
+
+  if (
+    input.isCameraActive &&
+    input.trackingRecoveredAt &&
+    Date.now() - input.trackingRecoveredAt < 3000
+  ) {
+    return {
+      mood: "good",
+      message: "Tracking recovered. Let’s keep going.",
+      shouldSpeak: false,
+      animationHint: "thumbs_up",
+    };
+  }
+
+  if (input.isWorkoutComplete) {
+    const completionMessage =
+      (input.workoutScore ?? 0) >= 90
+        ? "Elite session. You earned that one."
+        : (input.workoutScore ?? 0) >= 75
+          ? "Strong work. Keep stacking progress."
+          : "Session complete. Consistency wins.";
+
+    return {
+      mood: "celebrating",
+      message: completionMessage,
+      shouldSpeak: true,
+      animationHint: "celebrate",
+    };
+  }
+
+  if (
+    input.isCameraActive &&
+    input.cameraStatusLabel === "Pose Tracking Active" &&
+    input.fullBodyVisible === false
+  ) {
+    return {
+      mood: "warning",
+      message: input.trackingReadinessMessage ?? "Step back so I can see your full body.",
+      shouldSpeak: false,
+      animationHint: "pointing",
+    };
+  }
+
+  if (
+    input.isCameraActive &&
+    input.cameraStatusLabel === "Pose Tracking Active" &&
+    (input.placementScore ?? 100) < 70
+  ) {
+    return {
+      mood: "warning",
+      message: input.cameraPlacementMessage ?? "Adjust your phone placement for a clearer view.",
+      shouldSpeak: false,
+      animationHint: input.likelySideView === false ? "pointing" : "warning",
+    };
+  }
+
+  if (
+    input.isCameraActive &&
+    input.cameraStatusLabel === "Pose Tracking Active" &&
+    input.trackingMode === "plank" &&
+    input.plankQualityLabel
+  ) {
+    if (input.plankQualityLabel === "stable") {
+      return {
+        mood: input.feedbackSeverity === "good" ? "good" : "coaching",
+        message: input.plankQualityMessage ?? "Stable hold. Keep breathing.",
+        shouldSpeak: false,
+        animationHint: input.feedbackSeverity === "good" ? "thumbs_up" : "talking",
+      };
+    }
+
+    if (
+      input.plankQualityLabel === "hips_high" ||
+      input.plankQualityLabel === "hips_low" ||
+      input.plankQualityLabel === "lost_tracking"
+    ) {
+      return {
+        mood: "warning",
+        message: input.plankQualityMessage ?? "Adjust your position so I can coach the hold.",
+        shouldSpeak: false,
+        animationHint: input.plankQualityLabel === "lost_tracking" ? "pointing" : "warning",
+      };
+    }
+  }
+
+  if (
+    input.isCameraActive &&
+    input.cameraStatusLabel === "Pose Tracking Active" &&
+    input.latestRepQualityLabel
+  ) {
+    if (input.latestRepQualityLabel === "clean") {
+      return {
+        mood: "good",
+        message: input.latestRepQualityMessage ?? "Clean rep.",
+        shouldSpeak: false,
+        animationHint: "thumbs_up",
+      };
+    }
+
+    if (
+      input.latestRepQualityLabel === "shallow" ||
+      input.latestRepQualityLabel === "unstable" ||
+      input.latestRepQualityLabel === "lost_tracking"
+    ) {
+      const coachedIssueMessage =
+        input.latestIssue === "shallow"
+          ? "Next set, go a little deeper."
+          : input.latestIssue === "lost_tracking"
+            ? "Next set, step back before you start."
+            : input.latestIssue === "unstable"
+              ? "Next set, slow down and control the movement."
+              : input.latestRepQualityMessage ?? input.bestCue ?? "Adjust your position and try again.";
+      return {
+        mood: "warning",
+        message: coachedIssueMessage,
+        shouldSpeak: false,
+        animationHint: input.latestRepQualityLabel === "lost_tracking" ? "pointing" : "warning",
+      };
+    }
+  }
+
+  if (
+    input.isCameraActive &&
+    input.cameraStatusLabel === "Pose Tracking Active" &&
+    input.trackingMode
+  ) {
+    const severityState = getSeverityState(input.feedbackSeverity);
+
+    return {
+      mood: severityState.mood,
+      message: getCameraCoachingMessage(input),
+      shouldSpeak: false,
+      animationHint: severityState.animationHint,
+    };
+  }
+
+  return {
+    mood: "idle",
+    message: "I’m ready when you are.",
+    shouldSpeak: false,
+    animationHint: "idle",
+  };
+}
