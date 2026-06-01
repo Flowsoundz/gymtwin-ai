@@ -2,9 +2,36 @@
 
 import { useState } from "react";
 import { getCoachQuote } from "@/lib/coachEngine";
-import type { CoachName } from "@/types";
+import type { CoachAvatar, CoachName } from "@/types";
 
-export function useSpeechCoach(selectedCoach: CoachName) {
+function pickVoice(avatar: CoachAvatar): SpeechSynthesisVoice | null {
+  if (typeof window === "undefined" || !window.speechSynthesis) return null;
+  const voices = window.speechSynthesis.getVoices().filter((v) => v.lang.startsWith("en"));
+  if (!voices.length) return null;
+
+  if (avatar === "Nova") {
+    // Calm, clear female voice
+    return (
+      voices.find((v) => v.name === "Samantha") ??
+      voices.find((v) => v.name === "Karen") ??
+      voices.find((v) => v.name === "Moira") ??
+      voices.find((v) => /female|woman/i.test(v.name)) ??
+      voices.find((v) => v.name.includes("Google") && v.name.includes("Female")) ??
+      voices[0]
+    );
+  }
+  // Atlas — firm male voice
+  return (
+    voices.find((v) => v.name === "Alex") ??
+    voices.find((v) => v.name === "Daniel") ??
+    voices.find((v) => v.name === "Fred") ??
+    voices.find((v) => /male|man/i.test(v.name)) ??
+    voices.find((v) => v.name.includes("Google") && v.name.includes("Male")) ??
+    voices[0]
+  );
+}
+
+export function useSpeechCoach(selectedCoach: CoachName, selectedAvatar: CoachAvatar = "Nova") {
   const [isMuted, setIsMuted] = useState(false);
   const [displayedSpeech, setDisplayedSpeech] = useState(
     "Choose your coach and start your training session."
@@ -14,8 +41,10 @@ export function useSpeechCoach(selectedCoach: CoachName) {
     if (isMuted || typeof window === "undefined" || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(phrase);
-    utterance.rate = 0.95;
-    utterance.pitch = 1;
+    const voice = pickVoice(selectedAvatar);
+    if (voice) utterance.voice = voice;
+    utterance.rate = selectedAvatar === "Atlas" ? 1.0 : 0.93;
+    utterance.pitch = selectedAvatar === "Atlas" ? 0.88 : 1.05;
     window.speechSynthesis.speak(utterance);
   }
 

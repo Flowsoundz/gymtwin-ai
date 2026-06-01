@@ -106,7 +106,7 @@ export default function GymTwinApp() {
     setDisplayedSpeech,
     speak,
     updateCoachLine,
-  } = useSpeechCoach(selectedCoach);
+  } = useSpeechCoach(selectedCoach, selectedAvatar);
 
   const activeMovement = activeRoutine[movementIndex];
 
@@ -404,14 +404,22 @@ export default function GymTwinApp() {
     return getExerciseClipName(activeMovement);
   }, [currentScreen, activeMovement, isRestPhase]);
 
-  const floatingHint = useMemo<CoachAnimationHint>(() => {
-    if (currentScreen === "summary") return "celebrate";
-    if (currentScreen === "player" && !isRestPhase) return "idle";
-    return "idle";
-  }, [currentScreen, isRestPhase]);
+  const [floatingHint, setFloatingHint] = useState<CoachAnimationHint>("idle");
 
-  // Hide the floating coach on model lab and camera sandbox — both are already heavy
-  const showFloatingCoach = currentScreen !== "model_lab" && currentScreen !== "camera_sandbox";
+  // Reset hint when leaving screens that drive it
+  useEffect(() => {
+    if (currentScreen === "summary") {
+      setFloatingHint("celebrate");
+    } else {
+      setFloatingHint("idle");
+    }
+  }, [currentScreen]);
+
+  // Hide the floating coach where the screen already features the coach prominently
+  const showFloatingCoach =
+    currentScreen !== "model_lab" &&
+    currentScreen !== "camera_sandbox" &&
+    currentScreen !== "landing";
 
   const elapsedMinutes = sessionStartedAt ? calculateActualMinutes(sessionStartedAt) : 0;
 
@@ -538,6 +546,7 @@ export default function GymTwinApp() {
           onTriggerRestPhase={triggerRestPhase}
           onChangeDifficultyEasy={() => changeDifficulty("easy")}
           onChangeDifficultyHard={() => changeDifficulty("hard")}
+          onCoachAnimHint={setFloatingHint}
           primaryButton={primaryButton}
         />
       )}

@@ -9,6 +9,7 @@ import type {
   AvatarDisplaySettings,
   BodyProfile,
   CoachAvatar,
+  CoachTalkativeness,
 } from "@/types";
 
 type SettingsScreenProps = {
@@ -246,6 +247,46 @@ export function SettingsScreen({
                     </label>
                   ))}
                 </div>
+              </div>
+            </SettingsCard>
+
+            <SettingsCard title="Coach Persona">
+              <div className="space-y-4">
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Talkativeness</p>
+                  <p className="mt-1 text-xs text-slate-400">How often the coach speaks during reps and form tracking.</p>
+                  <div className="mt-3 flex gap-2">
+                    {(["quiet", "normal", "hype"] as CoachTalkativeness[]).map((level) => {
+                      const isActive = avatarDisplaySettings.talkativeness === level;
+                      return (
+                        <button
+                          key={level}
+                          type="button"
+                          onClick={() => updateAvatarDisplaySettings({ talkativeness: level })}
+                          className={`flex-1 rounded-2xl border px-3 py-3 text-xs font-black capitalize transition ${
+                            isActive
+                              ? "border-blue-400/30 bg-gradient-to-br from-blue-500/20 to-fuchsia-500/15 text-white shadow-[0_0_16px_rgba(99,102,241,0.2)]"
+                              : "border-white/8 bg-slate-900/72 text-slate-400 hover:border-white/15 hover:text-white"
+                          }`}
+                        >
+                          {level === "quiet" ? "🤫 Quiet" : level === "normal" ? "💬 Normal" : "🔥 Hype"}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <label className="flex items-start justify-between gap-4 rounded-[1.25rem] border border-white/8 bg-slate-900/72 px-4 py-4">
+                  <div>
+                    <p className="text-sm font-black text-white">Rep Counting Callouts</p>
+                    <p className="mt-1 text-xs leading-relaxed text-slate-400">Coach announces rep milestones during tracked sets.</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={avatarDisplaySettings.repCountingEnabled}
+                    onChange={(event) => updateAvatarDisplaySettings({ repCountingEnabled: event.target.checked })}
+                    className="mt-1 h-5 w-5 rounded border-white/15 bg-slate-950 text-blue-500 accent-blue-500"
+                  />
+                </label>
               </div>
             </SettingsCard>
 

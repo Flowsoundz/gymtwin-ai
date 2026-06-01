@@ -1,5 +1,5 @@
 import { AVATAR_DISPLAY_SETTINGS_KEY } from "@/lib/storageKeys";
-import type { AvatarDisplayMode, AvatarDisplaySettings } from "@/types";
+import type { AvatarDisplayMode, AvatarDisplaySettings, CoachTalkativeness } from "@/types";
 
 export const defaultAvatarDisplaySettings: AvatarDisplaySettings = {
   mode: "coach_card",
@@ -8,6 +8,8 @@ export const defaultAvatarDisplaySettings: AvatarDisplaySettings = {
   showDuringCamera: true,
   showExerciseDemos: true,
   minimalCameraHud: true,
+  talkativeness: "normal",
+  repCountingEnabled: true,
 };
 
 function isAvatarDisplayMode(value: unknown): value is AvatarDisplayMode {
@@ -17,6 +19,10 @@ function isAvatarDisplayMode(value: unknown): value is AvatarDisplayMode {
     value === "camera_corner" ||
     value === "hidden"
   );
+}
+
+function isCoachTalkativeness(value: unknown): value is CoachTalkativeness {
+  return value === "quiet" || value === "normal" || value === "hype";
 }
 
 export function sanitizeAvatarDisplaySettings(
@@ -44,6 +50,13 @@ export function sanitizeAvatarDisplaySettings(
       typeof value?.minimalCameraHud === "boolean"
         ? value.minimalCameraHud
         : defaultAvatarDisplaySettings.minimalCameraHud,
+    talkativeness: isCoachTalkativeness(value?.talkativeness)
+      ? value.talkativeness
+      : defaultAvatarDisplaySettings.talkativeness,
+    repCountingEnabled:
+      typeof value?.repCountingEnabled === "boolean"
+        ? value.repCountingEnabled
+        : defaultAvatarDisplaySettings.repCountingEnabled,
   };
 }
 

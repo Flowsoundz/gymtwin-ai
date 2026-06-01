@@ -47,6 +47,8 @@ export interface BodyProfile {
   lastUpdated?: string;
 }
 
+export type CoachTalkativeness = "quiet" | "normal" | "hype";
+
 export interface AvatarDisplaySettings {
   mode: AvatarDisplayMode;
   show3DCoach: boolean;
@@ -54,6 +56,8 @@ export interface AvatarDisplaySettings {
   showDuringCamera: boolean;
   showExerciseDemos: boolean;
   minimalCameraHud: boolean;
+  talkativeness: CoachTalkativeness;
+  repCountingEnabled: boolean;
 }
 
 export type AvatarAnimationCategory =

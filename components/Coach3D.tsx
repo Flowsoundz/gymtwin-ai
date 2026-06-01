@@ -3,8 +3,9 @@
 import * as React from "react";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Html, OrbitControls, useAnimations, useGLTF } from "@react-three/drei";
-import { Box3, LoopOnce, LoopRepeat, Vector3 } from "three";
+import { Html, OrbitControls, useGLTF } from "@react-three/drei";
+import { clone as skeletonClone } from "three/examples/jsm/utils/SkeletonUtils.js";
+import { AnimationMixer, Box3, LoopOnce, LoopRepeat, Vector3 } from "three";
 import type { AnimationClip, Group, Object3D } from "three";
 import { getAvatarLabel, getAvatarModelPaths } from "@/lib/avatarAssets";
 import {
@@ -181,15 +182,56 @@ function CoachModel({
     scene: Object3D;
     animations: AnimationClip[];
   };
-  const clonedScene = useMemo(() => scene.clone(), [scene]);
+  // skeletonClone rebinds the SkinnedMesh to the cloned skeleton.
+  // scene.clone() leaves the mesh pointing at the original bones — animations appear frozen.
+  const clonedScene = useMemo(() => skeletonClone(scene), [scene]);
   const [externalClips, setExternalClips] = useState<AnimationClip[]>([]);
   const [fitnessClips, setFitnessClips] = useState<AnimationClip[]>([]);
   const animations = useMemo(() => {
     const base = embeddedClips.length ? embeddedClips : externalClips;
     return [...base, ...fitnessClips];
   }, [embeddedClips, externalClips, fitnessClips]);
-  const { mixer } = useAnimations(animations, modelGroupRef);
+  // Own the mixer directly — bound to clonedScene so Three.js finds bones immediately.
+  const mixerRef = React.useRef<AnimationMixer | null>(null);
   const activeActionRef = React.useRef<string | null>(null);
+
+  useEffect(() => {
+    const m = new AnimationMixer(clonedScene);
+    mixerRef.current = m;
+    activeActionRef.current = null;
+    return () => {
+      m.stopAllAction();
+      m.uncacheRoot(clonedScene);
+      mixerRef.current = null;
+    };
+  }, [clonedScene]);
+
+  // Idle variant cycling — rotate through idle clips every 25s so the coach never looks frozen
+  const idleClipsRef = React.useRef<string[]>([]);
+  const [idleIdx, setIdleIdx] = useState(0);
+
+  useEffect(() => {
+    if (!animations.length) return;
+    const variants = (HINT_CLIP_NAMES.idle as string[])
+      .map((name) => animations.find((c) => c.name === name)?.name)
+      .filter((n): n is string => Boolean(n));
+    idleClipsRef.current = variants;
+    setIdleIdx(0);
+  }, [animations]);
+
+  useEffect(() => {
+    if (animationHint !== "idle" || demoClipName) return;
+    const t = setInterval(() => {
+      setIdleIdx((prev) => {
+        const len = idleClipsRef.current.length;
+        if (len <= 1) return 0;
+        let next: number;
+        do { next = Math.floor(Math.random() * len); } while (next === prev);
+        return next;
+      });
+    }, 25000);
+    return () => clearInterval(t);
+  }, [animationHint, demoClipName]);
   // Capture T-pose bounding box once — never re-run when previewFrame changes,
   // which prevents the Y-axis drift caused by setFromObject on an animated scene.
   const sceneMetrics = useMemo(() => {
@@ -220,7 +262,7 @@ function CoachModel({
     headBoneRef.current = null;
     earBoneRef.current = null;
     rEarBoneRef.current = null;
-    clonedScene.traverse((obj) => {
+    clonedScene.traverse((obj: Object3D) => {
       if (obj.name === "head") headBoneRef.current = obj;
       else if (obj.name === "earend") earBoneRef.current = obj;
       else if (obj.name === "R_earend") rEarBoneRef.current = obj;
@@ -228,39 +270,35 @@ function CoachModel({
   }, [clonedScene]);
 
   useEffect(() => {
-    if (!animations.length) return;
+    const m = mixerRef.current;
+    if (!m || !animations.length) return;
 
-    // demoClipName (exercise demo) takes priority over hint-based resolution
     const targetClipName = demoClipName
       ? (animations.find((c) => c.name === demoClipName)?.name ?? resolveClipName(animationHint, animations))
-      : resolveClipName(animationHint, animations);
+      : animationHint === "idle" && idleClipsRef.current[idleIdx]
+        ? idleClipsRef.current[idleIdx]
+        : resolveClipName(animationHint, animations);
     if (!targetClipName) return;
     if (activeActionRef.current === targetClipName) return;
 
     const ONE_SHOT_HINTS: CoachAnimationHint[] = ["thumbs_up", "pointing", "celebrate"];
     const isOneShot = !demoClipName && ONE_SHOT_HINTS.includes(animationHint);
 
-    const targetClip = animations.find((clip) => clip.name === targetClipName);
+    const targetClip = animations.find((c) => c.name === targetClipName);
     if (!targetClip) return;
 
-    const incoming = mixer.clipAction(targetClip, clonedScene);
+    // clipAction with no second arg uses the mixer's root (clonedScene) — correct.
+    const incoming = m.clipAction(targetClip);
     if (!incoming) return;
 
     const prevName = activeActionRef.current;
     if (prevName && prevName !== targetClipName) {
-      const previousClip = animations.find((clip) => clip.name === prevName);
-      if (previousClip) {
-        mixer.clipAction(previousClip, clonedScene).fadeOut(0.35);
-      }
+      const prevClip = animations.find((c) => c.name === prevName);
+      if (prevClip) m.clipAction(prevClip).fadeOut(0.35);
     }
 
-    incoming.reset();
-    incoming.fadeIn(0.35);
-    if (isOneShot) {
-      incoming.setLoop(LoopOnce, 1);
-    } else {
-      incoming.setLoop(LoopRepeat, Infinity);
-    }
+    incoming.reset().fadeIn(0.35);
+    incoming.setLoop(isOneShot ? LoopOnce : LoopRepeat, isOneShot ? 1 : Infinity);
     incoming.play();
     activeActionRef.current = targetClipName;
 
@@ -268,30 +306,29 @@ function CoachModel({
       const idleClipName = resolveClipName("idle", animations);
       const onFinish = () => {
         if (idleClipName && activeActionRef.current === targetClipName) {
-          const idleClip = animations.find((clip) => clip.name === idleClipName);
-          const idleAction = idleClip ? mixer.clipAction(idleClip, clonedScene) : null;
-          if (idleAction) {
-            incoming.fadeOut(0.45);
+          incoming.fadeOut(0.45);
+          const idleClip = animations.find((c) => c.name === idleClipName);
+          if (idleClip) {
+            const idleAction = m.clipAction(idleClip);
             idleAction.reset().fadeIn(0.45).play();
             activeActionRef.current = idleClipName;
           }
         }
       };
-      const mixer = incoming.getMixer();
-      mixer.addEventListener("finished", onFinish);
-      return () => mixer.removeEventListener("finished", onFinish);
+      m.addEventListener("finished", onFinish);
+      return () => m.removeEventListener("finished", onFinish);
     }
-  }, [animationHint, demoClipName, animations, clonedScene, mixer]);
+  }, [animationHint, demoClipName, animations, idleIdx]);
 
   useEffect(() => {
     onClipsDetected?.(animations.map((c) => c.name));
   }, [animations, onClipsDetected]);
 
-  useFrame((state) => {
+  useFrame((state, delta) => {
+    mixerRef.current?.update(delta);
+
     const group = modelGroupRef.current;
-    if (!group) {
-      return;
-    }
+    if (!group) return;
 
     const elapsed = state.clock.getElapsedTime();
     const hasRealAnimations = animations.length > 0;
@@ -566,10 +603,10 @@ export function getCoachModelTransformPreset(modelPath: string): ModelTransform 
     return {
       position: [0, -0.7, 0],
       rotation: [0, 0, 0],
-      scale: 1.58,
-      cameraPosition: [0, 0.92, 5.35],
-      fovCompact: 36,
-      fovDefault: 33,
+      scale: 1.0,
+      cameraPosition: [0, 1.0, 7.2],
+      fovCompact: 42,
+      fovDefault: 40,
     };
   }
 
@@ -794,10 +831,6 @@ export function Coach3D({
         <div
           className={`relative ${compact ? (previewFrame === "bust" ? "h-[240px]" : "h-[300px]") : previewFrame === "full_body" ? "h-[560px]" : previewFrame === "bust" ? "h-[320px]" : "h-[420px]"}`}
           style={{ touchAction: "none", overscrollBehavior: "contain" }}
-          onWheelCapture={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-          }}
         >
           <Coach3DErrorBoundary fallback={fallbackNode}>
             <Canvas
@@ -834,7 +867,13 @@ export function Coach3D({
                   dampingFactor={0.08}
                   minDistance={2}
                   maxDistance={12}
-                  target={previewFrame === "bust" ? [0, 1.1, 0] : [0, 0.42, 0]}
+                  target={
+                    previewFrame === "bust"
+                      ? [0, 1.1, 0]
+                      : resolvedModelPath?.includes("atlas-coach-mobile")
+                        ? [0, 0.72, 0]
+                        : [0, 0.42, 0]
+                  }
                   touches={{
                     ONE: 2,
                     TWO: 512 as never,

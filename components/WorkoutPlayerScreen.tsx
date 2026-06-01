@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Coach3D } from "@/components/Coach3D";
 import { FloatingCoachAvatar } from "@/components/FloatingCoachAvatar";
 import { ExerciseDemoCard } from "@/components/ExerciseDemoCard";
@@ -10,12 +10,14 @@ import { getAvatarCoachLayerState } from "@/lib/avatarCoachLayer";
 import { getExerciseDemoDescriptor } from "@/lib/exerciseDemoLibrary";
 import { getCameraCoachLabel, getCameraCoachModeForMovementName } from "@/lib/cameraCoachMapping";
 import { getCoachBrainResponse } from "@/lib/coachBrain";
+import type { CoachAnimationHint } from "@/lib/coachBrain";
 import { getExerciseClipName } from "@/lib/exerciseAnimationMap";
 import {
   getConversationResponse,
   parseConversationIntent,
   type ConversationIntent,
 } from "@/lib/conversationCommands";
+import { useRepSpeech } from "@/hooks/useRepSpeech";
 import type {
   AvatarDisplaySettings,
   CoachAvatar,
@@ -48,6 +50,7 @@ type WorkoutPlayerScreenProps = {
   onTriggerRestPhase: () => void;
   onChangeDifficultyEasy: () => void;
   onChangeDifficultyHard: () => void;
+  onCoachAnimHint?: (hint: CoachAnimationHint) => void;
   primaryButton: string;
 };
 
@@ -76,9 +79,11 @@ export function WorkoutPlayerScreen({
   onTriggerRestPhase,
   onChangeDifficultyEasy,
   onChangeDifficultyHard,
+  onCoachAnimHint,
   primaryButton,
 }: WorkoutPlayerScreenProps) {
   const [isCameraCoachOpen, setIsCameraCoachOpen] = useState(false);
+  const prevCoachAnimHint = useRef<CoachAnimationHint | null>(null);
   const [formRecap, setFormRecap] = useState<{
     cleanRepCount: number;
     needsWorkRepCount: number;
@@ -454,6 +459,32 @@ export function WorkoutPlayerScreen({
       feedbackSeverity,
     ]
   );
+  // Bubble coachBrain animation hints up to the floating coach
+  useEffect(() => {
+    if (!onCoachAnimHint) return;
+    const hint = coachBrain.animationHint;
+    if (hint && hint !== prevCoachAnimHint.current) {
+      prevCoachAnimHint.current = hint;
+      onCoachAnimHint(hint);
+    }
+  }, [coachBrain.animationHint, onCoachAnimHint]);
+
+  // Per-rep speech + form-reactive avatar reactions
+  const activeRepCount =
+    selectedMode === "squat" ? squatRepCount :
+    selectedMode === "pushup" ? pushupRepCount : 0;
+  useRepSpeech({
+    repCount: activeRepCount,
+    repQualityLabel: latestRepQuality?.label,
+    exerciseName: activeMovement.name,
+    talkativeness: avatarDisplaySettings.talkativeness,
+    repCountingEnabled: avatarDisplaySettings.repCountingEnabled,
+    isMuted,
+    isCameraActive: isCameraCoachOpen && statusLabel === "Pose Tracking Active",
+    selectedAvatar,
+    onAnimHint: onCoachAnimHint,
+  });
+
   const trackingLockTone =
     statusLabel === "Camera Error"
       ? "border-red-400/20 bg-red-500/10 text-red-100"
