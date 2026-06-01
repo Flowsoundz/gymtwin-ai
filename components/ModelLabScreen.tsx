@@ -537,7 +537,6 @@ export function ModelLabScreen({
                   </div>
                 </div>
                 <Coach3D
-                  key={selectedModel.path}
                   selectedAvatar={selectedModel.avatar}
                   mood={selectedMood}
                   modelPathOverride={selectedModel.path}

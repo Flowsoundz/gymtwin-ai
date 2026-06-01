@@ -87,6 +87,10 @@ class Coach3DErrorBoundary extends React.Component<
     return { hasError: true };
   }
 
+  componentDidCatch(error: Error) {
+    console.error("[Coach3DErrorBoundary] caught:", error);
+  }
+
   render() {
     if (this.state.hasError) {
       return this.props.fallback;
@@ -512,8 +516,8 @@ function CoachModel({
 function LoadingSceneLabel() {
   return (
     <Html center>
-      <div className="rounded-full border border-white/10 bg-slate-950/72 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-slate-200 backdrop-blur-md">
-        Loading 3D Coach
+      <div className="rounded-full border border-white/10 bg-slate-950/72 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-slate-200 backdrop-blur-md" style={{ color: "lime", background: "rgba(0,0,0,0.85)", fontSize: 14, whiteSpace: "nowrap" }}>
+        ⏳ Loading 3D Coach
       </div>
     </Html>
   );
@@ -715,6 +719,11 @@ function CoachFallback({
   );
 }
 
+// DIAGNOSTIC BUILD MARKER — remove once coach visibility is confirmed
+if (typeof window !== "undefined" && process.env.NODE_ENV === "development") {
+  console.warn("[Coach3D] module loaded — build marker v4");
+}
+
 export function Coach3D({
   selectedAvatar,
   mood = "idle",
@@ -770,6 +779,8 @@ export function Coach3D({
           if (cancelled) return;
 
           if (response.ok) {
+            // Evict stale drei GLTF cache so CoachModel always gets a fresh parse.
+            useGLTF.clear(candidatePath);
             setResolvedModelPath(candidatePath);
             setModelStatus("available");
             return;
@@ -890,6 +901,7 @@ export function Coach3D({
                   }}
                 />
                 <CoachModel
+                  key={resolvedModelPath}
                   modelPath={resolvedModelPath}
                   transform={{
                     ...modelTransform,
