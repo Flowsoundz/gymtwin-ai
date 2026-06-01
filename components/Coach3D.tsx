@@ -876,8 +876,8 @@ export function Coach3D({
                         : [0, 0.42, 0]
                   }
                   touches={{
-                    ONE: 2,
-                    TWO: 512 as never,
+                    ONE: 0,  // TOUCH.ROTATE — one finger rotates
+                    TWO: 2,  // TOUCH.DOLLY_PAN — two fingers pinch-zoom
                   }}
                 />
                 <CoachModel
