@@ -8,6 +8,7 @@ import { clone as skeletonClone } from "three/examples/jsm/utils/SkeletonUtils.j
 import { AnimationMixer, Box3, LoopOnce, LoopRepeat, Vector3 } from "three";
 import type { AnimationClip, Group, Object3D } from "three";
 import { getAvatarLabel, getAvatarModelPaths } from "@/lib/avatarAssets";
+import { loadTransformPreset } from "@/lib/coachTransformStorage";
 import {
   getAnimationForHint,
   getAvatarAnimationClipById,
@@ -731,14 +732,13 @@ export function Coach3D({
         : getAnimationForHint(animationHint, selectedAvatar)) ?? null,
     [animationClipId, animationHint, selectedAvatar]
   );
-  const modelTransform = useMemo(
-    () =>
-      mergePreviewTransform(
-        getCoachModelTransformPreset(resolvedModelPath ?? modelPathOverride ?? candidateModelPaths[0] ?? ""),
-        previewTransform
-      ),
-    [candidateModelPaths, modelPathOverride, previewTransform, resolvedModelPath]
-  );
+  const modelTransform = useMemo(() => {
+    const activePath = resolvedModelPath ?? modelPathOverride ?? candidateModelPaths[0] ?? "";
+    const baked = getCoachModelTransformPreset(activePath);
+    const saved = loadTransformPreset(activePath);
+    const withSaved = mergePreviewTransform(baked, saved ?? undefined);
+    return mergePreviewTransform(withSaved, previewTransform);
+  }, [candidateModelPaths, modelPathOverride, previewTransform, resolvedModelPath]);
 
   useEffect(() => {
     let cancelled = false;

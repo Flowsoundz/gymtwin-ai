@@ -7,6 +7,7 @@ import {
   type Coach3DMood,
   type PreviewTransform,
 } from "@/components/Coach3D";
+import { saveTransformPreset, loadTransformPreset, clearTransformPreset } from "@/lib/coachTransformStorage";
 import {
   getAnimationForHint,
   getAvatarAnimationLibrary,
@@ -132,6 +133,8 @@ export function ModelLabScreen({
   const [selectedLibraryClipId, setSelectedLibraryClipId] = useState<string | null>(null);
   const [detectedClips, setDetectedClips] = useState<string[]>([]);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
+  const [savePresetState, setSavePresetState] = useState<"idle" | "saved" | "cleared">("idle");
+  const [hasSavedPreset, setHasSavedPreset] = useState(false);
   const [modelStatuses, setModelStatuses] = useState<Record<string, ModelStatusState>>({
     "/models/nova-coach.glb": "checking",
     "/models/atlas-coach.glb": "checking",
@@ -268,6 +271,11 @@ export function ModelLabScreen({
       window.setTimeout(() => setCopyState("idle"), 2200);
     }
   };
+
+  useEffect(() => {
+    setHasSavedPreset(Boolean(loadTransformPreset(selectedModel.path)));
+    setSavePresetState("idle");
+  }, [selectedModel.path]);
 
   useEffect(() => {
     let cancelled = false;
@@ -579,6 +587,55 @@ export function ModelLabScreen({
                   <pre className="mt-3 overflow-x-auto font-mono text-xs leading-6 text-blue-100">
                     <code>{currentValuesBlock}</code>
                   </pre>
+                </div>
+
+                <div className="mt-4 rounded-[1.25rem] border border-amber-400/16 bg-amber-500/8 p-4">
+                  <p className="text-[11px] font-black uppercase tracking-[0.2em] text-amber-300">Save Preset</p>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-400">
+                    Saves current position, scale, and camera to device storage. Applies across all screens for this model — no restart needed.
+                  </p>
+                  {hasSavedPreset && savePresetState === "idle" && (
+                    <p className="mt-2 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-400">
+                      ✓ Saved preset active
+                    </p>
+                  )}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        saveTransformPreset(selectedModel.path, previewTransform);
+                        setHasSavedPreset(true);
+                        setSavePresetState("saved");
+                        window.setTimeout(() => setSavePresetState("idle"), 2000);
+                      }}
+                      className={`rounded-2xl border px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.22em] transition ${
+                        savePresetState === "saved"
+                          ? "border-emerald-400/30 bg-emerald-500/14 text-emerald-100"
+                          : "border-amber-400/24 bg-amber-500/12 text-amber-100 hover:border-amber-400/40"
+                      }`}
+                    >
+                      {savePresetState === "saved" ? "Saved!" : "Save Preset"}
+                    </button>
+                    {hasSavedPreset && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          clearTransformPreset(selectedModel.path);
+                          setHasSavedPreset(false);
+                          setSavePresetState("cleared");
+                          setPreviewTransform(createPreviewTransformFromPreset(selectedModel.path));
+                          window.setTimeout(() => setSavePresetState("idle"), 2000);
+                        }}
+                        className={`rounded-2xl border px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.22em] transition ${
+                          savePresetState === "cleared"
+                            ? "border-red-400/30 bg-red-500/12 text-red-100"
+                            : "border-white/10 bg-white/5 text-slate-400 hover:border-white/20 hover:text-slate-200"
+                        }`}
+                      >
+                        {savePresetState === "cleared" ? "Cleared" : "Clear Preset"}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </section>
