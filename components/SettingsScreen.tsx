@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { User } from "@supabase/supabase-js";
 import { Coach3D } from "@/components/Coach3D";
 import { getAvatarLabel } from "@/lib/avatarAssets";
 import { clearBodyProfile, saveBodyProfile } from "@/lib/bodyProfileStorage";
@@ -17,6 +18,8 @@ type SettingsScreenProps = {
   onOpenCameraSandbox: () => void;
   onOpenModelLab: () => void;
   onResetLocalData?: () => void;
+  onSignOut?: () => void;
+  supabaseUser?: User | null;
   selectedAvatar?: CoachAvatar;
   bodyProfile?: BodyProfile | null;
   onBodyProfileChange?: (profile: BodyProfile | null) => void;
@@ -44,6 +47,8 @@ export function SettingsScreen({
   onOpenCameraSandbox,
   onOpenModelLab,
   onResetLocalData,
+  onSignOut,
+  supabaseUser,
   selectedAvatar = "Nova",
   bodyProfile,
   onBodyProfileChange,
@@ -405,6 +410,40 @@ export function SettingsScreen({
               >
                 Open Camera Sandbox
               </button>
+            </SettingsCard>
+
+            <SettingsCard title="Account">
+              {supabaseUser ? (
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-3 rounded-xl border border-white/8 bg-slate-900/60 px-4 py-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-blue-600 to-purple-600 text-xs font-black text-white">
+                      {supabaseUser.email?.[0]?.toUpperCase() ?? "U"}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-bold text-slate-200">{supabaseUser.email}</p>
+                      <p className="text-[10px] text-emerald-400">Synced to cloud</p>
+                    </div>
+                  </div>
+                  {onSignOut && (
+                    <button
+                      onClick={onSignOut}
+                      className="w-full rounded-2xl border border-white/8 bg-slate-900/60 px-4 py-3.5 text-sm font-black text-slate-300 transition hover:border-red-400/30 hover:text-red-300 active:scale-95"
+                    >
+                      Sign Out
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  <p className="text-slate-400">Sign in to sync your progress and settings across devices. It&apos;s free.</p>
+                  <button
+                    onClick={() => window.dispatchEvent(new CustomEvent("gymtwin:goto-auth"))}
+                    className="w-full rounded-2xl bg-gradient-to-r from-blue-600 to-purple-600 px-4 py-3.5 text-sm font-black text-white shadow-[0_0_16px_rgba(139,92,246,0.3)] transition active:scale-95"
+                  >
+                    Sign In / Create Account
+                  </button>
+                </div>
+              )}
             </SettingsCard>
 
             <SettingsCard title="Local Data">

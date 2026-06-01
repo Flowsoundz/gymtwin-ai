@@ -1,4 +1,5 @@
 export type AppScreen =
+  | "auth"
   | "landing"
   | "settings"
   | "model_lab"

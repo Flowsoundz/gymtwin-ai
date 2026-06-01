@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useEffectEvent, useMemo, useState } from "react";
+import type { User } from "@supabase/supabase-js";
 import type {
   AppScreen,
   AvatarDisplaySettings,
@@ -16,6 +17,16 @@ import type {
   WorkoutMovement,
   ActiveSessionData,
 } from "@/types";
+import { supabase } from "@/lib/supabase";
+import {
+  pushSettingsToSupabase,
+  pullSettingsFromSupabase,
+  pushStatsToSupabase,
+  pullStatsFromSupabase,
+  pushWorkoutToSupabase,
+  pullWorkoutHistoryFromSupabase,
+} from "@/lib/supabaseSync";
+import { AuthScreen } from "@/components/AuthScreen";
 import { CameraSandboxScreen } from "@/components/CameraSandboxScreen";
 import { LandingScreen } from "@/components/LandingScreen";
 import { ModelLabScreen } from "@/components/ModelLabScreen";
@@ -69,6 +80,8 @@ import type { CoachAnimationHint } from "@/lib/coachBrain";
 
 export default function GymTwinApp() {
   const [currentScreen, setCurrentScreen] = useState<AppScreen>("landing");
+  const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
+  const [syncBannerDismissed, setSyncBannerDismissed] = useState(false);
   const [userStats, setUserStats] = useState<TraineeStats>({ workoutsCompleted: 0, streak: 0, lastWorkoutDate: null, totalMinutes: 0 });
   const [bodyProfile, setBodyProfile] = useState<BodyProfile | null>(null);
   const [weeklyPlan, setWeeklyPlan] = useState<WeeklyPlan | null>(null);
@@ -176,6 +189,66 @@ export default function GymTwinApp() {
     setAvatarDisplaySettings(readAvatarDisplaySettings());
 
     setHasResumeSession(hasStoredActiveSession());
+  }, []);
+
+  // Auth listener — runs once, updates user state on login/logout
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSupabaseUser(session?.user ?? null);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const user = session?.user ?? null;
+      setSupabaseUser(user);
+
+      if (user) {
+        // Pull cloud data and merge with localStorage
+        void Promise.all([
+          pullSettingsFromSupabase(user.id).then((remote) => {
+            if (remote) {
+              const merged = { ...readAvatarDisplaySettings(), ...remote };
+              setAvatarDisplaySettings(merged as AvatarDisplaySettings);
+              saveAvatarDisplaySettings(merged as AvatarDisplaySettings);
+            }
+          }),
+          pullStatsFromSupabase(user.id).then((remote) => {
+            if (remote) {
+              const local = readUserStats() ?? { workoutsCompleted: 0, streak: 0, lastWorkoutDate: null, totalMinutes: 0 };
+              const merged: TraineeStats = {
+                workoutsCompleted: Math.max(local.workoutsCompleted, remote.workoutsCompleted ?? 0),
+                streak: Math.max(local.streak, remote.streak ?? 0),
+                totalMinutes: Math.max(local.totalMinutes, remote.totalMinutes ?? 0),
+                lastWorkoutDate: remote.lastWorkoutDate ?? local.lastWorkoutDate,
+              };
+              setUserStats(merged);
+              saveUserStats(merged);
+            }
+          }),
+          pullWorkoutHistoryFromSupabase(user.id).then((remote) => {
+            if (remote.length) {
+              const local = readWorkoutHistory();
+              const ids = new Set(local.map((w) => w.id));
+              const merged = [...local, ...remote.filter((w) => !ids.has(w.id))].slice(0, 20);
+              setWorkoutHistory(merged);
+              saveWorkoutHistory(merged);
+            }
+          }),
+        ]);
+
+        // Go to landing after sign-in if on auth screen
+        setCurrentScreen((s) => (s === "auth" ? "landing" : s));
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Handle "Sign In" button from SettingsScreen
+  useEffect(() => {
+    const handler = () => setCurrentScreen("auth");
+    window.addEventListener("gymtwin:goto-auth", handler);
+    return () => window.removeEventListener("gymtwin:goto-auth", handler);
   }, []);
 
   function handleGenerateWeeklyPlan() {
@@ -369,6 +442,10 @@ export default function GymTwinApp() {
     setLastWorkoutSummary(summaryPayload); saveLastWorkoutSummary(summaryPayload);
     const updatedHistory = [summaryPayload, ...workoutHistory].slice(0, 10); setWorkoutHistory(updatedHistory);
     saveWorkoutHistory(updatedHistory);
+    if (supabaseUser) {
+      void pushWorkoutToSupabase(supabaseUser.id, summaryPayload);
+      void pushStatsToSupabase(supabaseUser.id, nextStats);
+    }
     const updatedWeeklyPlan = markTodayComplete(weeklyPlan);
     if (updatedWeeklyPlan) setWeeklyPlan(updatedWeeklyPlan);
 
@@ -425,6 +502,31 @@ export default function GymTwinApp() {
 
   return (
     <>
+      {currentScreen === "auth" && (
+        <AuthScreen onSkip={() => setCurrentScreen("landing")} />
+      )}
+
+      {/* Guest sync banner — shown on landing when not signed in */}
+      {currentScreen === "landing" && !supabaseUser && !syncBannerDismissed && (
+        <div className="fixed bottom-4 left-1/2 z-50 flex w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 items-center justify-between gap-3 rounded-2xl border border-purple-500/30 bg-slate-950/90 px-4 py-3 shadow-[0_0_24px_rgba(139,92,246,0.2)] backdrop-blur-xl">
+          <p className="text-xs font-bold text-slate-200">Sign in to sync your progress across devices</p>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              onClick={() => setCurrentScreen("auth")}
+              className="rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 px-3 py-1.5 text-[11px] font-black text-white"
+            >
+              Sign In
+            </button>
+            <button
+              onClick={() => setSyncBannerDismissed(true)}
+              className="text-slate-500 hover:text-slate-300 text-lg leading-none"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
       {currentScreen === "landing" && (
         <LandingScreen
           userStats={userStats}
@@ -462,6 +564,12 @@ export default function GymTwinApp() {
           onAvatarDisplaySettingsChange={(settings) => {
             setAvatarDisplaySettings(settings);
             saveAvatarDisplaySettings(settings);
+            if (supabaseUser) void pushSettingsToSupabase(supabaseUser.id, settings);
+          }}
+          supabaseUser={supabaseUser}
+          onSignOut={async () => {
+            await supabase.auth.signOut();
+            setCurrentScreen("landing");
           }}
         />
       )}
