@@ -749,20 +749,20 @@ export function WorkoutPlayerScreen({
 
   return (
     <main className="min-h-screen bg-slate-950 text-white font-sans selection:bg-purple-500/30">
-      <header className="border-b border-slate-900 bg-slate-900/50 px-4 py-4">
+      <header className="sticky top-0 z-10 border-b border-white/5 bg-slate-950/90 px-4 py-3 backdrop-blur-xl">
         <div className="mx-auto max-w-7xl">
-          <div className="flex items-center justify-between gap-4 text-xs font-bold tracking-wider">
+          <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-slate-500 uppercase">{activeMovement.phase} phase</p>
-              <p className="text-slate-300">Movement {movementIndex + 1} / {activeRoutine.length} • {elapsedMinutes} min</p>
+              <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">{activeMovement.phase} phase</p>
+              <p className="mt-0.5 text-sm font-bold text-slate-200">Movement {movementIndex + 1} / {activeRoutine.length} <span className="text-slate-600">·</span> {elapsedMinutes} min</p>
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={onToggleMute} className="rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-sm active:scale-95">{isMuted ? "🔇" : "🔊"}</button>
-              <button onClick={handleSafetyStop} className="rounded-xl border border-red-900/60 bg-red-950/20 px-3 py-2 text-xs text-red-300 active:scale-95">Stop</button>
+              <button onClick={onToggleMute} className="flex h-9 w-9 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-sm transition hover:border-white/20 active:scale-95">{isMuted ? "🔇" : "🔊"}</button>
+              <button onClick={handleSafetyStop} className="rounded-full border border-red-500/25 bg-red-950/25 px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-red-300 transition hover:border-red-500/40 active:scale-95">Stop</button>
             </div>
           </div>
-          <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-900">
-            <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all" style={{ width: `${progressPercent}%` }} />
+          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/5">
+            <div className="h-full rounded-full bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 transition-all duration-700" style={{ width: `${progressPercent}%` }} />
           </div>
         </div>
       </header>

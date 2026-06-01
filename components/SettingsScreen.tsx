@@ -126,6 +126,14 @@ export function SettingsScreen({
     <main className="min-h-screen overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.2),_transparent_24%),radial-gradient(circle_at_bottom,_rgba(59,130,246,0.12),_transparent_24%),linear-gradient(180deg,_#020617_0%,_#020617_48%,_#030712_100%)] px-4 pb-10 pt-8 text-white antialiased sm:px-6 lg:px-8 lg:py-12">
       <div className="mx-auto w-full max-w-md lg:max-w-5xl xl:max-w-6xl">
         <div className="rounded-[2.25rem] border border-white/8 bg-[linear-gradient(180deg,rgba(15,23,42,0.82),rgba(2,6,23,0.94))] p-5 shadow-[0_30px_80px_rgba(15,23,42,0.5)] backdrop-blur-2xl sm:p-6 lg:p-8 xl:p-9">
+          <div className="mb-5 flex items-center justify-between gap-3">
+            <button
+              onClick={onBackHome}
+              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-slate-300 backdrop-blur hover:border-white/20 hover:text-white"
+            >
+              ← Home
+            </button>
+          </div>
           <header className="mb-6 rounded-[1.9rem] border border-white/8 bg-slate-950/58 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
             <p className="text-[11px] font-black uppercase tracking-[0.3em] text-blue-300">System Controls</p>
             <h2 className="mt-3 bg-gradient-to-r from-white via-blue-100 to-fuchsia-200 bg-clip-text text-4xl font-black tracking-tight text-transparent">
@@ -137,6 +145,7 @@ export function SettingsScreen({
           </header>
 
           <div className="space-y-4 lg:grid lg:grid-cols-2 lg:gap-4 lg:space-y-0">
+            <div className="lg:col-span-2">
             <SettingsCard title="Avatar System">
               <div className="space-y-4">
                 <Coach3D
@@ -156,6 +165,7 @@ export function SettingsScreen({
                 </button>
               </div>
             </SettingsCard>
+            </div>
 
             <SettingsCard title="Avatar Display">
               <div className="space-y-4">
@@ -383,14 +393,6 @@ export function SettingsScreen({
             </SettingsCard>
           </div>
 
-          <div className="mt-6 lg:max-w-sm">
-            <button
-              onClick={onBackHome}
-              className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-4 text-sm font-black text-slate-100 transition hover:border-blue-400/30 hover:bg-slate-800 active:scale-95"
-            >
-              Return Home
-            </button>
-          </div>
         </div>
       </div>
     </main>

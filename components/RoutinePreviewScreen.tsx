@@ -30,18 +30,21 @@ export function RoutinePreviewScreen({
   const supportedCameraCount = activeRoutine.filter((move) => getCameraCoachModeForMovementName(move.name)).length;
 
   return (
-    <main className="min-h-screen bg-slate-950 p-6 pb-24 font-sans text-white antialiased">
-      <div className="mx-auto max-w-md lg:max-w-6xl xl:max-w-7xl">
-        <button onClick={onBackToSetup} className="mb-6 text-sm font-bold text-slate-500 hover:text-slate-300">&larr; Back to Parameters</button>
-        <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-blue-900/50 bg-blue-950/20 px-4 py-1.5 text-xs font-bold uppercase tracking-widest text-blue-300">
-          Program Overview
-        </div>
-        <h2 className="bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-500 bg-clip-text pb-1 text-4xl font-black tracking-tight text-transparent">
-          Your Custom Routine
-        </h2>
-        <p className="mb-6 max-w-2xl text-xs leading-relaxed text-slate-500">
-          Rep targets adjust dynamically based on your logged difficulty feedback.
-        </p>
+    <main className="min-h-screen overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.2),_transparent_24%),radial-gradient(circle_at_bottom,_rgba(59,130,246,0.12),_transparent_24%),linear-gradient(180deg,_#020617_0%,_#020617_48%,_#030712_100%)] px-4 pb-12 pt-8 text-white antialiased sm:px-6 lg:px-8 lg:py-12">
+      <div className="mx-auto w-full max-w-md lg:max-w-6xl xl:max-w-7xl">
+        <div className="rounded-[2.25rem] border border-white/8 bg-[linear-gradient(180deg,rgba(15,23,42,0.82),rgba(2,6,23,0.94))] p-5 shadow-[0_30px_80px_rgba(15,23,42,0.5)] backdrop-blur-2xl sm:p-6 lg:p-8">
+        <button onClick={onBackToSetup} className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-slate-300 backdrop-blur hover:border-white/20 hover:text-white">
+          ← Back to Parameters
+        </button>
+        <header className="mb-6 rounded-[1.9rem] border border-white/8 bg-slate-950/58 px-5 py-5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+          <p className="text-[11px] font-black uppercase tracking-[0.3em] text-blue-300">Program Overview</p>
+          <h2 className="mt-2 bg-gradient-to-r from-white via-blue-100 to-fuchsia-200 bg-clip-text text-4xl font-black tracking-tight text-transparent">
+            Your Custom Routine
+          </h2>
+          <p className="mt-2 text-sm leading-relaxed text-slate-400">
+            Rep targets adjust dynamically based on your logged difficulty feedback.
+          </p>
+        </header>
 
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.7fr)]">
           <section>
@@ -136,6 +139,7 @@ export function RoutinePreviewScreen({
               </div>
             </section>
           </aside>
+        </div>
         </div>
       </div>
     </main>
