@@ -125,13 +125,13 @@ function AnimationPackLoader({
 }
 
 const HINT_CLIP_NAMES: Record<CoachAnimationHint, string[]> = {
-  idle:      ["Idle", "idle", "StandardIdle", "Breathing", "breathing", "TPose", "Armature|mixamo.com|Layer0"],
-  talking:   ["Talking", "talking", "Rallying", "rallying", "Talk", "talk", "Speaking", "Wave", "wave", "Gesture"],
-  listening: ["Listening", "listening", "StandardIdle", "Thinking", "thinking", "HeadNod", "Nod", "nod"],
-  pointing:  ["Pointing", "pointing", "Rallying", "rallying", "Point", "point", "Direct"],
-  thumbs_up: ["ThumbsUp", "thumbs_up", "Clapping", "clapping", "Thumbsup", "Victory", "victory", "Approve"],
-  warning:   ["Warning", "warning", "ThoughtfulHeadShake", "Shake", "shake", "HeadShake", "No", "Deny"],
-  celebrate: ["Celebrate", "celebrate", "Cheering", "cheering", "Celebration", "Jump", "jump", "Dance", "dance", "Cheer"],
+  idle:      ["GT_Idle_Default", "GT_Idle_Default.001", "GT_Idle_Default_02", "GT_Idle_Default_03", "GT_Idle_Default_04", "GT_Idle_Default_05", "GT_Idle_Default_06", "GT_Idle_Default_07", "Idle", "idle", "StandardIdle", "Breathing"],
+  talking:   ["GT_Idle_Default_05", "GT_MaximoAnimLocomotionIdletransition01", "GT_Idle_Default_03", "Talking", "talking", "Wave", "wave"],
+  listening: ["GT_Idle_Default_04", "GT_MaximoAnimLocomotionIdletransition02", "GT_Idle_Default_06", "Listening", "listening"],
+  pointing:  ["GT_MaximoAnimCombat3270427surpriseuppercutmaya201", "GT_Idle_Default_07", "Pointing", "pointing"],
+  thumbs_up: ["GT_MaximoAnimEmoteVictory01", "GT_Dance_Hype", "ThumbsUp", "Victory", "victory"],
+  warning:   ["GT_MaximoAnimEmoteDefeated01", "GT_Idle_Default_06", "Warning", "warning"],
+  celebrate: ["GT_Dance_Hype", "GT_Dance_Hype_02", "GT_Dance_Hype_03", "GT_MaximoAnimEmoteVictory01", "Celebrate", "celebrate", "Dance", "dance"],
 };
 
 function resolveClipName(hint: CoachAnimationHint, animations: AnimationClip[]): string | null {

@@ -63,6 +63,9 @@ import {
   readAvatarDisplaySettings,
   saveAvatarDisplaySettings,
 } from "@/lib/avatarDisplaySettings";
+import { DraggableCoach } from "@/components/DraggableCoach";
+import { getExerciseClipName } from "@/lib/exerciseAnimationMap";
+import type { CoachAnimationHint } from "@/lib/coachBrain";
 
 export default function GymTwinApp() {
   const [currentScreen, setCurrentScreen] = useState<AppScreen>("landing");
@@ -395,206 +398,211 @@ export default function GymTwinApp() {
     else { setCurrentReps((r) => Math.max(1, r - 2)); updateCoachLine("action", "Difficulty lowered. Clean form matters more than ego."); }
   }
 
-  if (currentScreen === "landing") {
-    return (
-      <LandingScreen
-        userStats={userStats}
-        hasResumeSession={hasResumeSession}
-        onResumeWorkout={resumeWorkoutSession}
-        onStartWorkout={() => setCurrentScreen("setup")}
-        onStartTodaysWorkout={() => setCurrentScreen("setup")}
-        onViewProgress={() => setCurrentScreen("progress")}
-        onOpenCameraSandbox={() => setCurrentScreen("camera_sandbox")}
-        onOpenSettings={() => setCurrentScreen("settings")}
-        weeklyPlan={weeklyPlan}
-        bodyProfile={bodyProfile}
-        workoutHistory={workoutHistory}
-        latestWorkoutSummary={lastWorkoutSummary}
-        onGenerateWeeklyPlan={handleGenerateWeeklyPlan}
-        selectedAvatar={selectedAvatar}
-        primaryButton={primaryButton}
-        secondaryButton={secondaryButton}
-      />
-    );
-  }
+  // Floating coach state — mirrors exercise during workout, idles otherwise
+  const floatingDemoClip = useMemo<string | null>(() => {
+    if (currentScreen !== "player" || !activeMovement || isRestPhase) return null;
+    return getExerciseClipName(activeMovement);
+  }, [currentScreen, activeMovement, isRestPhase]);
 
-  if (currentScreen === "settings") {
-    return (
-      <SettingsScreen
-        onBackHome={() => setCurrentScreen("landing")}
-        onOpenCameraSandbox={() => setCurrentScreen("camera_sandbox")}
-        onOpenModelLab={() => setCurrentScreen("model_lab")}
-        onResetLocalData={resetLocalAppData}
-        selectedAvatar={selectedAvatar}
-        bodyProfile={bodyProfile}
-        avatarDisplaySettings={avatarDisplaySettings}
-        onBodyProfileChange={(profile) => {
-          setBodyProfile(profile);
-          if (profile) saveBodyProfile(profile);
-        }}
-        onAvatarDisplaySettingsChange={(settings) => {
-          setAvatarDisplaySettings(settings);
-          saveAvatarDisplaySettings(settings);
-        }}
-      />
-    );
-  }
+  const floatingHint = useMemo<CoachAnimationHint>(() => {
+    if (currentScreen === "summary") return "celebrate";
+    if (currentScreen === "player" && !isRestPhase) return "idle";
+    return "idle";
+  }, [currentScreen, isRestPhase]);
 
-  if (currentScreen === "model_lab") {
-    return (
-      <ModelLabScreen
-        onBackHome={() => setCurrentScreen("settings")}
-        primaryButton={primaryButton}
-        secondaryButton={secondaryButton}
-      />
-    );
-  }
+  // Hide the floating coach on model lab and camera sandbox — both are already heavy
+  const showFloatingCoach = currentScreen !== "model_lab" && currentScreen !== "camera_sandbox";
 
-  if (currentScreen === "camera_sandbox") {
-    return (
-      <CameraSandboxScreen
-        onBack={() => setCurrentScreen("landing")}
-        primaryButton={primaryButton}
-        secondaryButton={secondaryButton}
-        selectedAvatar={selectedAvatar}
-        avatarDisplaySettings={avatarDisplaySettings}
-      />
-    );
-  }
+  const elapsedMinutes = sessionStartedAt ? calculateActualMinutes(sessionStartedAt) : 0;
 
-  if (currentScreen === "setup") {
-    return (
-      <SetupScreen
-        selectedGoal={selectedGoal}
-        setSelectedGoal={setSelectedGoal}
-        selectedLevel={selectedLevel}
-        setSelectedLevel={setSelectedLevel}
-        selectedEquipment={selectedEquipment}
-        setSelectedEquipment={setSelectedEquipment}
-        sessionLength={sessionLength}
-        setSessionLength={setSessionLength}
-        selectedAvatar={selectedAvatar}
-        setSelectedAvatar={setSelectedAvatar}
-        selectedCoach={selectedCoach}
-        setSelectedCoach={setSelectedCoach}
-        hasAcceptedSafety={hasAcceptedSafety}
-        setHasAcceptedSafety={setHasAcceptedSafety}
-        onBack={() => setCurrentScreen("landing")}
-        onGeneratePreview={initializeTrainingSession}
-        primaryButton={primaryButton}
-        selectClass={selectClass}
-      />
-    );
-  }
+  return (
+    <>
+      {currentScreen === "landing" && (
+        <LandingScreen
+          userStats={userStats}
+          hasResumeSession={hasResumeSession}
+          onResumeWorkout={resumeWorkoutSession}
+          onStartWorkout={() => setCurrentScreen("setup")}
+          onStartTodaysWorkout={() => setCurrentScreen("setup")}
+          onViewProgress={() => setCurrentScreen("progress")}
+          onOpenCameraSandbox={() => setCurrentScreen("camera_sandbox")}
+          onOpenSettings={() => setCurrentScreen("settings")}
+          weeklyPlan={weeklyPlan}
+          bodyProfile={bodyProfile}
+          workoutHistory={workoutHistory}
+          latestWorkoutSummary={lastWorkoutSummary}
+          onGenerateWeeklyPlan={handleGenerateWeeklyPlan}
+          selectedAvatar={selectedAvatar}
+          primaryButton={primaryButton}
+          secondaryButton={secondaryButton}
+        />
+      )}
 
-  if (currentScreen === "preview" && activeRoutine.length > 0) {
-    return (
-      <RoutinePreviewScreen
-        activeRoutine={activeRoutine}
-        cleanMovementName={cleanMovementName}
-        onBackToSetup={() => setCurrentScreen("setup")}
-        onBeginWorkout={launchActiveWorkoutTracking}
-        onCancel={resetWorkout}
-        primaryButton={primaryButton}
-        secondaryButton={secondaryButton}
-        selectedAvatar={selectedAvatar}
-      />
-    );
-  }
+      {currentScreen === "settings" && (
+        <SettingsScreen
+          onBackHome={() => setCurrentScreen("landing")}
+          onOpenCameraSandbox={() => setCurrentScreen("camera_sandbox")}
+          onOpenModelLab={() => setCurrentScreen("model_lab")}
+          onResetLocalData={resetLocalAppData}
+          selectedAvatar={selectedAvatar}
+          bodyProfile={bodyProfile}
+          avatarDisplaySettings={avatarDisplaySettings}
+          onBodyProfileChange={(profile) => {
+            setBodyProfile(profile);
+            if (profile) saveBodyProfile(profile);
+          }}
+          onAvatarDisplaySettingsChange={(settings) => {
+            setAvatarDisplaySettings(settings);
+            saveAvatarDisplaySettings(settings);
+          }}
+        />
+      )}
 
-  if (currentScreen === "player" && activeMovement) {
-    const elapsedMinutes = sessionStartedAt ? calculateActualMinutes(sessionStartedAt) : 0;
-    return (
-      <WorkoutPlayerScreen
-        activeMovement={activeMovement}
-        activeRoutine={activeRoutine}
-        movementIndex={movementIndex}
-        workingSet={workingSet}
-        currentReps={currentReps}
-        progressPercent={progressPercent}
-        isRestPhase={isRestPhase}
-        restCountdown={restCountdown}
-        exerciseCountdown={exerciseCountdown}
-        elapsedMinutes={elapsedMinutes}
-        selectedCoach={selectedCoach}
-        selectedAvatar={selectedAvatar}
-        avatarDisplaySettings={avatarDisplaySettings}
-        isMuted={isMuted}
-        displayedSpeech={displayedSpeech}
-        cleanMovementName={cleanMovementName}
-        secondsToClock={secondsToClock}
-        onToggleMute={() => setIsMuted((muted) => !muted)}
-        onSafetyStop={activateSafetyShutdown}
-        onRecallCoachDialogue={recallCoachDialogue}
-        onAdvanceExecutionTrack={advanceExecutionTrack}
-        onTriggerRestPhase={triggerRestPhase}
-        onChangeDifficultyEasy={() => changeDifficulty("easy")}
-        onChangeDifficultyHard={() => changeDifficulty("hard")}
-        primaryButton={primaryButton}
-      />
-    );
-  }
+      {currentScreen === "model_lab" && (
+        <ModelLabScreen
+          onBackHome={() => setCurrentScreen("settings")}
+          primaryButton={primaryButton}
+          secondaryButton={secondaryButton}
+        />
+      )}
 
-  if (currentScreen === "summary" && lastWorkoutSummary) {
-    return (
-      <WorkoutSummaryScreen
-        lastWorkoutSummary={lastWorkoutSummary}
-        displayedSpeech={displayedSpeech}
-        selectedAvatar={selectedAvatar}
-        bodyProfile={bodyProfile}
-        weeklyPlan={weeklyPlan}
-        workoutHistory={workoutHistory}
-        userStats={userStats}
-        onSubmitDifficultyFeedback={submitDifficultyFeedback}
-        onRepeatWorkout={initializeTrainingSession}
-        onStartNewWorkout={() => setCurrentScreen("setup")}
-        onViewProgress={() => setCurrentScreen("progress")}
-        primaryButton={primaryButton}
-        secondaryButton={secondaryButton}
-      />
-    );
-  }
+      {currentScreen === "camera_sandbox" && (
+        <CameraSandboxScreen
+          onBack={() => setCurrentScreen("landing")}
+          primaryButton={primaryButton}
+          secondaryButton={secondaryButton}
+          selectedAvatar={selectedAvatar}
+          avatarDisplaySettings={avatarDisplaySettings}
+        />
+      )}
 
-  if (currentScreen === "workout_detail" && selectedWorkoutDetail) {
-    return (
-      <WorkoutDetailScreen
-        selectedWorkoutDetail={selectedWorkoutDetail}
-        onBackToProgress={() => setCurrentScreen("progress")}
-        onRepeatSimilarWorkout={handleRepeatSimilarWorkout}
-        onMakeNextEasier={() => updateHistoricalFeedback("too_hard")}
-        onMakeNextHarder={() => updateHistoricalFeedback("too_easy")}
-        primaryButton={primaryButton}
-        secondaryButton={secondaryButton}
-      />
-    );
-  }
+      {currentScreen === "setup" && (
+        <SetupScreen
+          selectedGoal={selectedGoal}
+          setSelectedGoal={setSelectedGoal}
+          selectedLevel={selectedLevel}
+          setSelectedLevel={setSelectedLevel}
+          selectedEquipment={selectedEquipment}
+          setSelectedEquipment={setSelectedEquipment}
+          sessionLength={sessionLength}
+          setSessionLength={setSessionLength}
+          selectedAvatar={selectedAvatar}
+          setSelectedAvatar={setSelectedAvatar}
+          selectedCoach={selectedCoach}
+          setSelectedCoach={setSelectedCoach}
+          hasAcceptedSafety={hasAcceptedSafety}
+          setHasAcceptedSafety={setHasAcceptedSafety}
+          onBack={() => setCurrentScreen("landing")}
+          onGeneratePreview={initializeTrainingSession}
+          primaryButton={primaryButton}
+          selectClass={selectClass}
+        />
+      )}
 
-  if (currentScreen === "safety_stop") {
-    return (
-      <SafetyStopScreen
-        onReturnHome={resetWorkout}
-        secondaryButton={secondaryButton}
-      />
-    );
-  }
+      {currentScreen === "preview" && activeRoutine.length > 0 && (
+        <RoutinePreviewScreen
+          activeRoutine={activeRoutine}
+          cleanMovementName={cleanMovementName}
+          onBackToSetup={() => setCurrentScreen("setup")}
+          onBeginWorkout={launchActiveWorkoutTracking}
+          onCancel={resetWorkout}
+          primaryButton={primaryButton}
+          secondaryButton={secondaryButton}
+          selectedAvatar={selectedAvatar}
+        />
+      )}
 
-  if (currentScreen === "progress") {
-    return (
-      <ProgressScreen
-        selectedAvatar={selectedAvatar}
-        badges={achievementBadges}
-        bodyProfile={bodyProfile}
-        weeklyPlan={weeklyPlan}
-        userStats={userStats}
-        workoutHistory={workoutHistory}
-        onStartAnotherWorkout={() => setCurrentScreen("setup")}
-        onReturnHome={resetWorkout}
-        onViewWorkoutDetail={viewWorkoutDetail}
-        primaryButton={primaryButton}
-        secondaryButton={secondaryButton}
-      />
-    );
-  }
+      {currentScreen === "player" && activeMovement && (
+        <WorkoutPlayerScreen
+          activeMovement={activeMovement}
+          activeRoutine={activeRoutine}
+          movementIndex={movementIndex}
+          workingSet={workingSet}
+          currentReps={currentReps}
+          progressPercent={progressPercent}
+          isRestPhase={isRestPhase}
+          restCountdown={restCountdown}
+          exerciseCountdown={exerciseCountdown}
+          elapsedMinutes={elapsedMinutes}
+          selectedCoach={selectedCoach}
+          selectedAvatar={selectedAvatar}
+          avatarDisplaySettings={avatarDisplaySettings}
+          isMuted={isMuted}
+          displayedSpeech={displayedSpeech}
+          cleanMovementName={cleanMovementName}
+          secondsToClock={secondsToClock}
+          onToggleMute={() => setIsMuted((muted) => !muted)}
+          onSafetyStop={activateSafetyShutdown}
+          onRecallCoachDialogue={recallCoachDialogue}
+          onAdvanceExecutionTrack={advanceExecutionTrack}
+          onTriggerRestPhase={triggerRestPhase}
+          onChangeDifficultyEasy={() => changeDifficulty("easy")}
+          onChangeDifficultyHard={() => changeDifficulty("hard")}
+          primaryButton={primaryButton}
+        />
+      )}
 
-  return null;
+      {currentScreen === "summary" && lastWorkoutSummary && (
+        <WorkoutSummaryScreen
+          lastWorkoutSummary={lastWorkoutSummary}
+          displayedSpeech={displayedSpeech}
+          selectedAvatar={selectedAvatar}
+          bodyProfile={bodyProfile}
+          weeklyPlan={weeklyPlan}
+          workoutHistory={workoutHistory}
+          userStats={userStats}
+          onSubmitDifficultyFeedback={submitDifficultyFeedback}
+          onRepeatWorkout={initializeTrainingSession}
+          onStartNewWorkout={() => setCurrentScreen("setup")}
+          onViewProgress={() => setCurrentScreen("progress")}
+          primaryButton={primaryButton}
+          secondaryButton={secondaryButton}
+        />
+      )}
+
+      {currentScreen === "workout_detail" && selectedWorkoutDetail && (
+        <WorkoutDetailScreen
+          selectedWorkoutDetail={selectedWorkoutDetail}
+          onBackToProgress={() => setCurrentScreen("progress")}
+          onRepeatSimilarWorkout={handleRepeatSimilarWorkout}
+          onMakeNextEasier={() => updateHistoricalFeedback("too_hard")}
+          onMakeNextHarder={() => updateHistoricalFeedback("too_easy")}
+          primaryButton={primaryButton}
+          secondaryButton={secondaryButton}
+        />
+      )}
+
+      {currentScreen === "safety_stop" && (
+        <SafetyStopScreen
+          onReturnHome={resetWorkout}
+          secondaryButton={secondaryButton}
+        />
+      )}
+
+      {currentScreen === "progress" && (
+        <ProgressScreen
+          selectedAvatar={selectedAvatar}
+          badges={achievementBadges}
+          bodyProfile={bodyProfile}
+          weeklyPlan={weeklyPlan}
+          userStats={userStats}
+          workoutHistory={workoutHistory}
+          onStartAnotherWorkout={() => setCurrentScreen("setup")}
+          onReturnHome={resetWorkout}
+          onViewWorkoutDetail={viewWorkoutDetail}
+          primaryButton={primaryButton}
+          secondaryButton={secondaryButton}
+        />
+      )}
+
+      {showFloatingCoach && (
+        <DraggableCoach
+          selectedAvatar={selectedAvatar}
+          animationHint={floatingHint}
+          demoClipName={floatingDemoClip}
+          message={displayedSpeech || null}
+        />
+      )}
+    </>
+  );
 }
