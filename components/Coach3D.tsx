@@ -239,16 +239,34 @@ function CoachModel({
   }, [animationHint, demoClipName]);
   // Capture T-pose bounding box once — never re-run when previewFrame changes,
   // which prevents the Y-axis drift caused by setFromObject on an animated scene.
+  // Use world-space bounds (geometry × matrixWorld) so models with a scaled root
+  // armature (e.g. 0.01 cm→m conversion) are measured at actual rendered size.
   const sceneMetrics = useMemo(() => {
-    const box = new Box3().setFromObject(clonedScene);
+    clonedScene.updateWorldMatrix(true, true);
+    const box = new Box3();
+    let hasMesh = false;
+    clonedScene.traverse((obj: Object3D) => {
+      if ((obj as { isMesh?: boolean }).isMesh) {
+        const mesh = obj as SkinnedMesh;
+        if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+        if (mesh.geometry.boundingBox) {
+          const geomBox = mesh.geometry.boundingBox.clone().applyMatrix4(mesh.matrixWorld);
+          box.union(geomBox);
+          hasMesh = true;
+        }
+      }
+    });
+    if (!hasMesh || box.isEmpty()) box.setFromObject(clonedScene);
     const size = box.getSize(new Vector3());
     const center = box.getCenter(new Vector3());
-    const height = isFinite(size.y) && size.y > 0 ? size.y : 0;
+    // Use max dimension so armature rotations that move height to Z still fit correctly
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const height = isFinite(maxDim) && maxDim > 0 ? maxDim : 0;
     const cx = isFinite(center.x) ? center.x : 0;
     const cy = isFinite(box.min.y) ? box.min.y : 0;
     const cz = isFinite(center.z) ? center.z : 0;
     if (process.env.NODE_ENV === "development") {
-      console.log("[CoachModel] bounding box for", modelPath, { height, cx, cy, cz, raw: { min: box.min, max: box.max } });
+      console.log("[CoachModel] world-space bbox for", modelPath, { height, cx, cy, cz, size: { x: size.x, y: size.y, z: size.z } });
     }
     return { height, cx, cy, cz };
   }, [clonedScene, modelPath]);
@@ -276,11 +294,7 @@ function CoachModel({
     earBoneRef.current = null;
     rEarBoneRef.current = null;
     clonedScene.traverse((obj: Object3D) => {
-      // Force every node visible — some GLBs export with visibility=false on groups or meshes.
       obj.visible = true;
-      // Use .isMesh flag (not instanceof) to catch both Mesh and SkinnedMesh regardless of
-      // module boundary. Disable frustum culling: the bind-pose bounding sphere is computed
-      // once and is wrong for any mesh that animates away from its rest pose.
       if ((obj as { isMesh?: boolean }).isMesh) {
         obj.frustumCulled = false;
       }
@@ -719,10 +733,6 @@ function CoachFallback({
   );
 }
 
-// DIAGNOSTIC BUILD MARKER — remove once coach visibility is confirmed
-if (typeof window !== "undefined" && process.env.NODE_ENV === "development") {
-  console.warn("[Coach3D] module loaded — build marker v4");
-}
 
 export function Coach3D({
   selectedAvatar,
