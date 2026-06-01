@@ -5,7 +5,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Html, OrbitControls, useGLTF } from "@react-three/drei";
 import { clone as skeletonClone } from "three/examples/jsm/utils/SkeletonUtils.js";
-import { AnimationMixer, Box3, LoopOnce, LoopRepeat, Vector3 } from "three";
+import { AnimationMixer, Box3, LoopOnce, LoopRepeat, SkinnedMesh, Vector3 } from "three";
 import type { AnimationClip, Group, Object3D } from "three";
 import { getAvatarLabel, getAvatarModelPaths } from "@/lib/avatarAssets";
 import { loadTransformPreset } from "@/lib/coachTransformStorage";
@@ -268,6 +268,10 @@ function CoachModel({
       if (obj.name === "head") headBoneRef.current = obj;
       else if (obj.name === "earend") earBoneRef.current = obj;
       else if (obj.name === "R_earend") rEarBoneRef.current = obj;
+      // SkinnedMesh frustum culling is based on the bind-pose bounding sphere, which is
+      // wrong for animated meshes exported in non-standard poses. Disable it so the GPU
+      // always draws the mesh regardless of the camera angle.
+      if (obj instanceof SkinnedMesh) obj.frustumCulled = false;
     });
   }, [clonedScene]);
 
