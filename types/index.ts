@@ -1,5 +1,6 @@
 export type AppScreen =
   | "auth"
+  | "onboarding"
   | "landing"
   | "settings"
   | "model_lab"

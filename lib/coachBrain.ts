@@ -129,7 +129,7 @@ export function getCoachBrainResponse(input: CoachBrainInput): CoachBrainOutput 
     };
   }
 
-  if (input.feedbackSeverity === "error" || hasSafetySignal(input.formFeedback)) {
+  if (hasSafetySignal(input.formFeedback)) {
     return {
       mood: "error",
       message: "Safety first. Stop and reset before you continue.",

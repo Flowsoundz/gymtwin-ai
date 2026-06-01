@@ -77,11 +77,24 @@ import {
 import { DraggableCoach } from "@/components/DraggableCoach";
 import { getExerciseClipName } from "@/lib/exerciseAnimationMap";
 import type { CoachAnimationHint } from "@/lib/coachBrain";
+import { OnboardingScreen } from "@/components/OnboardingScreen";
+import {
+  isOnboardingDone,
+  isSafetyAccepted,
+  markSafetyAccepted,
+  readQuickStartDefaults,
+  isCameraTried,
+  markCameraTried,
+  areFirstHintsShown,
+  markFirstHintsShown,
+} from "@/lib/onboardingStorage";
 
 export default function GymTwinApp() {
   const [currentScreen, setCurrentScreen] = useState<AppScreen>("landing");
   const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
   const [syncBannerDismissed, setSyncBannerDismissed] = useState(false);
+  const [cameraTried, setCameraTried] = useState(false);
+  const [firstHintsDismissed, setFirstHintsDismissed] = useState(false);
   const [userStats, setUserStats] = useState<TraineeStats>({ workoutsCompleted: 0, streak: 0, lastWorkoutDate: null, totalMinutes: 0 });
   const [bodyProfile, setBodyProfile] = useState<BodyProfile | null>(null);
   const [weeklyPlan, setWeeklyPlan] = useState<WeeklyPlan | null>(null);
@@ -187,8 +200,29 @@ export default function GymTwinApp() {
     setBodyProfile(readBodyProfile());
     setWeeklyPlan(readWeeklyPlan());
     setAvatarDisplaySettings(readAvatarDisplaySettings());
-
     setHasResumeSession(hasStoredActiveSession());
+
+    // UX: restore persisted safety + camera state
+    if (isSafetyAccepted()) setHasAcceptedSafety(true);
+    if (isCameraTried()) setCameraTried(true);
+    if (areFirstHintsShown()) setFirstHintsDismissed(true);
+
+    // UX: route new users to onboarding
+    if (!isOnboardingDone()) {
+      setCurrentScreen("onboarding");
+      return;
+    }
+
+    // UX: load quick-start defaults if available
+    const defaults = readQuickStartDefaults();
+    if (defaults) {
+      setSelectedGoal(defaults.goal);
+      setSelectedLevel(defaults.level);
+      setSelectedEquipment(defaults.equipment);
+      setSessionLength(defaults.sessionLength);
+      setSelectedAvatar(defaults.avatar);
+      setSelectedCoach(defaults.coach);
+    }
   }, []);
 
   // Auth listener — runs once, updates user state on login/logout
@@ -492,16 +526,58 @@ export default function GymTwinApp() {
     }
   }, [currentScreen]);
 
-  // Hide the floating coach where the screen already features the coach prominently
+  // Show the draggable floating coach only when:
+  // - not on screens that already feature the coach prominently
+  // - user has 3D coach enabled
+  // - mode is floating_overlay (coach_card lives inside the player, camera_corner is in the player too)
+  // - not in the player screen (player renders its own avatar layout per mode)
   const showFloatingCoach =
     currentScreen !== "model_lab" &&
     currentScreen !== "camera_sandbox" &&
-    currentScreen !== "landing";
+    currentScreen !== "landing" &&
+    currentScreen !== "player" &&
+    avatarDisplaySettings.show3DCoach &&
+    avatarDisplaySettings.mode === "floating_overlay";
 
   const elapsedMinutes = sessionStartedAt ? calculateActualMinutes(sessionStartedAt) : 0;
 
+  function handleQuickStart() {
+    const defaults = readQuickStartDefaults();
+    if (defaults) {
+      setSelectedGoal(defaults.goal);
+      setSelectedLevel(defaults.level);
+      setSelectedEquipment(defaults.equipment);
+      setSessionLength(defaults.sessionLength);
+      setSelectedAvatar(defaults.avatar);
+      setSelectedCoach(defaults.coach);
+    }
+    setCurrentScreen("setup");
+  }
+
+  function handleOpenCamera() {
+    if (!cameraTried) {
+      markCameraTried();
+      setCameraTried(true);
+    }
+    setCurrentScreen("camera_sandbox");
+  }
+
   return (
     <>
+      {currentScreen === "onboarding" && (
+        <OnboardingScreen
+          onComplete={(defaults) => {
+            setSelectedGoal(defaults.goal);
+            setSelectedLevel(defaults.level);
+            setSelectedEquipment(defaults.equipment);
+            setSessionLength(defaults.sessionLength);
+            setSelectedAvatar(defaults.avatar);
+            setSelectedCoach(defaults.coach);
+            setCurrentScreen("landing");
+          }}
+        />
+      )}
+
       {currentScreen === "auth" && (
         <AuthScreen onSkip={() => setCurrentScreen("landing")} />
       )}
@@ -534,8 +610,9 @@ export default function GymTwinApp() {
           onResumeWorkout={resumeWorkoutSession}
           onStartWorkout={() => setCurrentScreen("setup")}
           onStartTodaysWorkout={() => setCurrentScreen("setup")}
+          onQuickStart={handleQuickStart}
           onViewProgress={() => setCurrentScreen("progress")}
-          onOpenCameraSandbox={() => setCurrentScreen("camera_sandbox")}
+          onOpenCameraSandbox={handleOpenCamera}
           onOpenSettings={() => setCurrentScreen("settings")}
           weeklyPlan={weeklyPlan}
           bodyProfile={bodyProfile}
@@ -543,6 +620,7 @@ export default function GymTwinApp() {
           latestWorkoutSummary={lastWorkoutSummary}
           onGenerateWeeklyPlan={handleGenerateWeeklyPlan}
           selectedAvatar={selectedAvatar}
+          cameraTried={cameraTried}
           primaryButton={primaryButton}
           secondaryButton={secondaryButton}
         />
@@ -607,7 +685,7 @@ export default function GymTwinApp() {
           selectedCoach={selectedCoach}
           setSelectedCoach={setSelectedCoach}
           hasAcceptedSafety={hasAcceptedSafety}
-          setHasAcceptedSafety={setHasAcceptedSafety}
+          setHasAcceptedSafety={(v) => { setHasAcceptedSafety(v); if (v) markSafetyAccepted(); }}
           onBack={() => setCurrentScreen("landing")}
           onGeneratePreview={initializeTrainingSession}
           primaryButton={primaryButton}
@@ -655,6 +733,8 @@ export default function GymTwinApp() {
           onChangeDifficultyEasy={() => changeDifficulty("easy")}
           onChangeDifficultyHard={() => changeDifficulty("hard")}
           onCoachAnimHint={setFloatingHint}
+          isFirstWorkout={!firstHintsDismissed && userStats.workoutsCompleted === 0}
+          onFirstHintsDismissed={() => { setFirstHintsDismissed(true); markFirstHintsShown(); }}
           primaryButton={primaryButton}
         />
       )}

@@ -98,6 +98,7 @@ type LandingScreenProps = {
   hasResumeSession: boolean;
   onResumeWorkout: () => void;
   onStartWorkout: () => void;
+  onQuickStart?: () => void;
   onViewProgress: () => void;
   onOpenCameraSandbox: () => void;
   onOpenSettings: () => void;
@@ -108,6 +109,7 @@ type LandingScreenProps = {
   onGenerateWeeklyPlan: () => void;
   onStartTodaysWorkout: () => void;
   selectedAvatar: CoachAvatar;
+  cameraTried?: boolean;
   primaryButton: string;
   secondaryButton: string;
 };
@@ -193,6 +195,7 @@ export function LandingScreen({
   hasResumeSession,
   onResumeWorkout,
   onStartWorkout,
+  onQuickStart,
   onViewProgress,
   onOpenCameraSandbox,
   onOpenSettings,
@@ -203,6 +206,7 @@ export function LandingScreen({
   onGenerateWeeklyPlan,
   onStartTodaysWorkout,
   selectedAvatar,
+  cameraTried = false,
 }: LandingScreenProps) {
   const scrollToTop = () => {
     if (typeof window !== "undefined") {
@@ -367,23 +371,38 @@ export function LandingScreen({
               </button>
             ) : null}
 
-            <button
-              onClick={onStartWorkout}
-              className="flex w-full items-center justify-between rounded-[1.75rem] border border-blue-400/20 bg-gradient-to-r from-blue-600 to-fuchsia-600 px-5 py-5 text-left shadow-[0_18px_40px_rgba(99,102,241,0.3)] transition hover:brightness-105 active:scale-[0.99]"
-            >
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-lg">
-                  ▶
+            <div className="flex gap-3">
+              <button
+                onClick={onStartWorkout}
+                className="flex flex-1 items-center justify-between rounded-[1.75rem] border border-blue-400/20 bg-gradient-to-r from-blue-600 to-fuchsia-600 px-5 py-5 text-left shadow-[0_18px_40px_rgba(99,102,241,0.3)] transition hover:brightness-105 active:scale-[0.99]"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-lg">
+                    ▶
+                  </div>
+                  <div>
+                    <p className="text-base font-black text-white">
+                      {hasResumeSession ? "Start New Workout" : "Start Workout"}
+                    </p>
+                    <p className="text-xs text-blue-100/80">Launch a fresh guided session</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-base font-black text-white">
-                    {hasResumeSession ? "Start New Workout" : "Start Workout"}
-                  </p>
-                  <p className="text-xs text-blue-100/80">Launch a fresh guided GymTwin session</p>
-                </div>
-              </div>
-              <div className="text-xl text-white/80">→</div>
-            </button>
+                <div className="text-xl text-white/80">→</div>
+              </button>
+
+              {onQuickStart && !hasResumeSession && (
+                <button
+                  onClick={onQuickStart}
+                  title="Quick Start — jump in with your saved settings"
+                  className="flex h-full items-center justify-center rounded-[1.75rem] border border-emerald-400/24 bg-emerald-500/14 px-4 py-5 text-emerald-200 transition hover:bg-emerald-500/20 active:scale-[0.97]"
+                >
+                  <div className="flex flex-col items-center gap-1">
+                    <span className="text-lg">⚡</span>
+                    <span className="text-[10px] font-black uppercase tracking-[0.18em]">Quick</span>
+                  </div>
+                </button>
+              )}
+            </div>
           </section>
 
           {/* ── Today's Plan ── */}
@@ -466,6 +485,30 @@ export function LandingScreen({
               </div>
             )}
           </section>
+
+          {/* ── Camera Unlock Banner — shown after 1st workout, before camera tried ── */}
+          {userStats.workoutsCompleted >= 1 && !cameraTried && (
+            <section className="mb-5 overflow-hidden rounded-[1.75rem] border border-cyan-400/24 bg-[linear-gradient(135deg,rgba(6,182,212,0.12),rgba(99,102,241,0.10))] px-5 py-4 text-left shadow-[0_0_28px_rgba(6,182,212,0.12)]">
+              <div className="flex items-start gap-4">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-cyan-400/20 bg-cyan-500/14 text-xl">
+                  📷
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-black uppercase tracking-[0.28em] text-cyan-300">Camera Coach Unlocked</p>
+                  <p className="mt-1 text-sm font-black text-white">See your form in real time</p>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-400">
+                    AI tracks your squats, push-ups, and planks — live reps counted right from your camera.
+                  </p>
+                  <button
+                    onClick={onOpenCameraSandbox}
+                    className="mt-3 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 px-4 py-2 text-xs font-black text-white transition hover:brightness-110 active:scale-[0.97]"
+                  >
+                    Try Camera Coach →
+                  </button>
+                </div>
+              </div>
+            </section>
+          )}
 
           {/* ── Coach Insight ── */}
           <section className="mb-5 rounded-[1.75rem] border border-cyan-400/14 bg-[linear-gradient(135deg,rgba(8,47,73,0.52),rgba(2,6,23,0.92))] px-5 py-4 text-left shadow-[0_0_28px_rgba(34,211,238,0.08)]">

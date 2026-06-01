@@ -606,8 +606,8 @@ export function getCoachModelTransformPreset(modelPath: string): ModelTransform 
       rotation: [0, 0, 0],
       scale: 1.48,
       cameraPosition: [0, 0.92, 5.35],
-      fovCompact: 44,
-      fovDefault: 42,
+      fovCompact: 52,
+      fovDefault: 50,
     };
   }
 
@@ -799,12 +799,12 @@ export function Coach3D({
 
   const appliedCameraPosition: [number, number, number] = [
     modelTransform.cameraPosition[0],
-    modelTransform.cameraPosition[1] + (previewFrame === "full_body" ? 0.02 : previewFrame === "bust" ? 0.65 : -0.04),
-    modelTransform.cameraPosition[2] + (previewFrame === "full_body" ? 0.24 : previewFrame === "bust" ? -0.85 : 0.1),
+    modelTransform.cameraPosition[1] + (previewFrame === "full_body" ? 0.02 : previewFrame === "bust" ? 1.05 : -0.04),
+    modelTransform.cameraPosition[2] + (previewFrame === "full_body" ? 0.24 : previewFrame === "bust" ? -1.4 : 0.1),
   ];
   const appliedFov =
     (compact ? modelTransform.fovCompact : modelTransform.fovDefault) +
-    (previewFrame === "full_body" ? 1 : previewFrame === "bust" ? -8 : -1);
+    (previewFrame === "full_body" ? 1 : previewFrame === "bust" ? -4 : -1);
   const stageGradient = isNeutralLighting
     ? "from-slate-700/95 via-slate-800/92 to-[#0f172a]"
     : meta.gradient;
@@ -823,12 +823,6 @@ export function Coach3D({
       <div className={`relative overflow-hidden rounded-[1.35rem] border border-white/8 bg-gradient-to-br ${stageGradient}`}>
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.12),_transparent_28%),linear-gradient(180deg,transparent,rgba(15,23,42,0.22))]" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_22%,_rgba(226,232,240,0.18),_transparent_42%),linear-gradient(180deg,rgba(30,41,59,0.08),rgba(51,65,85,0.18)_58%,rgba(15,23,42,0.34)_100%)]" />
-        <div className="absolute left-4 top-4 z-10 rounded-full border border-white/10 bg-slate-950/72 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-slate-200 backdrop-blur-md">
-          {resolvedModelPath}
-        </div>
-        <div className="absolute right-4 top-4 z-10 rounded-full border border-white/10 bg-slate-950/72 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-slate-200 backdrop-blur-md">
-          {resolvedAnimationClip?.label ?? animationHint}
-        </div>
         <div
           className={`relative ${compact ? (previewFrame === "bust" ? "h-[240px]" : "h-[300px]") : previewFrame === "full_body" ? "h-[560px]" : previewFrame === "bust" ? "h-[320px]" : "h-[420px]"}`}
           style={{ touchAction: "none", overscrollBehavior: "contain" }}
@@ -862,22 +856,22 @@ export function Coach3D({
               <Suspense fallback={<LoadingSceneLabel />}>
                 <OrbitControls
                   enablePan={false}
-                  enableZoom={true}
-                  enableRotate={true}
-                  enableDamping={true}
+                  enableZoom={!compact}
+                  enableRotate={!compact}
+                  enableDamping={!compact}
                   dampingFactor={0.08}
                   minDistance={2}
                   maxDistance={12}
                   target={
                     previewFrame === "bust"
-                      ? [0, 1.1, 0]
+                      ? [0, 1.55, 0]
                       : resolvedModelPath?.includes("atlas-coach-mobile")
-                        ? [0, 0.64, 0]
+                        ? [0, 0.88, 0]
                         : [0, 0.42, 0]
                   }
                   touches={{
-                    ONE: 0,  // TOUCH.ROTATE — one finger rotates
-                    TWO: 2,  // TOUCH.DOLLY_PAN — two fingers pinch-zoom
+                    ONE: 0,  // TOUCH.ROTATE
+                    TWO: 2,  // TOUCH.DOLLY_PAN
                   }}
                 />
                 <CoachModel

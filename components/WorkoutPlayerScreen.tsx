@@ -51,6 +51,8 @@ type WorkoutPlayerScreenProps = {
   onChangeDifficultyEasy: () => void;
   onChangeDifficultyHard: () => void;
   onCoachAnimHint?: (hint: CoachAnimationHint) => void;
+  isFirstWorkout?: boolean;
+  onFirstHintsDismissed?: () => void;
   primaryButton: string;
 };
 
@@ -80,8 +82,16 @@ export function WorkoutPlayerScreen({
   onChangeDifficultyEasy,
   onChangeDifficultyHard,
   onCoachAnimHint,
+  isFirstWorkout = false,
+  onFirstHintsDismissed,
   primaryButton,
 }: WorkoutPlayerScreenProps) {
+  const [hintsVisible, setHintsVisible] = useState(isFirstWorkout);
+
+  function dismissHints() {
+    setHintsVisible(false);
+    onFirstHintsDismissed?.();
+  }
   const [isCameraCoachOpen, setIsCameraCoachOpen] = useState(false);
   const prevCoachAnimHint = useRef<CoachAnimationHint | null>(null);
   const [formRecap, setFormRecap] = useState<{
@@ -591,7 +601,7 @@ export function WorkoutPlayerScreen({
       trackingWarning,
     ]
   );
-  const showAvatarVisual = avatarDisplaySettings.mode !== "hidden";
+  const showAvatarVisual = avatarDisplaySettings.show3DCoach && avatarDisplaySettings.mode !== "hidden";
   const showSidebarAvatar = showAvatarVisual && avatarDisplaySettings.mode === "coach_card";
   const showFloatingWorkoutOverlay =
     showAvatarVisual && avatarDisplaySettings.mode === "floating_overlay";
@@ -780,6 +790,34 @@ export function WorkoutPlayerScreen({
 
   return (
     <main className="min-h-screen bg-slate-950 text-white font-sans selection:bg-purple-500/30">
+      {/* First-workout hints banner */}
+      {hintsVisible && (
+        <div className="relative z-20 border-b border-purple-500/20 bg-gradient-to-r from-purple-950/70 to-blue-950/70 px-4 py-3 backdrop-blur-sm">
+          <div className="mx-auto flex max-w-7xl items-start justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <span className="text-[11px] font-black uppercase tracking-[0.28em] text-purple-300">Quick tips</span>
+              {[
+                { icon: "✅", text: "Tap Complete Set when done" },
+                { icon: "⏭️", text: "Skip rest when you're ready" },
+                { icon: "🎤", text: 'Say "done" or "skip rest"' },
+                { icon: "🛑", text: "Tap Stop if anything hurts" },
+              ].map((h) => (
+                <span key={h.text} className="text-xs text-slate-300">
+                  <span className="mr-1">{h.icon}</span>{h.text}
+                </span>
+              ))}
+            </div>
+            <button
+              onClick={dismissHints}
+              className="shrink-0 text-slate-500 hover:text-slate-300 text-lg leading-none"
+              aria-label="Dismiss hints"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
       <header className="sticky top-0 z-10 border-b border-white/5 bg-slate-950/90 px-4 py-3 backdrop-blur-xl">
         <div className="mx-auto max-w-7xl">
           <div className="flex items-center justify-between gap-3">

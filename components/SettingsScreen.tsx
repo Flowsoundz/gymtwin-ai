@@ -64,26 +64,31 @@ export function SettingsScreen({
     mode: AvatarDisplayMode;
     title: string;
     description: string;
+    icon: string;
   }> = [
     {
       mode: "coach_card",
       title: "Coach Card",
-      description: "Keep the avatar in the normal coach panel.",
+      description: "Coach shows in the sidebar panel during workouts.",
+      icon: "🪟",
     },
     {
       mode: "floating_overlay",
       title: "Floating Overlay",
-      description: "Float the coach above the workout layout.",
+      description: "Draggable card that floats over any screen.",
+      icon: "🫧",
     },
     {
       mode: "camera_corner",
       title: "Camera Corner",
-      description: "Keep the coach small near the camera area.",
+      description: "Small overlay near the camera view during tracking.",
+      icon: "📷",
     },
     {
       mode: "hidden",
       title: "Hidden",
-      description: "Hide avatar visuals and keep coaching text only.",
+      description: "No 3D avatar — text coaching only.",
+      icon: "🚫",
     },
   ];
 
@@ -190,18 +195,31 @@ export function SettingsScreen({
                         key={option.mode}
                         type="button"
                         onClick={() => updateAvatarDisplaySettings({ mode: option.mode })}
-                        className={`rounded-[1.35rem] border px-4 py-4 text-left transition ${
+                        className={`rounded-[1.35rem] border px-4 py-4 text-left transition active:scale-95 ${
                           isActive
                             ? "border-blue-400/28 bg-gradient-to-br from-blue-500/14 via-slate-950/72 to-fuchsia-500/14 text-white shadow-[0_0_24px_rgba(99,102,241,0.18)]"
                             : "border-white/8 bg-slate-900/72 text-slate-300 hover:border-white/15 hover:text-white"
                         }`}
                       >
-                        <p className="text-sm font-black">{option.title}</p>
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-black">{option.title}</p>
+                          <span className="text-base">{option.icon}</span>
+                        </div>
                         <p className="mt-2 text-xs leading-relaxed text-slate-400">{option.description}</p>
+                        {isActive && (
+                          <p className="mt-2 text-[10px] font-black uppercase tracking-[0.2em] text-blue-400">Active ✓</p>
+                        )}
                       </button>
                     );
                   })}
                 </div>
+                <p className="text-xs text-slate-500">
+                  {avatarDisplaySettings.mode === "floating_overlay"
+                    ? "Floating overlay is active — drag the coach card anywhere on screen."
+                    : avatarDisplaySettings.mode === "hidden"
+                    ? "Avatar hidden — you'll still get voice coaching and text feedback."
+                    : "This mode takes effect during workouts."}
+                </p>
 
                 <div className="space-y-3">
                   {[

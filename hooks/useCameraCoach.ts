@@ -847,12 +847,12 @@ export function useCameraCoach() {
     const measurement = getBestKneeMeasurement(landmarks);
 
     if (!measurement || measurement.angle === null || !measurement.point) {
-      setFeedbackIfChanged("Step back so your full body is visible.", "error");
+      setFeedbackIfChanged("Step back so your full body is visible.", "warning");
       return {
         angleLabel: "--",
         anglePoint: null,
         feedbackMessage: "Step back so your full body is visible.",
-        feedbackSeverity: "error" as const,
+        feedbackSeverity: "warning" as const,
       };
     }
 
@@ -943,12 +943,12 @@ export function useCameraCoach() {
     const measurement = getBestElbowMeasurement(landmarks);
 
     if (!measurement || measurement.angle === null || !measurement.point) {
-      setFeedbackIfChanged("Step back so your upper body is visible.", "error");
+      setFeedbackIfChanged("Step back so your upper body is visible.", "warning");
       return {
         angleLabel: "--",
         anglePoint: null,
         feedbackMessage: "Step back so your upper body is visible.",
-        feedbackSeverity: "error" as const,
+        feedbackSeverity: "warning" as const,
       };
     }
 
@@ -1037,12 +1037,12 @@ export function useCameraCoach() {
       plankPostureRef.current = "unknown";
       setPlankQualityLabel("lost_tracking");
       setPlankQualityMessage("Tracking is weak. Keep your full body visible.");
-      setFeedbackIfChanged("Step back so your full body is visible.", "error");
+      setFeedbackIfChanged("Step back so your full body is visible.", "warning");
       return {
         angleLabel: "--",
         anglePoint: null,
         feedbackMessage: "Step back so your full body is visible.",
-        feedbackSeverity: "error" as const,
+        feedbackSeverity: "warning" as const,
         linePoints: null,
       };
     }
@@ -1056,12 +1056,12 @@ export function useCameraCoach() {
       plankPostureRef.current = "unknown";
       setPlankQualityLabel("lost_tracking");
       setPlankQualityMessage("Tracking is weak. Keep your full body visible.");
-      setFeedbackIfChanged("Step back so your full body is visible.", "error");
+      setFeedbackIfChanged("Step back so your full body is visible.", "warning");
       return {
         angleLabel: "--",
         anglePoint: null,
         feedbackMessage: "Step back so your full body is visible.",
-        feedbackSeverity: "error" as const,
+        feedbackSeverity: "warning" as const,
         linePoints: null,
       };
     }
