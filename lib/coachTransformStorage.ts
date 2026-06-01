@@ -21,8 +21,21 @@ export function saveTransformPreset(modelPath: string, transform: PreviewTransfo
   window.localStorage.setItem(COACH_TRANSFORM_PRESETS_KEY, JSON.stringify(all));
 }
 
+function isValidPreset(p: PreviewTransform): boolean {
+  if (p.scale !== undefined && (p.scale <= 0 || !isFinite(p.scale))) return false;
+  if (p.position?.some((v) => !isFinite(v))) return false;
+  if (p.cameraPosition) {
+    const [x, y, z] = p.cameraPosition;
+    if (!isFinite(x) || !isFinite(y) || !isFinite(z)) return false;
+    if (x === 0 && y === 0 && z === 0) return false;
+  }
+  return true;
+}
+
 export function loadTransformPreset(modelPath: string): PreviewTransform | null {
-  return readAllPresets()[modelPath] ?? null;
+  const preset = readAllPresets()[modelPath] ?? null;
+  if (!preset || !isValidPreset(preset)) return null;
+  return preset;
 }
 
 export function clearTransformPreset(modelPath: string): void {

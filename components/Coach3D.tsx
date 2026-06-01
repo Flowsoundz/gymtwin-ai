@@ -894,3 +894,8 @@ export function Coach3D({
     </div>
   );
 }
+
+// Eagerly warm drei's GLTF cache so the model is ready before any Coach3D mounts
+useGLTF.preload("/models/atlas-coach-mobile.glb");
+useGLTF.preload("/models/atlas-coach.glb");
+useGLTF.preload("/models/nova-coach.glb");
