@@ -603,12 +603,12 @@ function getMoodSceneMeta(mood: Coach3DMood): MoodSceneMeta {
 export function getCoachModelTransformPreset(modelPath: string): ModelTransform {
   if (modelPath.includes("atlas-coach-mobile.glb")) {
     return {
-      position: [-0.14, -1.17, 0.09],
+      position: [0, -1.05, 0],
       rotation: [0, 0, 0],
-      scale: 1.48,
-      cameraPosition: [0, 0.92, 5.35],
-      fovCompact: 52,
-      fovDefault: 50,
+      scale: 1.0,
+      cameraPosition: [0, 1.1, 4.8],
+      fovCompact: 48,
+      fovDefault: 44,
     };
   }
 

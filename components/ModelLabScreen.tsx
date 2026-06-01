@@ -511,17 +511,64 @@ export function ModelLabScreen({
                 </div>
               </div>
 
-              <div className="rounded-[1.7rem] border border-white/8 bg-slate-950/58 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+            </section>
+
+            <section className="space-y-4 xl:sticky xl:top-8 xl:self-start">
+              {/* Live Preview */}
+              <div className="overflow-hidden rounded-[1.7rem] border border-white/8 bg-slate-950/58 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+                <div className="flex items-center justify-between gap-3 px-5 pt-5 pb-4">
+                  <div>
+                    <p className="text-[11px] font-black uppercase tracking-[0.26em] text-blue-300">Live Preview</p>
+                    <h3 className="mt-1 text-xl font-black text-white">{selectedModel.label}</h3>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] ${
+                      modelStatuses[selectedModel.path] === "found"
+                        ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-200"
+                        : modelStatuses[selectedModel.path] === "missing"
+                          ? "border-amber-400/25 bg-amber-500/10 text-amber-200"
+                          : "border-white/10 bg-white/5 text-slate-300"
+                    }`}>
+                      {modelStatuses[selectedModel.path] === "found" ? "Model Found" : modelStatuses[selectedModel.path] === "missing" ? "Missing" : "Checking"}
+                    </span>
+                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-slate-300">
+                      {selectedMood}
+                    </span>
+                  </div>
+                </div>
+                <Coach3D
+                  selectedAvatar={selectedModel.avatar}
+                  mood={selectedMood}
+                  modelPathOverride={selectedModel.path}
+                  animationHint={previewAnimationHint}
+                  animationClipId={selectedLibraryClipId}
+                  previewTransform={previewTransform}
+                  previewFrame={previewFrame}
+                  lightingMode="neutral"
+                  onClipsDetected={setDetectedClips}
+                />
+                <div className="flex flex-wrap items-center gap-3 px-5 py-4">
+                  <span className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">Hint</span>
+                  <span className="rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-blue-200">
+                    {previewAnimationHint}
+                  </span>
+                  <span className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">Frame</span>
+                  <span className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200">
+                    {previewFrame === "full_body" ? "Full Body" : "In Frame"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Transform Tuner — placed directly below preview so both are visible together */}
+              <div className="rounded-[1.7rem] border border-amber-400/15 bg-slate-950/58 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-[11px] font-black uppercase tracking-[0.26em] text-amber-300">Transform Tuner</p>
-                    <p className="mt-2 text-xs leading-relaxed text-slate-400">
-                      Adjust position, scale, and camera — then Save Preset to apply across all screens.
+                    <p className="mt-1 text-xs leading-relaxed text-slate-400">
+                      Adjust position, scale &amp; camera — then Save Preset to apply across all screens.
                     </p>
                     {hasSavedPreset && savePresetState === "idle" && (
-                      <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-400">
-                        ✓ Saved preset active
-                      </p>
+                      <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-400">✓ Saved preset active</p>
                     )}
                   </div>
                   <div className="flex shrink-0 flex-col gap-2">
@@ -570,19 +617,12 @@ export function ModelLabScreen({
                   </div>
                 </div>
 
-                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
                   {controlGroups.map((control) => (
-                    <label
-                      key={control.key}
-                      className="rounded-[1.2rem] border border-white/8 bg-slate-900/70 px-3 py-3"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-200">
-                          {control.label}
-                        </span>
-                        <span className="font-mono text-xs text-blue-200">
-                          {formatTransformNumber(control.value)}
-                        </span>
+                    <label key={control.key} className="rounded-[1.2rem] border border-white/8 bg-slate-900/70 px-3 py-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-200">{control.label}</span>
+                        <span className="font-mono text-xs text-blue-200">{formatTransformNumber(control.value)}</span>
                       </div>
                       <input
                         type="range"
@@ -591,25 +631,13 @@ export function ModelLabScreen({
                         step={control.step}
                         value={control.value}
                         onChange={(event) => control.onChange(Number(event.target.value))}
-                        className="mt-3 h-2 w-full cursor-pointer appearance-none rounded-full bg-white/10 accent-blue-400"
+                        className="mt-2 h-2 w-full cursor-pointer appearance-none rounded-full bg-white/10 accent-blue-400"
                       />
                     </label>
                   ))}
                 </div>
 
-                <div className="mt-4 flex flex-wrap items-center gap-2 rounded-[1.2rem] border border-blue-400/14 bg-blue-500/8 px-3 py-3">
-                  <span className="text-[10px] font-black uppercase tracking-[0.22em] text-blue-200">
-                    Live Scale
-                  </span>
-                  <span className="rounded-full border border-blue-300/20 bg-slate-950/70 px-3 py-1 font-mono text-xs text-white">
-                    x{formatTransformNumber(previewTransform.scale)}
-                  </span>
-                  <span className="text-xs leading-relaxed text-slate-300">
-                    Scale updates the viewport immediately, so use this first when dialing in how large the avatar reads.
-                  </span>
-                </div>
-
-                <div className="mt-4 rounded-[1.25rem] border border-white/8 bg-slate-950/85 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+                <div className="mt-3 rounded-[1.25rem] border border-white/8 bg-slate-950/85 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">Current Values</p>
                     <button
@@ -629,54 +657,6 @@ export function ModelLabScreen({
                   <pre className="mt-3 overflow-x-auto font-mono text-xs leading-6 text-blue-100">
                     <code>{currentValuesBlock}</code>
                   </pre>
-                </div>
-
-              </div>
-            </section>
-
-            <section className="space-y-4 xl:sticky xl:top-8 xl:self-start">
-              {/* Live Preview */}
-              <div className="overflow-hidden rounded-[1.7rem] border border-white/8 bg-slate-950/58 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                <div className="flex items-center justify-between gap-3 px-5 pt-5 pb-4">
-                  <div>
-                    <p className="text-[11px] font-black uppercase tracking-[0.26em] text-blue-300">Live Preview</p>
-                    <h3 className="mt-1 text-xl font-black text-white">{selectedModel.label}</h3>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] ${
-                      modelStatuses[selectedModel.path] === "found"
-                        ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-200"
-                        : modelStatuses[selectedModel.path] === "missing"
-                          ? "border-amber-400/25 bg-amber-500/10 text-amber-200"
-                          : "border-white/10 bg-white/5 text-slate-300"
-                    }`}>
-                      {modelStatuses[selectedModel.path] === "found" ? "Model Found" : modelStatuses[selectedModel.path] === "missing" ? "Missing" : "Checking"}
-                    </span>
-                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-slate-300">
-                      {selectedMood}
-                    </span>
-                  </div>
-                </div>
-                <Coach3D
-                  selectedAvatar={selectedModel.avatar}
-                  mood={selectedMood}
-                  modelPathOverride={selectedModel.path}
-                  animationHint={previewAnimationHint}
-                  animationClipId={selectedLibraryClipId}
-                  previewTransform={previewTransform}
-                  previewFrame={previewFrame}
-                  lightingMode="neutral"
-                  onClipsDetected={setDetectedClips}
-                />
-                <div className="flex flex-wrap items-center gap-3 px-5 py-4">
-                  <span className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">Hint</span>
-                  <span className="rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-blue-200">
-                    {previewAnimationHint}
-                  </span>
-                  <span className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">Frame</span>
-                  <span className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200">
-                    {previewFrame === "full_body" ? "Full Body" : "In Frame"}
-                  </span>
                 </div>
               </div>
 
