@@ -2,9 +2,96 @@ import { Coach3D } from "@/components/Coach3D";
 import { getAvatarLabel, getAvatarRole } from "@/lib/avatarAssets";
 import { getCoachAdaptationRecommendation } from "@/lib/coachAdaptationEngine";
 import { deriveProgressTrends } from "@/lib/progressTrends";
+import { todayString, yesterdayString } from "@/lib/time";
 import { getTodayWeeklyPlanLabel } from "@/lib/weeklyPlanEngine";
 import { useMemo } from "react";
 import type { BodyProfile, CoachAvatar, TraineeStats, WeeklyPlan, WorkoutSummaryData } from "@/types";
+
+function buildGreeting(
+  userStats: TraineeStats,
+  latestWorkoutSummary: WorkoutSummaryData | null | undefined,
+  isFirstSession: boolean
+) {
+  const hour = new Date().getHours();
+  const timeOfDay =
+    hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+
+  if (isFirstSession) {
+    return {
+      timeLabel: "Welcome",
+      headline: "AI-guided coaching, built for you.",
+      sub: "Adaptive plans, voice coaching, and camera-based rep counting — all private, on-device.",
+      badge: null,
+      badgeColor: "",
+    };
+  }
+
+  const today = todayString();
+  const yesterday = yesterdayString();
+  const last = userStats.lastWorkoutDate;
+  const daysSince = last
+    ? Math.round((Date.now() - new Date(last + "T12:00:00").getTime()) / 86400000)
+    : null;
+  const trainedToday = last === today;
+  const trainedYesterday = last === yesterday;
+
+  if (trainedToday) {
+    return {
+      timeLabel: timeOfDay,
+      headline:
+        userStats.streak > 1
+          ? `Day ${userStats.streak} streak — great session today.`
+          : "Great session today.",
+      sub: latestWorkoutSummary
+        ? `${latestWorkoutSummary.goal} · ${latestWorkoutSummary.actualSessionMinutes} min · ${latestWorkoutSummary.estimatedReps} reps`
+        : "Rest up and come back stronger tomorrow.",
+      badge: "Done today",
+      badgeColor: "border-emerald-400/24 bg-emerald-500/12 text-emerald-200",
+    };
+  }
+
+  if (trainedYesterday && userStats.streak > 0) {
+    return {
+      timeLabel: timeOfDay,
+      headline: `Day ${userStats.streak} streak — don't break it.`,
+      sub: latestWorkoutSummary
+        ? `Last: ${latestWorkoutSummary.goal} · ${latestWorkoutSummary.actualSessionMinutes} min · ${latestWorkoutSummary.estimatedReps} reps`
+        : `${userStats.workoutsCompleted} workouts · ${userStats.totalMinutes} min total`,
+      badge: `${userStats.streak} day streak`,
+      badgeColor: "border-fuchsia-400/24 bg-fuchsia-500/12 text-fuchsia-200",
+    };
+  }
+
+  if (daysSince !== null && daysSince >= 5) {
+    return {
+      timeLabel: timeOfDay,
+      headline: "Welcome back — let's rebuild.",
+      sub: `Last trained ${daysSince} days ago. Every comeback starts with one rep.`,
+      badge: null,
+      badgeColor: "",
+    };
+  }
+
+  if (daysSince !== null && daysSince >= 2) {
+    return {
+      timeLabel: timeOfDay,
+      headline: "Time to train.",
+      sub: latestWorkoutSummary
+        ? `Last: ${latestWorkoutSummary.goal} · ${daysSince} days ago`
+        : `${userStats.workoutsCompleted} sessions complete · keep going.`,
+      badge: daysSince >= 3 ? `${daysSince} days off` : null,
+      badgeColor: "border-amber-400/24 bg-amber-500/12 text-amber-200",
+    };
+  }
+
+  return {
+    timeLabel: timeOfDay,
+    headline: `${userStats.workoutsCompleted} session${userStats.workoutsCompleted !== 1 ? "s" : ""} in. Keep building.`,
+    sub: `${userStats.totalMinutes} min trained${userStats.streak > 0 ? ` · ${userStats.streak} day streak` : ""}`,
+    badge: null,
+    badgeColor: "",
+  };
+}
 
 type LandingScreenProps = {
   userStats: TraineeStats;
@@ -161,6 +248,11 @@ export function LandingScreen({
     userStats.streak === 0 &&
     userStats.totalMinutes === 0;
 
+  const greeting = useMemo(
+    () => buildGreeting(userStats, latestWorkoutSummary, isFirstSession),
+    [userStats, latestWorkoutSummary, isFirstSession]
+  );
+
   return (
     <main className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.22),_transparent_24%),radial-gradient(circle_at_bottom,_rgba(59,130,246,0.14),_transparent_24%),linear-gradient(180deg,_#020617_0%,_#020617_48%,_#030712_100%)] px-4 pb-10 pt-8 text-white antialiased sm:px-6 sm:pt-10 lg:px-8 lg:py-12">
       <div className="mx-auto w-full max-w-md lg:max-w-5xl xl:max-w-6xl">
@@ -186,25 +278,53 @@ export function LandingScreen({
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(99,102,241,0.24),_transparent_32%),radial-gradient(circle_at_bottom_left,_rgba(168,85,247,0.18),_transparent_34%)]" />
               <div className="relative flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between xl:grid xl:grid-cols-[minmax(0,1.2fr)_320px] xl:gap-8">
                 <div className="max-w-full sm:max-w-[56%] lg:max-w-[58%] xl:max-w-none xl:pr-6">
-                  <p className="text-[11px] font-black uppercase tracking-[0.26em] text-slate-500">Today&apos;s Dashboard</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-[11px] font-black uppercase tracking-[0.26em] text-slate-500">
+                      {greeting.timeLabel}
+                    </p>
+                    {greeting.badge && (
+                      <span className={`rounded-full border px-2.5 py-0.5 text-[10px] font-black uppercase tracking-[0.18em] ${greeting.badgeColor}`}>
+                        {greeting.badge}
+                      </span>
+                    )}
+                  </div>
                   <h2 className="mt-3 text-3xl font-black leading-tight tracking-tight text-white lg:text-[2.8rem]">
-                    AI-guided home workouts built for real-life spaces.
+                    {greeting.headline}
                   </h2>
                   <p className="mt-3 text-sm leading-relaxed text-slate-400 lg:max-w-xl lg:text-[15px]">
-                    Guided training plans, adaptive coaching, and private on-device feedback that help you stay consistent at home.
+                    {greeting.sub}
                   </p>
-                  <div className="mt-4 grid gap-2 sm:max-w-xl sm:grid-cols-2">
-                    {[
-                      "Camera coach for squats, push-ups, and planks",
-                      "Voice commands for hands-free control",
-                      "Scores, XP, and badges to track progress",
-                      "Resume-friendly sessions built for daily training",
-                    ].map((item) => (
-                      <div key={item} className="rounded-2xl border border-white/8 bg-slate-950/45 px-3 py-2 text-xs font-medium leading-relaxed text-slate-300">
-                        {item}
+
+                  {/* First-session feature bullets — replaced by last-workout card for returning users */}
+                  {isFirstSession ? (
+                    <div className="mt-4 grid gap-2 sm:max-w-xl sm:grid-cols-2">
+                      {[
+                        "Camera coach for squats, push-ups, and planks",
+                        "Voice commands for hands-free control",
+                        "Scores, XP, and badges to track progress",
+                        "Resume-friendly sessions built for daily training",
+                      ].map((item) => (
+                        <div key={item} className="rounded-2xl border border-white/8 bg-slate-950/45 px-3 py-2 text-xs font-medium leading-relaxed text-slate-300">
+                          {item}
+                        </div>
+                      ))}
+                    </div>
+                  ) : latestWorkoutSummary ? (
+                    <div className="mt-4 grid grid-cols-3 gap-2 sm:max-w-sm">
+                      <div className="rounded-2xl border border-white/8 bg-slate-950/45 px-3 py-2.5 text-center">
+                        <p className="text-lg font-black text-blue-300">{userStats.workoutsCompleted}</p>
+                        <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Sessions</p>
                       </div>
-                    ))}
-                  </div>
+                      <div className="rounded-2xl border border-white/8 bg-slate-950/45 px-3 py-2.5 text-center">
+                        <p className="text-lg font-black text-fuchsia-300">{userStats.streak}</p>
+                        <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Streak</p>
+                      </div>
+                      <div className="rounded-2xl border border-white/8 bg-slate-950/45 px-3 py-2.5 text-center">
+                        <p className="text-lg font-black text-indigo-300">{userStats.totalMinutes}</p>
+                        <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Minutes</p>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 {/* Coach card */}
