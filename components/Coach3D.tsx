@@ -244,7 +244,8 @@ function CoachModel({
   const fitProfile = useMemo(() => {
     const safeHeight = sceneMetrics.height > 0 ? sceneMetrics.height : 1;
     const targetHeight = previewFrame === "in_frame" ? 2.45 : 2.2;
-    const fitScale = Math.min(1.18, Math.max(0.88, targetHeight / safeHeight));
+    // No clamp — let fitScale handle any unit scale (meters, centimeters, etc.)
+    const fitScale = targetHeight / safeHeight;
     // Offset must be multiplied by the same total scale applied to the primitive,
     // otherwise the model drifts on Y when fitScale changes between frames.
     const totalScale = fitScale * transform.scale;
@@ -604,9 +605,9 @@ export function getCoachModelTransformPreset(modelPath: string): ModelTransform 
       position: [0, -0.7, 0],
       rotation: [0, 0, 0],
       scale: 1.0,
-      cameraPosition: [0, 1.0, 7.2],
-      fovCompact: 42,
-      fovDefault: 40,
+      cameraPosition: [0, 0.85, 4.5],
+      fovCompact: 44,
+      fovDefault: 42,
     };
   }
 
@@ -871,7 +872,7 @@ export function Coach3D({
                     previewFrame === "bust"
                       ? [0, 1.1, 0]
                       : resolvedModelPath?.includes("atlas-coach-mobile")
-                        ? [0, 0.72, 0]
+                        ? [0, 0.52, 0]
                         : [0, 0.42, 0]
                   }
                   touches={{
