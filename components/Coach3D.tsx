@@ -239,8 +239,15 @@ function CoachModel({
     const box = new Box3().setFromObject(clonedScene);
     const size = box.getSize(new Vector3());
     const center = box.getCenter(new Vector3());
-    return { height: size.y, cx: center.x, cy: box.min.y, cz: center.z };
-  }, [clonedScene]);
+    const height = isFinite(size.y) && size.y > 0 ? size.y : 0;
+    const cx = isFinite(center.x) ? center.x : 0;
+    const cy = isFinite(box.min.y) ? box.min.y : 0;
+    const cz = isFinite(center.z) ? center.z : 0;
+    if (process.env.NODE_ENV === "development") {
+      console.log("[CoachModel] bounding box for", modelPath, { height, cx, cy, cz, raw: { min: box.min, max: box.max } });
+    }
+    return { height, cx, cy, cz };
+  }, [clonedScene, modelPath]);
 
   const fitProfile = useMemo(() => {
     const safeHeight = sceneMetrics.height > 0 ? sceneMetrics.height : 1;
@@ -265,13 +272,17 @@ function CoachModel({
     earBoneRef.current = null;
     rEarBoneRef.current = null;
     clonedScene.traverse((obj: Object3D) => {
+      // Force every node visible — some GLBs export with visibility=false on groups or meshes.
+      obj.visible = true;
+      // Use .isMesh flag (not instanceof) to catch both Mesh and SkinnedMesh regardless of
+      // module boundary. Disable frustum culling: the bind-pose bounding sphere is computed
+      // once and is wrong for any mesh that animates away from its rest pose.
+      if ((obj as { isMesh?: boolean }).isMesh) {
+        obj.frustumCulled = false;
+      }
       if (obj.name === "head") headBoneRef.current = obj;
       else if (obj.name === "earend") earBoneRef.current = obj;
       else if (obj.name === "R_earend") rEarBoneRef.current = obj;
-      // SkinnedMesh frustum culling is based on the bind-pose bounding sphere, which is
-      // wrong for animated meshes exported in non-standard poses. Disable it so the GPU
-      // always draws the mesh regardless of the camera angle.
-      if (obj instanceof SkinnedMesh) obj.frustumCulled = false;
     });
   }, [clonedScene]);
 
