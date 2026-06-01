@@ -5,8 +5,8 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Html, OrbitControls, useGLTF } from "@react-three/drei";
 import { clone as skeletonClone } from "three/examples/jsm/utils/SkeletonUtils.js";
-import { AnimationMixer, Box3, LoopOnce, LoopRepeat, SkinnedMesh, Vector3 } from "three";
-import type { AnimationClip, Group, Object3D } from "three";
+import { AnimationClip, AnimationMixer, Box3, LoopOnce, LoopRepeat, Vector3 } from "three";
+import type { Group, Object3D } from "three";
 import { getAvatarLabel, getAvatarModelPaths } from "@/lib/avatarAssets";
 import { loadTransformPreset } from "@/lib/coachTransformStorage";
 import {
@@ -30,6 +30,7 @@ type Coach3DProps = {
   selectedAvatar: CoachAvatar;
   mood?: Coach3DMood;
   compact?: boolean;
+  animate?: boolean;
   modelPathOverride?: string;
   animationHint?: CoachAnimationHint;
   animationClipId?: string | null;
@@ -158,8 +159,26 @@ function getAnimationPackPath(modelPath: string): string {
   // atlas-animations.glb / nova-animations.glb. Route it to the Mixamo pack which will
   // fail gracefully (AnimPackErrorBoundary) until that file is exported.
   if (modelPath.includes("atlas-coach-mobile")) return "/models/animations/mixamo-animations.glb";
-  if (modelPath.includes("atlas")) return "/models/animations/atlas-animations.glb";
   return "/models/animations/nova-animations.glb";
+}
+
+function sanitizeAnimationClips(
+  modelPath: string,
+  clips: AnimationClip[]
+): AnimationClip[] {
+  if (!modelPath.includes("atlas-coach-mobile")) {
+    return clips;
+  }
+
+  return clips.map((clip) => {
+    const filteredTracks = clip.tracks.filter(
+      (track) => track.name !== "mixamorigHips.position"
+    );
+    if (filteredTracks.length === clip.tracks.length) {
+      return clip;
+    }
+    return new AnimationClip(clip.name, clip.duration, filteredTracks);
+  });
 }
 
 function CoachModel({
@@ -168,6 +187,7 @@ function CoachModel({
   animationHint,
   demoClipName,
   previewFrame,
+  animate,
   isSpeaking,
   onClipsDetected,
 }: {
@@ -176,6 +196,7 @@ function CoachModel({
   animationHint: CoachAnimationHint;
   demoClipName?: string | null;
   previewFrame: Coach3DPreviewFrame;
+  animate: boolean;
   isSpeaking?: boolean;
   onClipsDetected?: (clips: string[]) => void;
 }) {
@@ -192,10 +213,23 @@ function CoachModel({
   const clonedScene = useMemo(() => skeletonClone(scene), [scene]);
   const [externalClips, setExternalClips] = useState<AnimationClip[]>([]);
   const [fitnessClips, setFitnessClips] = useState<AnimationClip[]>([]);
-  const animations = useMemo(() => {
+  const baseAnimations = useMemo(() => {
     const base = embeddedClips.length ? embeddedClips : externalClips;
-    return [...base, ...fitnessClips];
-  }, [embeddedClips, externalClips, fitnessClips]);
+    return sanitizeAnimationClips(modelPath, base);
+  }, [embeddedClips, externalClips, modelPath]);
+  const demoAnimations = useMemo(
+    () => sanitizeAnimationClips(modelPath, fitnessClips),
+    [fitnessClips, modelPath]
+  );
+  const animations = useMemo(() => {
+    if (!animate) {
+      return [];
+    }
+    if (demoClipName) {
+      return demoAnimations.length ? demoAnimations : baseAnimations;
+    }
+    return demoAnimations.length ? [...baseAnimations, ...demoAnimations] : baseAnimations;
+  }, [animate, baseAnimations, demoAnimations, demoClipName]);
   // Own the mixer directly — bound to clonedScene so Three.js finds bones immediately.
   const mixerRef = React.useRef<AnimationMixer | null>(null);
   const activeActionRef = React.useRef<string | null>(null);
@@ -237,29 +271,15 @@ function CoachModel({
     }, 25000);
     return () => clearInterval(t);
   }, [animationHint, demoClipName]);
-  // Capture T-pose bounding box once — never re-run when previewFrame changes,
-  // which prevents the Y-axis drift caused by setFromObject on an animated scene.
-  // Use world-space bounds (geometry × matrixWorld) so models with a scaled root
-  // armature (e.g. 0.01 cm→m conversion) are measured at actual rendered size.
+  // Capture T-pose bounds once — never re-run when previewFrame changes.
+  // setFromObject correctly respects the cloned hierarchy's effective world scale,
+  // including skinned humanoids exported with a scaled armature root.
   const sceneMetrics = useMemo(() => {
     clonedScene.updateWorldMatrix(true, true);
-    const box = new Box3();
-    let hasMesh = false;
-    clonedScene.traverse((obj: Object3D) => {
-      if ((obj as { isMesh?: boolean }).isMesh) {
-        const mesh = obj as SkinnedMesh;
-        if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
-        if (mesh.geometry.boundingBox) {
-          const geomBox = mesh.geometry.boundingBox.clone().applyMatrix4(mesh.matrixWorld);
-          box.union(geomBox);
-          hasMesh = true;
-        }
-      }
-    });
-    if (!hasMesh || box.isEmpty()) box.setFromObject(clonedScene);
+    const box = new Box3().setFromObject(clonedScene);
     const size = box.getSize(new Vector3());
     const center = box.getCenter(new Vector3());
-    // Use max dimension so armature rotations that move height to Z still fit correctly
+    // Use max dimension so rigs rotated into a different up-axis still fit correctly.
     const maxDim = Math.max(size.x, size.y, size.z);
     const height = isFinite(maxDim) && maxDim > 0 ? maxDim : 0;
     const cx = isFinite(center.x) ? center.x : 0;
@@ -273,7 +293,7 @@ function CoachModel({
 
   const fitProfile = useMemo(() => {
     const safeHeight = sceneMetrics.height > 0 ? sceneMetrics.height : 1;
-    const targetHeight = previewFrame === "in_frame" ? 2.45 : 2.2;
+    const targetHeight = 2.45;
     // No clamp — let fitScale handle any unit scale (meters, centimeters, etc.)
     const fitScale = targetHeight / safeHeight;
     // Offset must be multiplied by the same total scale applied to the primitive,
@@ -501,14 +521,14 @@ function CoachModel({
 
   return (
     <group ref={modelGroupRef}>
-      {!embeddedClips.length && (
+      {animate && !embeddedClips.length && (
         <Suspense fallback={null}>
           <AnimPackErrorBoundary>
             <AnimationPackLoader path={animPackPath} onClipsLoaded={setExternalClips} />
           </AnimPackErrorBoundary>
         </Suspense>
       )}
-      {demoClipName && (
+      {animate && demoClipName && (
         <Suspense fallback={null}>
           <AnimPackErrorBoundary>
             <AnimationPackLoader
@@ -636,23 +656,12 @@ function getMoodSceneMeta(mood: Coach3DMood): MoodSceneMeta {
 export function getCoachModelTransformPreset(modelPath: string): ModelTransform {
   if (modelPath.includes("atlas-coach-mobile.glb")) {
     return {
-      position: [0, -1.05, 0],
+      position: [0, 0, 0],
       rotation: [0, 0, 0],
       scale: 1.0,
-      cameraPosition: [0, 1.1, 4.8],
-      fovCompact: 48,
-      fovDefault: 44,
-    };
-  }
-
-  if (modelPath.includes("atlas-coach.glb")) {
-    return {
-      position: [0, -0.7, 0],
-      rotation: [0, 0, 0],
-      scale: 1.52,
-      cameraPosition: [0, 0.96, 5.55],
-      fovCompact: 36,
-      fovDefault: 33,
+      cameraPosition: [0, 1.8, 4.5],
+      fovCompact: 50,
+      fovDefault: 45,
     };
   }
 
@@ -738,6 +747,7 @@ export function Coach3D({
   selectedAvatar,
   mood = "idle",
   compact = false,
+  animate = true,
   modelPathOverride,
   animationHint = "idle",
   animationClipId,
@@ -823,7 +833,7 @@ export function Coach3D({
           : modelStatus === "error"
             ? "The model file could not be loaded right now. Check the path and local server."
           : selectedAvatar === "Atlas"
-            ? "Add atlas-coach-mobile.glb or atlas-coach.glb to public/models to enable the live 3D preview."
+            ? "Add atlas-coach-mobile.glb to public/models to enable the live 3D preview."
             : "Add the matching .glb file to public/models to enable the live 3D preview."
       }
     />
@@ -835,12 +845,13 @@ export function Coach3D({
 
   const appliedCameraPosition: [number, number, number] = [
     modelTransform.cameraPosition[0],
-    modelTransform.cameraPosition[1] + (previewFrame === "full_body" ? 0.02 : previewFrame === "bust" ? 1.05 : -0.04),
-    modelTransform.cameraPosition[2] + (previewFrame === "full_body" ? 0.24 : previewFrame === "bust" ? -1.4 : 0.1),
+    // bust: look at upper chest — camera rises and moves in; full_body: standard preset
+    modelTransform.cameraPosition[1] + (previewFrame === "bust" ? 0.55 : previewFrame === "full_body" ? -0.3 : 0),
+    modelTransform.cameraPosition[2] + (previewFrame === "bust" ? -1.6 : previewFrame === "full_body" ? 0.5 : 0),
   ];
   const appliedFov =
     (compact ? modelTransform.fovCompact : modelTransform.fovDefault) +
-    (previewFrame === "full_body" ? 1 : previewFrame === "bust" ? -4 : -1);
+    (previewFrame === "bust" ? -12 : previewFrame === "full_body" ? 6 : 0);
   const stageGradient = isNeutralLighting
     ? "from-slate-700/95 via-slate-800/92 to-[#0f172a]"
     : meta.gradient;
@@ -900,9 +911,11 @@ export function Coach3D({
                   maxDistance={12}
                   target={
                     previewFrame === "bust"
-                      ? [0, 1.55, 0]
+                      ? resolvedModelPath?.includes("atlas-coach-mobile")
+                        ? [0, 1.85, 0]   // upper chest on 2.45m character
+                        : [0, 1.3, 0]
                       : resolvedModelPath?.includes("atlas-coach-mobile")
-                        ? [0, 0.88, 0]
+                        ? [0, 1.0, 0]    // mid-body (matches screenshot Target Y=1.00)
                         : [0, 0.42, 0]
                   }
                   touches={{
@@ -920,6 +933,7 @@ export function Coach3D({
                   animationHint={animationHint}
                   demoClipName={demoClipName}
                   previewFrame={previewFrame}
+                  animate={animate}
                   isSpeaking={isSpeaking}
                   onClipsDetected={onClipsDetected}
                 />
@@ -934,5 +948,3 @@ export function Coach3D({
 
 // Eagerly warm drei's GLTF cache so the model is ready before any Coach3D mounts
 useGLTF.preload("/models/atlas-coach-mobile.glb");
-useGLTF.preload("/models/atlas-coach.glb");
-useGLTF.preload("/models/nova-coach.glb");
