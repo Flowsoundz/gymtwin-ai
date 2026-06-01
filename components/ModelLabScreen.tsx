@@ -516,16 +516,58 @@ export function ModelLabScreen({
                   <div>
                     <p className="text-[11px] font-black uppercase tracking-[0.26em] text-amber-300">Transform Tuner</p>
                     <p className="mt-2 text-xs leading-relaxed text-slate-400">
-                      Preview-only transform overrides for the current Model Lab session.
+                      Adjust position, scale, and camera — then Save Preset to apply across all screens.
                     </p>
+                    {hasSavedPreset && savePresetState === "idle" && (
+                      <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-400">
+                        ✓ Saved preset active
+                      </p>
+                    )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setPreviewTransform(presetTransform)}
-                    className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-[0.22em] text-slate-200 transition hover:border-white/20 hover:text-white"
-                  >
-                    Reset
-                  </button>
+                  <div className="flex shrink-0 flex-col gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        saveTransformPreset(selectedModel.path, previewTransform);
+                        setHasSavedPreset(true);
+                        setSavePresetState("saved");
+                        window.setTimeout(() => setSavePresetState("idle"), 2000);
+                      }}
+                      className={`rounded-full border px-3 py-2 text-[10px] font-black uppercase tracking-[0.22em] transition ${
+                        savePresetState === "saved"
+                          ? "border-emerald-400/30 bg-emerald-500/14 text-emerald-100"
+                          : "border-amber-400/28 bg-amber-500/14 text-amber-100 hover:border-amber-400/50"
+                      }`}
+                    >
+                      {savePresetState === "saved" ? "Saved!" : "Save Preset"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreviewTransform(presetTransform)}
+                      className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[10px] font-black uppercase tracking-[0.22em] text-slate-200 transition hover:border-white/20 hover:text-white"
+                    >
+                      Reset
+                    </button>
+                    {hasSavedPreset && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          clearTransformPreset(selectedModel.path);
+                          setHasSavedPreset(false);
+                          setSavePresetState("cleared");
+                          setPreviewTransform(createPreviewTransformFromPreset(selectedModel.path));
+                          window.setTimeout(() => setSavePresetState("idle"), 2000);
+                        }}
+                        className={`rounded-full border px-3 py-2 text-[10px] font-black uppercase tracking-[0.22em] transition ${
+                          savePresetState === "cleared"
+                            ? "border-red-400/30 bg-red-500/12 text-red-100"
+                            : "border-white/8 bg-slate-900/70 text-slate-400 hover:border-white/18 hover:text-slate-200"
+                        }`}
+                      >
+                        {savePresetState === "cleared" ? "Cleared" : "Clear Saved"}
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -589,54 +631,6 @@ export function ModelLabScreen({
                   </pre>
                 </div>
 
-                <div className="mt-4 rounded-[1.25rem] border border-amber-400/16 bg-amber-500/8 p-4">
-                  <p className="text-[11px] font-black uppercase tracking-[0.2em] text-amber-300">Save Preset</p>
-                  <p className="mt-1 text-xs leading-relaxed text-slate-400">
-                    Saves current position, scale, and camera to device storage. Applies across all screens for this model — no restart needed.
-                  </p>
-                  {hasSavedPreset && savePresetState === "idle" && (
-                    <p className="mt-2 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-400">
-                      ✓ Saved preset active
-                    </p>
-                  )}
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        saveTransformPreset(selectedModel.path, previewTransform);
-                        setHasSavedPreset(true);
-                        setSavePresetState("saved");
-                        window.setTimeout(() => setSavePresetState("idle"), 2000);
-                      }}
-                      className={`rounded-2xl border px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.22em] transition ${
-                        savePresetState === "saved"
-                          ? "border-emerald-400/30 bg-emerald-500/14 text-emerald-100"
-                          : "border-amber-400/24 bg-amber-500/12 text-amber-100 hover:border-amber-400/40"
-                      }`}
-                    >
-                      {savePresetState === "saved" ? "Saved!" : "Save Preset"}
-                    </button>
-                    {hasSavedPreset && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          clearTransformPreset(selectedModel.path);
-                          setHasSavedPreset(false);
-                          setSavePresetState("cleared");
-                          setPreviewTransform(createPreviewTransformFromPreset(selectedModel.path));
-                          window.setTimeout(() => setSavePresetState("idle"), 2000);
-                        }}
-                        className={`rounded-2xl border px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.22em] transition ${
-                          savePresetState === "cleared"
-                            ? "border-red-400/30 bg-red-500/12 text-red-100"
-                            : "border-white/10 bg-white/5 text-slate-400 hover:border-white/20 hover:text-slate-200"
-                        }`}
-                      >
-                        {savePresetState === "cleared" ? "Cleared" : "Clear Preset"}
-                      </button>
-                    )}
-                  </div>
-                </div>
               </div>
             </section>
 
