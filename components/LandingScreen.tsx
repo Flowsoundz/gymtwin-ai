@@ -1,97 +1,13 @@
+"use client";
+
 import { Coach3D } from "@/components/Coach3D";
 import { getAvatarLabel, getAvatarRole } from "@/lib/avatarAssets";
 import { getCoachAdaptationRecommendation } from "@/lib/coachAdaptationEngine";
 import { deriveProgressTrends } from "@/lib/progressTrends";
 import { todayString, yesterdayString } from "@/lib/time";
 import { getTodayWeeklyPlanLabel } from "@/lib/weeklyPlanEngine";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { BodyProfile, CoachAvatar, TraineeStats, WeeklyPlan, WorkoutSummaryData } from "@/types";
-
-function buildGreeting(
-  userStats: TraineeStats,
-  latestWorkoutSummary: WorkoutSummaryData | null | undefined,
-  isFirstSession: boolean
-) {
-  const hour = new Date().getHours();
-  const timeOfDay =
-    hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-
-  if (isFirstSession) {
-    return {
-      timeLabel: "Welcome",
-      headline: "AI-guided coaching, built for you.",
-      sub: "Adaptive plans, voice coaching, and camera-based rep counting — all private, on-device.",
-      badge: null,
-      badgeColor: "",
-    };
-  }
-
-  const today = todayString();
-  const yesterday = yesterdayString();
-  const last = userStats.lastWorkoutDate;
-  const daysSince = last
-    ? Math.round((Date.now() - new Date(last + "T12:00:00").getTime()) / 86400000)
-    : null;
-  const trainedToday = last === today;
-  const trainedYesterday = last === yesterday;
-
-  if (trainedToday) {
-    return {
-      timeLabel: timeOfDay,
-      headline:
-        userStats.streak > 1
-          ? `Day ${userStats.streak} streak — great session today.`
-          : "Great session today.",
-      sub: latestWorkoutSummary
-        ? `${latestWorkoutSummary.goal} · ${latestWorkoutSummary.actualSessionMinutes} min · ${latestWorkoutSummary.estimatedReps} reps`
-        : "Rest up and come back stronger tomorrow.",
-      badge: "Done today",
-      badgeColor: "border-emerald-400/24 bg-emerald-500/12 text-emerald-200",
-    };
-  }
-
-  if (trainedYesterday && userStats.streak > 0) {
-    return {
-      timeLabel: timeOfDay,
-      headline: `Day ${userStats.streak} streak — don't break it.`,
-      sub: latestWorkoutSummary
-        ? `Last: ${latestWorkoutSummary.goal} · ${latestWorkoutSummary.actualSessionMinutes} min · ${latestWorkoutSummary.estimatedReps} reps`
-        : `${userStats.workoutsCompleted} workouts · ${userStats.totalMinutes} min total`,
-      badge: `${userStats.streak} day streak`,
-      badgeColor: "border-fuchsia-400/24 bg-fuchsia-500/12 text-fuchsia-200",
-    };
-  }
-
-  if (daysSince !== null && daysSince >= 5) {
-    return {
-      timeLabel: timeOfDay,
-      headline: "Welcome back — let's rebuild.",
-      sub: `Last trained ${daysSince} days ago. Every comeback starts with one rep.`,
-      badge: null,
-      badgeColor: "",
-    };
-  }
-
-  if (daysSince !== null && daysSince >= 2) {
-    return {
-      timeLabel: timeOfDay,
-      headline: "Time to train.",
-      sub: latestWorkoutSummary
-        ? `Last: ${latestWorkoutSummary.goal} · ${daysSince} days ago`
-        : `${userStats.workoutsCompleted} sessions complete · keep going.`,
-      badge: daysSince >= 3 ? `${daysSince} days off` : null,
-      badgeColor: "border-amber-400/24 bg-amber-500/12 text-amber-200",
-    };
-  }
-
-  return {
-    timeLabel: timeOfDay,
-    headline: `${userStats.workoutsCompleted} session${userStats.workoutsCompleted !== 1 ? "s" : ""} in. Keep building.`,
-    sub: `${userStats.totalMinutes} min trained${userStats.streak > 0 ? ` · ${userStats.streak} day streak` : ""}`,
-    badge: null,
-    badgeColor: "",
-  };
-}
 
 type LandingScreenProps = {
   userStats: TraineeStats;
@@ -114,81 +30,127 @@ type LandingScreenProps = {
   secondaryButton: string;
 };
 
-function BrandMark({ compact = false }: { compact?: boolean }) {
+function buildGreeting(
+  userStats: TraineeStats,
+  latestWorkoutSummary: WorkoutSummaryData | null | undefined,
+  isFirstSession: boolean
+) {
+  const hour = new Date().getHours();
+  const timeOfDay = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+
+  if (isFirstSession) {
+    return { headline: "Your AI coach is ready.", sub: "Adaptive plans, voice coaching, and camera form tracking — on-device." };
+  }
+
+  const today = todayString();
+  const yesterday = yesterdayString();
+  const last = userStats.lastWorkoutDate;
+  const daysSince = last ? Math.round((Date.now() - new Date(last + "T12:00:00").getTime()) / 86400000) : null;
+  const trainedToday = last === today;
+  const trainedYesterday = last === yesterday;
+
+  if (trainedToday) {
+    return {
+      headline: userStats.streak > 1 ? `Day ${userStats.streak} streak.` : "Great session today.",
+      sub: latestWorkoutSummary ? `${latestWorkoutSummary.goal} · ${latestWorkoutSummary.actualSessionMinutes}min · ${latestWorkoutSummary.estimatedReps} reps` : "Rest up and come back stronger.",
+    };
+  }
+  if (trainedYesterday && userStats.streak > 0) {
+    return { headline: `Day ${userStats.streak} — don't break it.`, sub: `${timeOfDay}. Keep the streak alive.` };
+  }
+  if (daysSince !== null && daysSince >= 5) {
+    return { headline: "Welcome back.", sub: `${daysSince} days off. Every comeback starts with one rep.` };
+  }
+  return {
+    headline: `${userStats.workoutsCompleted} sessions in.`,
+    sub: `${userStats.totalMinutes} min trained${userStats.streak > 0 ? ` · ${userStats.streak} day streak` : ""}`,
+  };
+}
+
+function ChromeProBadge({ onClick }: { onClick?: () => void }) {
   return (
-    <div
-      className={`relative flex items-center justify-center rounded-[1.4rem] border border-blue-400/20 bg-gradient-to-br from-blue-500/22 via-indigo-500/18 to-fuchsia-500/22 shadow-[0_0_28px_rgba(99,102,241,0.24)] ${compact ? "h-11 w-11 text-sm" : "h-14 w-14 text-base"}`}
+    <button
+      onClick={onClick}
+      className="group relative overflow-hidden rounded-full border border-white/20 bg-gradient-to-r from-slate-800 to-slate-700 px-4 py-1.5 shadow-[0_0_20px_rgba(196,181,253,0.2)] transition-all duration-300 hover:shadow-[0_0_30px_rgba(196,181,253,0.4)] active:scale-95"
     >
-      <div className="absolute inset-1 rounded-[1.1rem] bg-slate-950/70" />
-      <div className="absolute inset-0 rounded-[1.4rem] bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.18),_transparent_45%)]" />
-      <div className="relative flex items-center gap-0.5 font-black tracking-tight text-white">
-        <span>G</span>
-        <span className="text-blue-300">T</span>
-      </div>
-    </div>
+      <span className="badge-chrome text-[11px] font-black uppercase tracking-[0.22em]">
+        PRO ✦
+      </span>
+      <span className="absolute inset-0 -translate-x-full skew-x-[-20deg] bg-gradient-to-r from-transparent via-white/10 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+    </button>
   );
 }
 
-function DashboardStat({
-  icon,
-  value,
-  label,
-  accentClass,
-}: {
-  icon: React.ReactNode;
-  value: string | number;
-  label: string;
-  accentClass: string;
-}) {
+function MegaCTA({ label, onClick }: { label: string; onClick: () => void }) {
   return (
-    <div className="rounded-[1.4rem] border border-white/8 bg-slate-950/65 p-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-      <div className="mb-3 flex items-center justify-between">
-        <div className={`flex h-9 w-9 items-center justify-center rounded-2xl border border-white/10 bg-white/5 ${accentClass}`}>
-          {icon}
-        </div>
-        <div className={`h-2 w-2 rounded-full ${value === 0 ? "bg-slate-700" : accentClass.replace("text-", "bg-")}`} />
-      </div>
-      <p className={`text-2xl font-black tracking-tight ${value === 0 ? "text-slate-600" : accentClass}`}>
-        {value === 0 ? "—" : value}
-      </p>
-      <p className="mt-1 text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">{label}</p>
+    <div className="relative">
+      {/* Pulsating outer ring */}
+      <span className="cta-pulse-ring absolute inset-0 rounded-2xl border-2 border-violet-500/60" />
+      <button
+        onClick={onClick}
+        className="group relative w-full overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-violet-600 to-fuchsia-600 py-5 text-center shadow-[0_0_40px_rgba(99,102,241,0.45)] transition-all duration-300 hover:scale-[1.025] hover:shadow-[0_0_60px_rgba(99,102,241,0.65)] active:scale-[0.98]"
+      >
+        <span className="relative z-10 flex items-center justify-center gap-3 text-lg font-black uppercase tracking-[0.06em] text-white">
+          <span className="text-xl">▶</span>
+          {label}
+        </span>
+        {/* Shine sweep */}
+        <span className="absolute inset-0 -translate-x-full skew-x-[-20deg] bg-gradient-to-r from-transparent via-white/15 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+      </button>
     </div>
   );
 }
 
-function SecondaryAction({
+function QuickActionCard({
+  icon,
   title,
   subtitle,
-  icon,
+  accentClass,
   onClick,
 }: {
+  icon: string;
   title: string;
   subtitle: string;
-  icon?: React.ReactNode;
+  accentClass: string;
   onClick: () => void;
 }) {
   return (
     <button
       onClick={onClick}
-      className="flex w-full items-center justify-between rounded-[1.35rem] border border-white/8 bg-slate-950/60 px-4 py-4 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition hover:border-blue-400/18 hover:bg-slate-900/80 active:scale-[0.99]"
+      className="bento-card group flex flex-col items-start gap-3 rounded-2xl border border-white/8 bg-slate-950/70 p-4 text-left backdrop-blur-md transition hover:border-white/16"
     >
-      <div className="flex items-center gap-3">
-        {icon ? (
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-300">
-            {icon}
-          </div>
-        ) : null}
-        <div>
-          <p className="text-sm font-black text-slate-100">{title}</p>
-          <p className="mt-0.5 text-xs leading-relaxed text-slate-400">{subtitle}</p>
-        </div>
+      <div className={`flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-xl ${accentClass}`}>
+        {icon}
       </div>
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-sm text-slate-400">
-        →
+      <div>
+        <p className="text-sm font-black text-white">{title}</p>
+        <p className="mt-0.5 text-[11px] leading-relaxed text-slate-400">{subtitle}</p>
       </div>
+      <div className="ml-auto text-slate-600 transition group-hover:text-slate-300">→</div>
     </button>
   );
 }
+
+function NeonStatPill({
+  value,
+  label,
+  colorClass,
+}: {
+  value: string | number;
+  label: string;
+  colorClass: string;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-1 rounded-2xl border border-white/8 bg-slate-950/65 px-4 py-4">
+      <span className={`text-3xl font-black italic tracking-tight ${colorClass}`}>
+        {value === 0 ? "—" : value}
+      </span>
+      <span className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">{label}</span>
+    </div>
+  );
+}
+
+type NavTab = "home" | "workouts" | "progress" | "settings";
 
 export function LandingScreen({
   userStats,
@@ -208,401 +170,325 @@ export function LandingScreen({
   selectedAvatar,
   cameraTried = false,
 }: LandingScreenProps) {
-  const scrollToTop = () => {
-    if (typeof window !== "undefined") {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
-  };
+  const [activeTab, setActiveTab] = useState<NavTab>("home");
 
   const coachName = getAvatarLabel(selectedAvatar);
   const coachRole = getAvatarRole(selectedAvatar);
-  const todayPlan = weeklyPlan?.days.find((day) => day.dayLabel === getTodayWeeklyPlanLabel()) ?? weeklyPlan?.days[0] ?? null;
-  const completedWeeklyDays = weeklyPlan?.days.filter((day) => day.completed).length ?? 0;
+  const todayPlan = weeklyPlan?.days.find((d) => d.dayLabel === getTodayWeeklyPlanLabel()) ?? weeklyPlan?.days[0] ?? null;
+  const completedWeeklyDays = weeklyPlan?.days.filter((d) => d.completed).length ?? 0;
+
   const progressTrends = useMemo(
-    () =>
-      deriveProgressTrends({
-        workoutHistory,
-        weeklyPlan,
-        bodyProfile,
-        userStats,
-      }),
+    () => deriveProgressTrends({ workoutHistory, weeklyPlan, bodyProfile, userStats }),
     [bodyProfile, userStats, weeklyPlan, workoutHistory]
   );
   const coachRecommendation = useMemo(
-    () =>
-      getCoachAdaptationRecommendation({
-        bodyProfile,
-        weeklyPlan,
-        workoutHistory,
-        latestWorkoutSummary,
-        userStats,
-        progressTrends,
-      }),
+    () => getCoachAdaptationRecommendation({ bodyProfile, weeklyPlan, workoutHistory, latestWorkoutSummary, userStats, progressTrends }),
     [bodyProfile, latestWorkoutSummary, progressTrends, userStats, weeklyPlan, workoutHistory]
   );
-  const priorityTone =
-    coachRecommendation.priority === "high"
-      ? "border-amber-400/18 bg-amber-500/10 text-amber-200"
-      : coachRecommendation.priority === "medium"
-        ? "border-blue-400/18 bg-blue-500/10 text-blue-200"
-        : "border-emerald-400/18 bg-emerald-500/10 text-emerald-200";
 
-  const isFirstSession =
-    userStats.workoutsCompleted === 0 &&
-    userStats.streak === 0 &&
-    userStats.totalMinutes === 0;
-
+  const isFirstSession = userStats.workoutsCompleted === 0 && userStats.streak === 0 && userStats.totalMinutes === 0;
   const greeting = useMemo(
     () => buildGreeting(userStats, latestWorkoutSummary, isFirstSession),
     [userStats, latestWorkoutSummary, isFirstSession]
   );
 
+  const handleNavTab = (tab: NavTab) => {
+    setActiveTab(tab);
+    if (tab === "progress") onViewProgress();
+    if (tab === "settings") onOpenSettings();
+    if (tab === "workouts") onStartWorkout();
+  };
+
+  const navItems: { id: NavTab; label: string; icon: React.ReactNode }[] = [
+    {
+      id: "home",
+      label: "Home",
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <path d="M3 9.5L10 3l7 6.5V17a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z" stroke="currentColor" strokeWidth="1.5" fill="none" />
+          <path d="M7 18V12h6v6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      ),
+    },
+    {
+      id: "workouts",
+      label: "Train",
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <rect x="1" y="8" width="3" height="4" rx="1" fill="currentColor" />
+          <rect x="16" y="8" width="3" height="4" rx="1" fill="currentColor" />
+          <rect x="4" y="7" width="12" height="6" rx="2" fill="currentColor" opacity="0.7" />
+          <rect x="8" y="4" width="4" height="3" rx="1" fill="currentColor" opacity="0.5" />
+        </svg>
+      ),
+    },
+    {
+      id: "progress",
+      label: "Progress",
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <rect x="1" y="13" width="4" height="6" rx="1" fill="currentColor" opacity="0.6" />
+          <rect x="8" y="8" width="4" height="11" rx="1" fill="currentColor" opacity="0.8" />
+          <rect x="15" y="2" width="4" height="17" rx="1" fill="currentColor" />
+        </svg>
+      ),
+    },
+    {
+      id: "settings",
+      label: "Settings",
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <circle cx="10" cy="10" r="3" fill="currentColor" />
+          <path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.22 4.22l1.42 1.42M14.36 14.36l1.42 1.42M15.78 4.22l-1.42 1.42M5.64 14.36l-1.42 1.42" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.7" />
+        </svg>
+      ),
+    },
+  ];
+
   return (
-    <main className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.22),_transparent_24%),radial-gradient(circle_at_bottom,_rgba(59,130,246,0.14),_transparent_24%),linear-gradient(180deg,_#020617_0%,_#020617_48%,_#030712_100%)] px-4 pb-10 pt-8 text-white antialiased sm:px-6 sm:pt-10 lg:px-8 lg:py-12">
-      <div className="mx-auto w-full max-w-md lg:max-w-5xl xl:max-w-6xl">
-        <div className="rounded-[2.25rem] border border-white/8 bg-[linear-gradient(180deg,rgba(15,23,42,0.82),rgba(2,6,23,0.94))] p-5 shadow-[0_30px_80px_rgba(15,23,42,0.5)] backdrop-blur-2xl sm:p-6 lg:rounded-[2.5rem] lg:p-8 xl:p-9">
+    <div className="min-h-screen bg-[#020617] text-white antialiased">
+      {/* Ambient background orbs */}
+      <div className="pointer-events-none fixed inset-0 overflow-hidden">
+        <div className="absolute -top-40 left-1/4 h-96 w-96 rounded-full bg-violet-600/12 blur-[120px]" />
+        <div className="absolute top-1/3 right-0 h-80 w-80 rounded-full bg-blue-600/10 blur-[100px]" />
+        <div className="absolute bottom-1/4 left-0 h-72 w-72 rounded-full bg-fuchsia-600/8 blur-[100px]" />
+      </div>
+
+      <main className="relative pb-28 pt-6">
+        <div className="mx-auto w-full max-w-md px-4 lg:max-w-6xl lg:px-6">
 
           {/* ── Header ── */}
-          <header className="mb-5">
-            <div className="mb-5 flex items-center justify-between gap-3">
-              <BrandMark compact />
-              <div className="text-center">
-                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-300">AI Home Fitness MVP</p>
-                <h1 className="mt-1 bg-gradient-to-r from-white via-blue-100 to-fuchsia-200 bg-clip-text text-3xl font-black tracking-tight text-transparent">
-                  GymTwin AI
-                </h1>
+          <header className="mb-6 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-blue-400/20 bg-gradient-to-br from-blue-500/22 to-fuchsia-500/18 shadow-[0_0_18px_rgba(99,102,241,0.22)]">
+                <span className="text-sm font-black text-white">G<span className="text-blue-300">T</span></span>
               </div>
-              <div className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-emerald-200 shadow-[0_0_20px_rgba(16,185,129,0.14)]">
-                Pro
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.3em] text-blue-400">AI Home Fitness</p>
+                <h1 className="text-base font-black italic tracking-tight text-white">GymTwin AI</h1>
+              </div>
+            </div>
+            <ChromeProBadge />
+          </header>
+
+          {/* ── Bento Grid ── */}
+          <div className="grid gap-4 lg:grid-cols-[1fr_1.45fr] lg:grid-rows-[auto_auto]">
+
+            {/* Box A: 3D Coach Avatar — spans both rows on desktop */}
+            <div className="bento-card relative overflow-hidden rounded-3xl border border-white/10 bg-slate-950/60 p-1 shadow-[0_0_60px_rgba(99,102,241,0.12)] backdrop-blur-xl lg:row-span-2">
+              {/* Neon glow ring */}
+              <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-blue-500/8 via-violet-500/5 to-fuchsia-500/8" />
+              <div className="relative">
+                <Coach3D
+                  selectedAvatar={selectedAvatar}
+                  animationHint="idle"
+                  previewFrame="full_body"
+                  lightingMode="neutral"
+                />
+                {/* Coach identity overlay */}
+                <div className="absolute bottom-0 left-0 right-0 rounded-b-[1.4rem] bg-gradient-to-t from-slate-950/90 via-slate-950/40 to-transparent px-4 pb-4 pt-8">
+                  <p className="text-lg font-black italic text-white">{coachName}</p>
+                  <p className="mt-0.5 text-[10px] font-black uppercase tracking-[0.26em] text-slate-400">{coachRole}</p>
+                  {/* Live status pill */}
+                  <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" style={{ animation: "coachPulse 2s ease-in-out infinite" }} />
+                    <span className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-300">AI Coach Ready</span>
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Hero */}
-            <section className="relative overflow-hidden rounded-[2rem] border border-white/8 bg-slate-950/58 p-5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] lg:p-7">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(99,102,241,0.24),_transparent_32%),radial-gradient(circle_at_bottom_left,_rgba(168,85,247,0.18),_transparent_34%)]" />
-              <div className="relative flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between xl:grid xl:grid-cols-[minmax(0,1.2fr)_320px] xl:gap-8">
-                <div className="max-w-full sm:max-w-[56%] lg:max-w-[58%] xl:max-w-none xl:pr-6">
-                  <div className="flex items-center gap-2">
-                    <p className="text-[11px] font-black uppercase tracking-[0.26em] text-slate-500">
-                      {greeting.timeLabel}
+            {/* Box B: Today's Plan + Mega CTA */}
+            <div className="bento-card rounded-3xl border border-white/8 bg-slate-950/65 p-5 backdrop-blur-md">
+              {/* Greeting */}
+              <div className="mb-4">
+                <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-500">Dashboard</p>
+                <h2 className="mt-1 text-2xl font-black italic leading-tight tracking-tight text-white lg:text-3xl">
+                  {greeting.headline}
+                </h2>
+                <p className="mt-1 text-sm leading-relaxed text-slate-400">{greeting.sub}</p>
+              </div>
+
+              {/* Today's Plan card */}
+              <div className="mb-4 rounded-2xl border border-blue-400/14 bg-blue-500/8 p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-[0.28em] text-blue-400">Today&apos;s Plan</p>
+                    <p className="mt-1 truncate text-base font-black text-white">
+                      {todayPlan ? todayPlan.focus : "No plan yet"}
                     </p>
-                    {greeting.badge && (
-                      <span className={`rounded-full border px-2.5 py-0.5 text-[10px] font-black uppercase tracking-[0.18em] ${greeting.badgeColor}`}>
-                        {greeting.badge}
-                      </span>
+                    {todayPlan ? (
+                      <p className="mt-0.5 text-xs text-slate-400">
+                        {todayPlan.dayLabel} · {todayPlan.recommendedWorkout} · {todayPlan.durationMinutes} min
+                      </p>
+                    ) : (
+                      <p className="mt-0.5 text-xs text-slate-400">Generate a 7-day plan for your week.</p>
                     )}
                   </div>
-                  <h2 className="mt-3 text-3xl font-black leading-tight tracking-tight text-white lg:text-[2.8rem]">
-                    {greeting.headline}
-                  </h2>
-                  <p className="mt-3 text-sm leading-relaxed text-slate-400 lg:max-w-xl lg:text-[15px]">
-                    {greeting.sub}
-                  </p>
-
-                  {/* First-session feature bullets — replaced by last-workout card for returning users */}
-                  {isFirstSession ? (
-                    <div className="mt-4 grid gap-2 sm:max-w-xl sm:grid-cols-2">
-                      {[
-                        "Camera coach for squats, push-ups, and planks",
-                        "Voice commands for hands-free control",
-                        "Scores, XP, and badges to track progress",
-                        "Resume-friendly sessions built for daily training",
-                      ].map((item) => (
-                        <div key={item} className="rounded-2xl border border-white/8 bg-slate-950/45 px-3 py-2 text-xs font-medium leading-relaxed text-slate-300">
-                          {item}
-                        </div>
-                      ))}
-                    </div>
-                  ) : latestWorkoutSummary ? (
-                    <div className="mt-4 grid grid-cols-3 gap-2 sm:max-w-sm">
-                      <div className="rounded-2xl border border-white/8 bg-slate-950/45 px-3 py-2.5 text-center">
-                        <p className="text-lg font-black text-blue-300">{userStats.workoutsCompleted}</p>
-                        <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Sessions</p>
-                      </div>
-                      <div className="rounded-2xl border border-white/8 bg-slate-950/45 px-3 py-2.5 text-center">
-                        <p className="text-lg font-black text-fuchsia-300">{userStats.streak}</p>
-                        <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Streak</p>
-                      </div>
-                      <div className="rounded-2xl border border-white/8 bg-slate-950/45 px-3 py-2.5 text-center">
-                        <p className="text-lg font-black text-indigo-300">{userStats.totalMinutes}</p>
-                        <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">Minutes</p>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-
-                {/* Coach card */}
-                <div className="relative mx-auto w-full max-w-[14rem] shrink-0 pt-1 sm:mx-0 sm:w-[12rem] lg:w-[15rem] xl:w-full xl:max-w-[20rem]">
-                  <div className="absolute inset-2 rounded-[2rem] bg-gradient-to-br from-blue-500/30 via-indigo-500/20 to-fuchsia-500/30 blur-3xl" />
-                  <div className="relative">
-                    <Coach3D
-                      selectedAvatar={selectedAvatar}
-                      animationHint="idle"
-                      previewFrame="full_body"
-                      lightingMode="neutral"
-                    />
-                    <div className="mt-2 px-1">
-                      <p className="text-base font-black tracking-tight text-white">{coachName}</p>
-                      <p className="mt-0.5 text-[11px] font-black uppercase tracking-[0.22em] text-slate-300">{coachRole}</p>
-                    </div>
+                  <div className="shrink-0 rounded-full border border-blue-400/14 bg-blue-500/10 px-2.5 py-1 text-[10px] font-black text-blue-300">
+                    {weeklyPlan ? `${completedWeeklyDays}/7` : "—"}
                   </div>
                 </div>
               </div>
-            </section>
-          </header>
 
-          {/* ── Primary CTA — immediately after hero ── */}
-          <section className="mb-5 space-y-3">
-            {hasResumeSession ? (
-              <button
-                onClick={onResumeWorkout}
-                className="flex w-full items-center justify-between rounded-[1.65rem] border border-amber-400/24 bg-gradient-to-r from-amber-500/20 to-orange-500/18 px-5 py-4 text-left transition hover:brightness-105 active:scale-[0.99]"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/15 bg-white/8 text-lg">
-                    ▶
-                  </div>
+              {/* Resume session if active */}
+              {hasResumeSession && (
+                <button
+                  onClick={onResumeWorkout}
+                  className="mb-3 flex w-full items-center gap-3 rounded-2xl border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-left transition hover:bg-amber-500/16 active:scale-[0.99]"
+                >
+                  <span className="text-base">▶</span>
                   <div>
-                    <p className="text-base font-black text-white">Resume Workout</p>
-                    <p className="text-xs text-amber-100/80">Jump back into your active session</p>
+                    <p className="text-sm font-black text-amber-200">Resume Session</p>
+                    <p className="text-[11px] text-amber-300/70">Jump back into your active workout</p>
                   </div>
-                </div>
-                <div className="text-xl text-white/70">→</div>
-              </button>
-            ) : null}
+                  <span className="ml-auto text-amber-400/60">→</span>
+                </button>
+              )}
 
-            <div className="flex gap-3">
-              <button
-                onClick={onStartWorkout}
-                className="flex flex-1 items-center justify-between rounded-[1.75rem] border border-blue-400/20 bg-gradient-to-r from-blue-600 to-fuchsia-600 px-5 py-5 text-left shadow-[0_18px_40px_rgba(99,102,241,0.3)] transition hover:brightness-105 active:scale-[0.99]"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-lg">
-                    ▶
-                  </div>
-                  <div>
-                    <p className="text-base font-black text-white">
-                      {hasResumeSession ? "Start New Workout" : "Start Workout"}
-                    </p>
-                    <p className="text-xs text-blue-100/80">Launch a fresh guided session</p>
-                  </div>
-                </div>
-                <div className="text-xl text-white/80">→</div>
-              </button>
+              {/* Mega CTA */}
+              <MegaCTA
+                label={hasResumeSession ? "Start New Workout" : weeklyPlan ? "Start Today's Workout" : "Start Workout"}
+                onClick={weeklyPlan && !hasResumeSession ? onStartTodaysWorkout : onStartWorkout}
+              />
 
+              {/* Quick Start */}
               {onQuickStart && !hasResumeSession && (
                 <button
                   onClick={onQuickStart}
-                  title="Quick Start — jump in with your saved settings"
-                  className="flex h-full items-center justify-center rounded-[1.75rem] border border-emerald-400/24 bg-emerald-500/14 px-4 py-5 text-emerald-200 transition hover:bg-emerald-500/20 active:scale-[0.97]"
+                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-400/16 bg-emerald-500/8 py-2.5 text-xs font-black uppercase tracking-[0.18em] text-emerald-300 transition hover:bg-emerald-500/14 active:scale-[0.98]"
                 >
-                  <div className="flex flex-col items-center gap-1">
-                    <span className="text-lg">⚡</span>
-                    <span className="text-[10px] font-black uppercase tracking-[0.18em]">Quick</span>
-                  </div>
+                  ⚡ Quick Start — Use Saved Settings
                 </button>
               )}
             </div>
-          </section>
 
-          {/* ── Today's Plan ── */}
-          <section className="mb-5 rounded-[1.8rem] border border-emerald-400/14 bg-slate-950/58 p-5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-[11px] font-black uppercase tracking-[0.28em] text-emerald-300">Today&apos;s Plan</p>
-                <h3 className="mt-1 truncate text-lg font-black text-white">
-                  {todayPlan ? todayPlan.focus : "No plan yet"}
-                </h3>
-                {todayPlan ? (
-                  <p className="mt-1 text-xs text-slate-400">
-                    {todayPlan.dayLabel} · {todayPlan.recommendedWorkout} · {todayPlan.durationMinutes} min
-                  </p>
-                ) : (
-                  <p className="mt-1 text-xs text-slate-400">
-                    Generate a 7-day plan to give your week structure.
-                  </p>
-                )}
-              </div>
-              <div className="shrink-0 rounded-full border border-emerald-400/14 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-emerald-200">
-                {weeklyPlan ? `${completedWeeklyDays}/7` : "No plan"}
-              </div>
+            {/* Box C: Quick Actions */}
+            <div className="grid grid-cols-2 gap-3">
+              <QuickActionCard
+                icon="📷"
+                title="Camera Coach"
+                subtitle="Live form tracking"
+                accentClass="text-cyan-400"
+                onClick={onOpenCameraSandbox}
+              />
+              <QuickActionCard
+                icon="📈"
+                title="Progress"
+                subtitle="Charts & badges"
+                accentClass="text-violet-400"
+                onClick={onViewProgress}
+              />
+              <QuickActionCard
+                icon="📋"
+                title="Weekly Plan"
+                subtitle={weeklyPlan ? `${completedWeeklyDays}/7 complete` : "Generate plan"}
+                accentClass="text-emerald-400"
+                onClick={weeklyPlan ? onStartTodaysWorkout : onGenerateWeeklyPlan}
+              />
+              <QuickActionCard
+                icon="⚙️"
+                title="Settings"
+                subtitle="Coach & display"
+                accentClass="text-slate-400"
+                onClick={onOpenSettings}
+              />
             </div>
-            <button
-              onClick={weeklyPlan ? onStartTodaysWorkout : onGenerateWeeklyPlan}
-              className="mt-4 w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-black text-slate-100 transition hover:border-blue-400/30 hover:bg-slate-800"
-            >
-              {weeklyPlan ? "Start Today's Workout" : "Generate Weekly Plan"}
-            </button>
-          </section>
+          </div>
 
-          {/* ── Stats ── */}
-          <section className="mb-5">
-            {isFirstSession ? (
-              <div className="rounded-[1.7rem] border border-white/8 bg-slate-950/58 px-5 py-6 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                <p className="text-2xl">🏋️</p>
-                <p className="mt-3 text-sm font-black text-white">Your journey starts here</p>
-                <p className="mt-1 text-xs leading-relaxed text-slate-400">
-                  Complete your first session to start tracking workouts, streaks, and minutes.
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-3 gap-3 lg:gap-4">
-                <DashboardStat
-                  icon={
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                      <rect x="1" y="6" width="3" height="4" rx="1" fill="currentColor" />
-                      <rect x="12" y="6" width="3" height="4" rx="1" fill="currentColor" />
-                      <rect x="4" y="5" width="8" height="6" rx="1.5" fill="currentColor" opacity="0.7" />
-                      <rect x="6" y="3" width="4" height="2" rx="0.5" fill="currentColor" opacity="0.5" />
-                      <rect x="6" y="11" width="4" height="2" rx="0.5" fill="currentColor" opacity="0.5" />
-                    </svg>
-                  }
-                  value={userStats.workoutsCompleted}
-                  label="Workouts"
-                  accentClass="text-blue-400"
-                />
-                <DashboardStat
-                  icon={
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                      <path d="M8 1L9.8 5.8L15 6.3L11.2 9.7L12.4 15L8 12.3L3.6 15L4.8 9.7L1 6.3L6.2 5.8L8 1Z" fill="currentColor" />
-                    </svg>
-                  }
-                  value={userStats.streak}
-                  label="Streak"
-                  accentClass="text-fuchsia-400"
-                />
-                <DashboardStat
-                  icon={
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                      <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" fill="none" />
-                      <path d="M8 5v3l2 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                    </svg>
-                  }
-                  value={userStats.totalMinutes}
-                  label="Minutes"
-                  accentClass="text-indigo-400"
-                />
-              </div>
-            )}
-          </section>
+          {/* ── Stats Row ── */}
+          <div className="mt-4 grid grid-cols-3 gap-3">
+            <NeonStatPill value={userStats.workoutsCompleted} label="Sessions" colorClass="text-blue-400" />
+            <NeonStatPill value={userStats.streak} label="Streak 🔥" colorClass="text-fuchsia-400" />
+            <NeonStatPill value={userStats.totalMinutes} label="Minutes" colorClass="text-violet-400" />
+          </div>
 
-          {/* ── Camera Unlock Banner — shown after 1st workout, before camera tried ── */}
+          {/* ── Camera Unlock Banner ── */}
           {userStats.workoutsCompleted >= 1 && !cameraTried && (
-            <section className="mb-5 overflow-hidden rounded-[1.75rem] border border-cyan-400/24 bg-[linear-gradient(135deg,rgba(6,182,212,0.12),rgba(99,102,241,0.10))] px-5 py-4 text-left shadow-[0_0_28px_rgba(6,182,212,0.12)]">
-              <div className="flex items-start gap-4">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-cyan-400/20 bg-cyan-500/14 text-xl">
+            <div className="neon-pulse mt-4 overflow-hidden rounded-2xl border border-cyan-400/20 bg-gradient-to-r from-cyan-500/10 via-slate-950/50 to-blue-500/10 px-5 py-4">
+              <div className="flex items-center gap-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-cyan-400/18 bg-cyan-500/12 text-xl">
                   📷
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-black uppercase tracking-[0.28em] text-cyan-300">Camera Coach Unlocked</p>
-                  <p className="mt-1 text-sm font-black text-white">See your form in real time</p>
-                  <p className="mt-1 text-xs leading-relaxed text-slate-400">
-                    AI tracks your squats, push-ups, and planks — live reps counted right from your camera.
-                  </p>
-                  <button
-                    onClick={onOpenCameraSandbox}
-                    className="mt-3 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 px-4 py-2 text-xs font-black text-white transition hover:brightness-110 active:scale-[0.97]"
-                  >
-                    Try Camera Coach →
-                  </button>
+                  <p className="text-[11px] font-black uppercase tracking-[0.26em] text-cyan-400">Camera Coach Unlocked</p>
+                  <p className="mt-0.5 text-sm font-black text-white">See your form in real time</p>
                 </div>
+                <button
+                  onClick={onOpenCameraSandbox}
+                  className="shrink-0 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 px-4 py-2 text-xs font-black text-white shadow-[0_0_20px_rgba(6,182,212,0.3)] transition hover:brightness-110 active:scale-[0.97]"
+                >
+                  Try →
+                </button>
               </div>
-            </section>
+            </div>
           )}
 
           {/* ── Coach Insight ── */}
-          <section className="mb-5 rounded-[1.75rem] border border-cyan-400/14 bg-[linear-gradient(135deg,rgba(8,47,73,0.52),rgba(2,6,23,0.92))] px-5 py-4 text-left shadow-[0_0_28px_rgba(34,211,238,0.08)]">
+          <div className="mt-4 rounded-2xl border border-violet-400/12 bg-gradient-to-r from-violet-500/8 via-slate-950/40 to-fuchsia-500/8 px-5 py-4">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-[11px] font-black uppercase tracking-[0.28em] text-cyan-300">Coach Insight</p>
-                <p className="mt-2 text-sm font-black text-white">{coachRecommendation.title}</p>
-                <p className="mt-1 text-xs leading-relaxed text-slate-300">{coachRecommendation.message}</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-violet-400">Coach Insight</p>
+                <p className="mt-1 text-sm font-black text-white">{coachRecommendation.title}</p>
+                <p className="mt-1 text-xs leading-relaxed text-slate-400">{coachRecommendation.message}</p>
               </div>
-              <div className={`shrink-0 rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] ${priorityTone}`}>
+              <div className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${
+                coachRecommendation.priority === "high"
+                  ? "border-amber-400/18 bg-amber-500/10 text-amber-300"
+                  : coachRecommendation.priority === "medium"
+                    ? "border-blue-400/18 bg-blue-500/10 text-blue-300"
+                    : "border-emerald-400/18 bg-emerald-500/10 text-emerald-300"
+              }`}>
                 {coachRecommendation.priority}
               </div>
             </div>
-          </section>
+          </div>
 
-          {/* ── Secondary Actions ── */}
-          <section className="mb-6 space-y-3 lg:grid lg:grid-cols-2 lg:gap-4 lg:space-y-0">
-            <SecondaryAction
-              title="View Progress"
-              subtitle="Charts, XP, badges, and trends"
-              icon={
-                <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-                  <rect x="1" y="9" width="3" height="5" rx="1" fill="currentColor" opacity="0.7" />
-                  <rect x="6" y="5" width="3" height="9" rx="1" fill="currentColor" opacity="0.9" />
-                  <rect x="11" y="1" width="3" height="13" rx="1" fill="currentColor" />
-                </svg>
-              }
-              onClick={onViewProgress}
-            />
-            <SecondaryAction
-              title="Camera Coach"
-              subtitle="Live pose tracking, squats, push-ups, planks"
-              icon={
-                <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-                  <rect x="1" y="3" width="10" height="9" rx="2" stroke="currentColor" strokeWidth="1.3" fill="none" />
-                  <path d="M11 6l3-2v7l-3-2V6Z" fill="currentColor" opacity="0.8" />
-                </svg>
-              }
-              onClick={onOpenCameraSandbox}
-            />
-          </section>
-
-          {/* ── Bottom Nav ── */}
-          <nav className="grid grid-cols-4 gap-2 rounded-[1.6rem] border border-white/8 bg-slate-950/65 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] xl:mx-auto xl:max-w-3xl">
-            <button
-              type="button"
-              onClick={scrollToTop}
-              className="rounded-[1.2rem] border border-blue-400/18 bg-gradient-to-r from-blue-500/18 to-fuchsia-500/12 px-2 py-3 text-center transition hover:border-blue-400/28"
-            >
-              <div className="mx-auto flex h-6 w-6 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-[10px] font-black text-white">
-                GT
-              </div>
-              <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em] text-white">Home</p>
-            </button>
-            <button
-              type="button"
-              onClick={onStartWorkout}
-              className="rounded-[1.2rem] px-2 py-3 text-center text-slate-500 transition hover:bg-white/5 hover:text-slate-300"
-            >
-              <svg className="mx-auto" width="18" height="18" viewBox="0 0 18 18" fill="none">
-                <rect x="1" y="1" width="7" height="7" rx="2" fill="currentColor" opacity="0.6" />
-                <rect x="10" y="1" width="7" height="7" rx="2" fill="currentColor" opacity="0.6" />
-                <rect x="1" y="10" width="7" height="7" rx="2" fill="currentColor" opacity="0.6" />
-                <rect x="10" y="10" width="7" height="7" rx="2" fill="currentColor" opacity="0.6" />
-              </svg>
-              <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em]">Workouts</p>
-            </button>
-            <button
-              type="button"
-              onClick={onViewProgress}
-              className="rounded-[1.2rem] px-2 py-3 text-center text-slate-500 transition hover:bg-white/5 hover:text-slate-300"
-            >
-              <svg className="mx-auto" width="18" height="18" viewBox="0 0 18 18" fill="none">
-                <rect x="1" y="11" width="4" height="6" rx="1" fill="currentColor" opacity="0.6" />
-                <rect x="7" y="7" width="4" height="10" rx="1" fill="currentColor" opacity="0.8" />
-                <rect x="13" y="2" width="4" height="15" rx="1" fill="currentColor" />
-              </svg>
-              <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em]">Progress</p>
-            </button>
-            <button
-              type="button"
-              onClick={onOpenSettings}
-              className="rounded-[1.2rem] px-2 py-3 text-center text-slate-500 transition hover:bg-white/5 hover:text-slate-300"
-            >
-              <svg className="mx-auto" width="18" height="18" viewBox="0 0 18 18" fill="none">
-                <circle cx="9" cy="9" r="2.5" fill="currentColor" />
-                <path d="M9 1v2M9 15v2M1 9h2M15 9h2M3.1 3.1l1.4 1.4M13.5 13.5l1.4 1.4M14.9 3.1l-1.4 1.4M4.5 13.5l-1.4 1.4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.7" />
-              </svg>
-              <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em]">Settings</p>
-            </button>
-          </nav>
+          {/* First session feature bullets */}
+          {isFirstSession && (
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              {[
+                "📷 Camera form coach",
+                "🎙️ Voice commands",
+                "🏆 XP & badges",
+                "📋 Adaptive plans",
+              ].map((item) => (
+                <div key={item} className="rounded-xl border border-white/8 bg-slate-950/50 px-3 py-2.5 text-xs font-medium text-slate-300">
+                  {item}
+                </div>
+              ))}
+            </div>
+          )}
 
         </div>
-      </div>
-    </main>
+      </main>
+
+      {/* ── Box D: Floating Glassmorphic Nav Dock ── */}
+      <nav className="nav-dock-enter fixed bottom-5 left-1/2 z-50 -translate-x-1/2">
+        <div className="flex items-center gap-1 rounded-[2rem] border border-white/12 bg-slate-950/82 px-3 py-2 shadow-[0_8px_32px_rgba(0,0,0,0.5),0_0_0_1px_rgba(255,255,255,0.04)] backdrop-blur-2xl">
+          {navItems.map((item) => {
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => handleNavTab(item.id)}
+                className={`flex flex-col items-center gap-1 rounded-2xl px-5 py-2.5 transition-all duration-300 ${
+                  isActive
+                    ? "bg-gradient-to-b from-blue-500/22 to-violet-500/16 text-white shadow-[0_0_16px_rgba(99,102,241,0.3)]"
+                    : "text-slate-500 hover:text-slate-300"
+                }`}
+              >
+                <span className={`transition-all duration-300 ${isActive ? "scale-110 text-blue-400" : ""}`}>
+                  {item.icon}
+                </span>
+                <span className={`text-[10px] font-black uppercase tracking-[0.16em] transition-all duration-300 ${isActive ? "text-white" : "text-slate-500"}`}>
+                  {item.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+    </div>
   );
 }

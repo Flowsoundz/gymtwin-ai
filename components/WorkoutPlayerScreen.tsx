@@ -335,6 +335,33 @@ export function WorkoutPlayerScreen({
             phase: plankPostureStatus,
           };
 
+  const formAccuracyPct = trackingReadiness.confidenceScore;
+  const paceMatchPct =
+    cleanRepCount + needsWorkRepCount > 0
+      ? Math.round((cleanRepCount / (cleanRepCount + needsWorkRepCount)) * 100)
+      : 0;
+
+  const hudGlowClass =
+    feedbackSeverity === "good"
+      ? "shadow-[0_0_60px_rgba(16,185,129,0.45),0_0_100px_rgba(16,185,129,0.12)] bg-gradient-to-br from-emerald-500/45 via-transparent to-transparent"
+      : feedbackSeverity === "error"
+        ? "shadow-[0_0_60px_rgba(239,68,68,0.45),0_0_100px_rgba(239,68,68,0.12)] bg-gradient-to-br from-red-500/45 via-transparent to-transparent"
+        : feedbackSeverity === "warning"
+          ? "shadow-[0_0_50px_rgba(234,179,8,0.38)] bg-gradient-to-br from-amber-500/35 via-transparent to-transparent"
+          : "shadow-[0_0_40px_rgba(99,102,241,0.28)] bg-gradient-to-br from-blue-500/28 via-transparent to-fuchsia-500/18";
+
+  const formHUDBadge =
+    formAccuracyPct >= 80
+      ? "border-emerald-400/40 bg-emerald-950/85 text-emerald-200"
+      : formAccuracyPct >= 50
+        ? "border-amber-400/40 bg-amber-950/85 text-amber-200"
+        : "border-red-400/40 bg-red-950/85 text-red-200";
+
+  const formHUDBarGrad =
+    formAccuracyPct >= 80 ? "from-emerald-400 to-green-500"
+    : formAccuracyPct >= 50 ? "from-amber-400 to-yellow-500"
+    : "from-red-500 to-rose-600";
+
   const cameraGuidanceCard = (
     <div className="rounded-[1.25rem] border border-white/8 bg-slate-950/55 px-4 py-4 text-left text-sm leading-relaxed text-slate-300">
       <p className="text-[10px] font-black uppercase tracking-[0.24em] text-blue-300">Camera Setup</p>
@@ -639,41 +666,9 @@ export function WorkoutPlayerScreen({
         </div>
       ) : (
         <div className="mt-4 space-y-4">
-          <div className="rounded-[1.6rem] bg-gradient-to-br from-blue-500/18 via-transparent to-fuchsia-500/14 p-[1px] shadow-[0_0_40px_rgba(99,102,241,0.18)]">
-            <div className="relative overflow-hidden rounded-[1.55rem] border border-white/8 bg-slate-950">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(99,102,241,0.22),_transparent_28%),linear-gradient(180deg,_rgba(15,23,42,0.05),_rgba(15,23,42,0.38))]" />
-              <div className="relative aspect-[16/13] sm:aspect-[5/4]">
-                <video
-                  ref={videoRef}
-                  className="absolute inset-0 h-full w-full object-cover"
-                  autoPlay
-                  muted
-                  playsInline
-                />
-                <canvas
-                  ref={canvasRef}
-                  className="pointer-events-none absolute inset-0 h-full w-full"
-                />
-              </div>
-
-              <div className="pointer-events-none absolute inset-x-3 bottom-3 flex items-end justify-between gap-3">
-                <div className="rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 backdrop-blur-md">
-                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">Mode</p>
-                  <p className="mt-1 text-xs font-bold text-slate-100">{cameraModeLabel}</p>
-                </div>
-                {showCameraOverlayAvatar || showCameraCornerAvatar ? (
-                  <div className={showCameraCornerAvatar ? "max-w-[10rem]" : "max-w-[13rem]"}>
-                    <FloatingCoachAvatar
-                      selectedAvatar={selectedAvatar}
-                      mood={coachBrain.mood}
-                      message={`${cameraMetrics.phase}\n${coachBrain.message}`}
-                      position="stage-overlay"
-                      compact={showCameraCornerAvatar || avatarDisplaySettings.compactInWorkout}
-                    />
-                  </div>
-                ) : null}
-              </div>
-            </div>
+          <div className="rounded-[1.25rem] border border-blue-400/20 bg-blue-950/30 px-4 py-3 text-center">
+            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-blue-300">Camera Feed Active Above</p>
+            <p className="mt-0.5 text-xs text-slate-400">Live tracking shown in the camera HUD panel</p>
           </div>
 
           <div className="grid grid-cols-2 gap-3 text-left">
@@ -837,6 +832,130 @@ export function WorkoutPlayerScreen({
       </header>
 
       <section className="px-4 py-6 lg:px-6 lg:py-8">
+        {/* ── Dual-column camera HUD (only when camera is active) ── */}
+        {isCameraCoachOpen && (
+          <div className="mx-auto mb-6 max-w-7xl">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.58fr)]">
+
+              {/* Left: Live camera feed with neon skeletal glow */}
+              <div className={`rounded-[1.8rem] p-[2px] transition-all duration-500 ${hudGlowClass}`}>
+                <div className="relative overflow-hidden rounded-[1.75rem] bg-slate-950">
+                  {/* Corner badge: Form Accuracy */}
+                  <div className="pointer-events-none absolute left-3 top-3 z-10">
+                    <div className={`rounded-2xl border px-3 py-2 backdrop-blur-xl ${formHUDBadge}`}>
+                      <p className="text-[9px] font-black uppercase tracking-[0.3em] opacity-80">Form Accuracy</p>
+                      <p className="text-2xl font-black leading-none">{formAccuracyPct}%</p>
+                      <div className="mt-2 h-1 w-20 overflow-hidden rounded-full bg-white/10">
+                        <div
+                          className={`h-full rounded-full bg-gradient-to-r transition-all ${formHUDBarGrad}`}
+                          style={{ width: `${formAccuracyPct}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Corner badge: Rep count */}
+                  <div className="pointer-events-none absolute right-3 top-3 z-10">
+                    <div className="rounded-2xl border border-white/10 bg-slate-950/80 px-3 py-2 backdrop-blur-xl">
+                      <p className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-500">
+                        {selectedMode === "plank" ? "Hold" : "Reps"}
+                      </p>
+                      <p className="text-2xl font-black leading-none text-white">{cameraMetrics.reps}</p>
+                    </div>
+                  </div>
+
+                  {/* The live camera feed */}
+                  <div className="relative aspect-[16/11]">
+                    <video
+                      ref={videoRef}
+                      className="absolute inset-0 h-full w-full object-cover"
+                      autoPlay
+                      muted
+                      playsInline
+                    />
+                    <canvas
+                      ref={canvasRef}
+                      className="pointer-events-none absolute inset-0 h-full w-full"
+                    />
+                  </div>
+
+                  {/* Bottom bar: phase + status */}
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/90 to-transparent px-3 pb-3 pt-8">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className={`rounded-xl border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] backdrop-blur-md ${
+                        feedbackSeverity === "good"
+                          ? "border-emerald-400/30 bg-emerald-950/70 text-emerald-200"
+                          : feedbackSeverity === "error"
+                            ? "border-red-400/30 bg-red-950/70 text-red-200"
+                            : "border-white/10 bg-slate-950/70 text-slate-300"
+                      }`}>
+                        {cameraMetrics.phase}
+                      </div>
+                      <div className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] backdrop-blur-md ${statusTone}`}>
+                        {statusLabel}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right: Coach3D with Pace Match + Form Accuracy HUD */}
+              <div className="relative overflow-hidden rounded-[1.8rem] border border-white/8 bg-slate-950 shadow-[0_20px_60px_rgba(15,23,42,0.55)]">
+                {/* Ambient glow orb */}
+                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(99,102,241,0.18),_transparent_60%)]" />
+
+                {/* HUD overlay — top */}
+                <div className="pointer-events-none absolute inset-x-3 top-3 z-10 flex flex-col gap-2">
+                  {/* Pace Match */}
+                  <div className="rounded-2xl border border-blue-400/25 bg-slate-950/85 px-3 py-2.5 backdrop-blur-xl">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[9px] font-black uppercase tracking-[0.3em] text-blue-300">Pace Match</p>
+                      <p className="text-lg font-black text-white leading-none">{paceMatchPct}%</p>
+                    </div>
+                    <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/8">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-blue-400 to-indigo-500 transition-all duration-700"
+                        style={{ width: `${paceMatchPct}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Form Accuracy */}
+                  <div className={`rounded-2xl border px-3 py-2.5 backdrop-blur-xl ${formHUDBadge} bg-opacity-85`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[9px] font-black uppercase tracking-[0.3em] opacity-80">Form Accuracy</p>
+                      <p className="text-lg font-black leading-none">{formAccuracyPct}%</p>
+                    </div>
+                    <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/8">
+                      <div
+                        className={`h-full rounded-full bg-gradient-to-r transition-all duration-700 ${formHUDBarGrad}`}
+                        style={{ width: `${formAccuracyPct}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Coach3D demo — always shown; demo clip layered on top of idle when available */}
+                <Coach3D
+                  selectedAvatar={selectedAvatar}
+                  animationHint="idle"
+                  demoClipName={demoClipName}
+                  compact
+                  previewFrame="full_body"
+                  lightingMode="neutral"
+                />
+
+                {/* Coach label strip at bottom */}
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950 to-transparent px-3 pb-3 pt-8">
+                  <p className="text-center text-[10px] font-black uppercase tracking-[0.28em] text-fuchsia-400">Digital Twin Coach</p>
+                  <p className="mt-0.5 text-center text-xs font-semibold text-slate-300">{cleanMovementName(activeMovement.name)}</p>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        )}
+
         <div className="mx-auto grid max-w-7xl gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.92fr)]">
           <div className="space-y-6">
             {isRestPhase ? (
@@ -1009,7 +1128,7 @@ export function WorkoutPlayerScreen({
 
             {showVoicePanel ? voicePanel : null}
 
-            {showDemoCoach && isCameraCoachOpen ? (
+            {showDemoCoach && isCameraCoachOpen ? null /* Coach shown in camera HUD above */ : showDemoCoach ? (
               <div className="rounded-[1.7rem] border border-white/8 bg-white/6 backdrop-blur-xl shadow-[0_18px_60px_rgba(15,23,42,0.45)]">
                 <div className="px-4 pt-4">
                   <p className="text-[10px] font-black uppercase tracking-[0.24em] text-fuchsia-300">Coach Demo</p>

@@ -156,6 +156,68 @@ export function WorkoutSummaryScreen({
             </div>
           </section>
 
+          {/* ── Locked Pro Section — AI Joint Analysis ── */}
+          <section className="mb-6 overflow-hidden rounded-[1.8rem] border border-violet-400/20 bg-slate-950/70">
+            {/* Visible header */}
+            <div className="flex items-center justify-between gap-3 border-b border-white/6 px-5 py-4">
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-[0.26em] text-violet-400">AI Form Analysis</p>
+                <p className="mt-0.5 text-sm font-black text-white">Joint Deviation & Posture Report</p>
+              </div>
+              <div className="rounded-full border border-violet-400/24 bg-violet-500/12 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-violet-300">
+                Pro
+              </div>
+            </div>
+
+            {/* Blurred skeletal preview + lock overlay */}
+            <div className="relative">
+              {/* Blurred content underneath */}
+              <div className="select-none blur-[6px]">
+                <div className="grid grid-cols-3 gap-3 p-5">
+                  {[
+                    { label: "Forward Lean", value: "14°", color: "text-red-400", bar: 72 },
+                    { label: "Hip Symmetry", value: "91%", color: "text-emerald-400", bar: 91 },
+                    { label: "Knee Track", value: "—3°", color: "text-amber-400", bar: 55 },
+                  ].map((metric) => (
+                    <div key={metric.label} className="rounded-2xl border border-white/8 bg-slate-900/60 p-3 text-center">
+                      <p className={`text-2xl font-black italic ${metric.color}`}>{metric.value}</p>
+                      <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">{metric.label}</p>
+                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/8">
+                        <div className={`h-full rounded-full ${metric.color.replace("text-", "bg-")}`} style={{ width: `${metric.bar}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center gap-3 px-5 pb-5">
+                  <div className="h-16 w-16 rounded-2xl border border-white/8 bg-gradient-to-br from-violet-500/20 to-blue-500/10" />
+                  <div className="flex-1 space-y-2">
+                    <div className="h-2 w-3/4 rounded-full bg-white/10" />
+                    <div className="h-2 w-1/2 rounded-full bg-white/8" />
+                    <div className="h-2 w-2/3 rounded-full bg-white/6" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Lock overlay */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-slate-950/75 px-6 py-8 backdrop-blur-[2px]">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-violet-400/30 bg-violet-500/16 text-3xl shadow-[0_0_30px_rgba(168,85,247,0.25)]">
+                  🔒
+                </div>
+                <div className="text-center">
+                  <p className="text-base font-black text-white">Unlock GymTwin Pro</p>
+                  <p className="mt-2 max-w-xs text-sm leading-relaxed text-slate-400">
+                    View your <span className="font-black text-amber-300">14° forward-lean analysis</span> and AI-detected knee strain risk from this session.
+                  </p>
+                </div>
+                <button className="group relative overflow-hidden rounded-2xl bg-gradient-to-r from-violet-600 to-fuchsia-600 px-6 py-3 text-sm font-black text-white shadow-[0_0_30px_rgba(168,85,247,0.35)] transition-all hover:scale-105 hover:shadow-[0_0_40px_rgba(168,85,247,0.5)] active:scale-95">
+                  <span className="relative z-10">Upgrade to Pro →</span>
+                  <span className="absolute inset-0 -translate-x-full skew-x-[-20deg] bg-gradient-to-r from-transparent via-white/15 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+                </button>
+                <p className="text-[10px] text-slate-600">AI-powered · On-device · Private</p>
+              </div>
+            </div>
+          </section>
+
           <section className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
             <div className="rounded-[1.5rem] border border-white/8 bg-slate-950/58 p-4 text-center">
               <StatCard value={lastWorkoutSummary.workoutScore ?? "--"} label="Workout Score" colorClass="text-fuchsia-300" />
