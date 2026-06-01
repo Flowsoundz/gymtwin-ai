@@ -1,5 +1,7 @@
+import { Coach3D } from "@/components/Coach3D";
 import { getCameraCoachModeForMovementName } from "@/lib/cameraCoachMapping";
 import { getAvatarLabel } from "@/lib/avatarAssets";
+import { getExerciseDemoDescriptor } from "@/lib/exerciseDemoLibrary";
 import type { CoachAvatar, WorkoutMovement } from "@/types";
 
 type RoutinePreviewScreenProps = {
@@ -44,7 +46,9 @@ export function RoutinePreviewScreen({
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.7fr)]">
           <section>
             <div className="space-y-3">
-              {activeRoutine.map((move, index) => (
+              {activeRoutine.map((move, index) => {
+                const demoDescriptor = getExerciseDemoDescriptor(move.name, selectedAvatar);
+                return (
                 <div key={move.id} className="relative flex items-center justify-between overflow-hidden rounded-[1.6rem] border border-white/8 bg-white/6 p-4 shadow-[0_18px_60px_rgba(15,23,42,0.35)] backdrop-blur-xl lg:p-5">
                   <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-blue-400/35 to-fuchsia-400/35" />
                   <div className="max-w-[75%]">
@@ -58,20 +62,50 @@ export function RoutinePreviewScreen({
                         Camera Coach
                       </span>
                     ) : null}
+                    <span
+                      className={`ml-2 inline-block rounded-full border px-2 py-0.5 text-[9px] font-black uppercase ${
+                        demoDescriptor.status === "available"
+                          ? "border-emerald-400/30 bg-emerald-500/12 text-emerald-200"
+                          : demoDescriptor.status === "prepared"
+                            ? "border-cyan-400/30 bg-cyan-500/12 text-cyan-200"
+                            : getCameraCoachModeForMovementName(move.name)
+                              ? "border-blue-900/40 bg-blue-950/40 text-blue-300"
+                              : "border-white/8 bg-slate-900/70 text-slate-400"
+                      }`}
+                    >
+                      {demoDescriptor.status === "available"
+                        ? "Clip Ready"
+                        : demoDescriptor.status === "prepared"
+                          ? demoDescriptor.demoFamily
+                            ? `${demoDescriptor.demoFamily} demo ready`
+                            : "Demo Mapped"
+                          : getCameraCoachModeForMovementName(move.name)
+                            ? "Camera Coach Ready"
+                            : "Demo Planned"}
+                    </span>
                     <h4 className="text-sm font-extrabold leading-tight text-slate-200 lg:text-base">
                       {index + 1}. {cleanMovementName(move.name)}
                     </h4>
+                    <p className="mt-2 text-xs leading-relaxed text-slate-400">{demoDescriptor.summary}</p>
                   </div>
                   <div className="shrink-0 text-right">
                     <p className="font-mono text-base font-black text-purple-400 lg:text-lg">{move.baseReps === 1 ? `${move.activeSeconds}s` : `${move.sets}x${move.baseReps}`}</p>
                     <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{move.baseReps === 1 ? "Hold" : "Reps"}</p>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </section>
 
           <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
+            <Coach3D
+              selectedAvatar={selectedAvatar}
+              animationHint="idle"
+              previewFrame="bust"
+              compact
+              lightingMode="neutral"
+            />
             <section className="rounded-[1.8rem] border border-white/8 bg-[linear-gradient(180deg,rgba(15,23,42,0.82),rgba(2,6,23,0.94))] p-5 shadow-[0_30px_80px_rgba(15,23,42,0.42)]">
               <p className="text-[11px] font-black uppercase tracking-[0.26em] text-blue-300">Program Summary</p>
               <h3 className="mt-2 text-2xl font-black tracking-tight text-white">Ready To Train</h3>

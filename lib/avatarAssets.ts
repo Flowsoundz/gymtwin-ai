@@ -19,7 +19,8 @@ const avatarProfiles: Record<CoachAvatar, AvatarProfile> = {
     role: "Focused, motivating, form-first.",
     personality: "Precision coach",
     image: "/avatars/GTFMODEL.png",
-    modelPaths: ["/models/nova-coach.glb"],
+    // atlas-coach-mobile.glb is the confirmed humanoid model; nova-coach.glb is a legacy animal rig
+    modelPaths: ["/models/atlas-coach-mobile.glb", "/models/nova-coach.glb"],
     accentGradient: "from-fuchsia-500/28 via-blue-500/18 to-slate-950",
     accentText: "text-fuchsia-200",
     readyLabel: "Ready",

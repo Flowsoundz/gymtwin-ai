@@ -1,31 +1,36 @@
 import type { CoachName, WorkoutMovement } from "@/types";
 
-export const coachDialogue: Record<CoachName, { action: string[]; recovery: string[]; intro: string[]; outro: string[]; }> = {
-  "Calm Coach": {
+type DialogueCoachName = Extract<
+  CoachName,
+  "Supportive" | "Intense" | "Motivational" | "Playful" | "High Energy"
+>;
+
+export const coachDialogue: Record<DialogueCoachName, { action: string[]; recovery: string[]; intro: string[]; outro: string[]; }> = {
+  "Supportive": {
     intro: ["We are going to move with control today. Stay patient, breathe, and listen to your body.", "Begin with calm focus. Every rep should feel intentional."],
     action: ["Find your center. Move with control, not panic.", "Keep the breath steady. Let the form guide the pace.", "Excellent tempo. Stay smooth and protect your joints.", "Slow is strong. Control the movement from start to finish."],
     recovery: ["Let your heart rate settle. Deep breath in, slow breath out.", "Recover with purpose. You are preparing for the next clean set.", "Relax your shoulders. Reset your posture. You are doing well."],
     outro: ["Your movement today was mindful and controlled. Your body thanks you for this care."]
   },
-  "Drill Coach": {
+  "Intense": {
     intro: ["Lock in. We are training with discipline today. Clean form first, strong finish second.", "Eyes forward. Core tight. You came here to work, so let’s execute."],
     action: ["Core tight. No sloppy reps. Earn every one.", "Stay sharp. Control the movement and finish the set.", "Discipline over comfort. Keep your form locked in.", "Do not rush. Strong reps only."],
     recovery: ["Stand tall. Breathe. Recovery is part of the mission.", "Shake it out, reset, and prepare for the next set.", "Short rest. Big focus. We go again soon."],
     outro: ["Mission accomplished. You did not cut corners, and you did not quit. Outstanding discipline."]
   },
-  "Anime Warrior Coach": {
+  "Motivational": {
     intro: ["This is your training arc. Focus your energy and build power one rep at a time.", "Every set is part of the journey. Stay brave, stay focused, and keep moving."],
     action: ["Channel your focus. One clean rep at a time.", "Your strength is building. Do not break your form.", "Push with purpose. This is how discipline becomes power.", "Stand firm. Every rep is forging a stronger version of you."],
     recovery: ["Recover your energy. The next challenge is waiting.", "Breathe deeply. Reset your spirit and your stance.", "Rest now, warrior. Return stronger on the next set."],
     outro: ["The trial is complete. Your discipline leveled up today."]
   },
-  "Funny Coach": {
+  "Playful": {
     intro: ["Welcome to the workout. Your couch misses you already, but we are ignoring it.", "Time to move. If your legs complain, tell them customer service is closed."],
     action: ["Keep moving. Gravity is doing too much today.", "Your muscles are not shaking. They are just clapping for you.", "The couch can wait. Your future self is watching.", "Stay with it. Sweat is just your body sending a progress report."],
     recovery: ["Enjoy this tiny vacation before the next set.", "Breathe. Hydrate. Pretend this was your idea.", "Short break. No negotiations with the floor."],
     outro: ["You actually finished it. Go tell your couch this relationship is getting complicated."]
   },
-  "Dominican Hype Coach": {
+  "High Energy": {
     intro: ["Dale, mi loco. Vamos a meter mano suave pero firme. Respira y controla cada movimiento.", "Activo. Hoy no hay que matarse, hay que moverse inteligente y terminar fuerte."],
     action: ["¡Dale, dale! Respira y controla ese movimiento.", "No te quite ahora. Un rep limpio a la vez.", "¡Eso es! Mantén el ritmo y cuida la forma.", "Con calma y con fuerza. Tú puedes con esto."],
     recovery: ["Respira profundo. Shake it out. Seguimos ahora.", "Agua si la necesitas. Reset rápido y volvemos.", "Tranquilo. Recupera el aire y prepárate para la próxima."],

@@ -1,6 +1,10 @@
-import Image from "next/image";
-import { getAvatarAsset, getAvatarLabel, getAvatarProfile, getAvatarRole } from "@/lib/avatarAssets";
-import type { CoachAvatar, TraineeStats } from "@/types";
+import { Coach3D } from "@/components/Coach3D";
+import { getAvatarLabel, getAvatarRole } from "@/lib/avatarAssets";
+import { getCoachAdaptationRecommendation } from "@/lib/coachAdaptationEngine";
+import { deriveProgressTrends } from "@/lib/progressTrends";
+import { getTodayWeeklyPlanLabel } from "@/lib/weeklyPlanEngine";
+import { useMemo } from "react";
+import type { BodyProfile, CoachAvatar, TraineeStats, WeeklyPlan, WorkoutSummaryData } from "@/types";
 
 type LandingScreenProps = {
   userStats: TraineeStats;
@@ -10,6 +14,12 @@ type LandingScreenProps = {
   onViewProgress: () => void;
   onOpenCameraSandbox: () => void;
   onOpenSettings: () => void;
+  weeklyPlan?: WeeklyPlan | null;
+  bodyProfile?: BodyProfile | null;
+  workoutHistory: WorkoutSummaryData[];
+  latestWorkoutSummary?: WorkoutSummaryData | null;
+  onGenerateWeeklyPlan: () => void;
+  onStartTodaysWorkout: () => void;
   selectedAvatar: CoachAvatar;
   primaryButton: string;
   secondaryButton: string;
@@ -36,7 +46,7 @@ function DashboardStat({
   label,
   accentClass,
 }: {
-  icon: string;
+  icon: React.ReactNode;
   value: string | number;
   label: string;
   accentClass: string;
@@ -44,12 +54,14 @@ function DashboardStat({
   return (
     <div className="rounded-[1.4rem] border border-white/8 bg-slate-950/65 p-3 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
       <div className="mb-3 flex items-center justify-between">
-        <div className={`flex h-9 w-9 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-sm ${accentClass}`}>
+        <div className={`flex h-9 w-9 items-center justify-center rounded-2xl border border-white/10 bg-white/5 ${accentClass}`}>
           {icon}
         </div>
-        <div className={`h-2 w-2 rounded-full ${accentClass.replace("text-", "bg-")}`} />
+        <div className={`h-2 w-2 rounded-full ${value === 0 ? "bg-slate-700" : accentClass.replace("text-", "bg-")}`} />
       </div>
-      <p className={`text-2xl font-black tracking-tight ${accentClass}`}>{value}</p>
+      <p className={`text-2xl font-black tracking-tight ${value === 0 ? "text-slate-600" : accentClass}`}>
+        {value === 0 ? "—" : value}
+      </p>
       <p className="mt-1 text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">{label}</p>
     </div>
   );
@@ -58,10 +70,12 @@ function DashboardStat({
 function SecondaryAction({
   title,
   subtitle,
+  icon,
   onClick,
 }: {
   title: string;
   subtitle: string;
+  icon?: React.ReactNode;
   onClick: () => void;
 }) {
   return (
@@ -69,11 +83,18 @@ function SecondaryAction({
       onClick={onClick}
       className="flex w-full items-center justify-between rounded-[1.35rem] border border-white/8 bg-slate-950/60 px-4 py-4 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] transition hover:border-blue-400/18 hover:bg-slate-900/80 active:scale-[0.99]"
     >
-      <div>
-        <p className="text-sm font-black text-slate-100">{title}</p>
-        <p className="mt-1 text-xs leading-relaxed text-slate-400">{subtitle}</p>
+      <div className="flex items-center gap-3">
+        {icon ? (
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-300">
+            {icon}
+          </div>
+        ) : null}
+        <div>
+          <p className="text-sm font-black text-slate-100">{title}</p>
+          <p className="mt-0.5 text-xs leading-relaxed text-slate-400">{subtitle}</p>
+        </div>
       </div>
-      <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-sm text-slate-300">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-sm text-slate-400">
         →
       </div>
     </button>
@@ -88,6 +109,12 @@ export function LandingScreen({
   onViewProgress,
   onOpenCameraSandbox,
   onOpenSettings,
+  weeklyPlan,
+  bodyProfile,
+  workoutHistory,
+  latestWorkoutSummary,
+  onGenerateWeeklyPlan,
+  onStartTodaysWorkout,
   selectedAvatar,
 }: LandingScreenProps) {
   const scrollToTop = () => {
@@ -96,22 +123,51 @@ export function LandingScreen({
     }
   };
 
-  const avatarProfile = getAvatarProfile(selectedAvatar);
-  const avatarMeta = {
-    name: getAvatarLabel(selectedAvatar),
-    subtitle: getAvatarRole(selectedAvatar),
-    accent: avatarProfile.accentGradient,
-    imagePosition: "object-[center_20%]",
-    status: avatarProfile.readyLabel,
-    personality: avatarProfile.personality,
-  };
-  const avatarAsset = getAvatarAsset(selectedAvatar);
+  const coachName = getAvatarLabel(selectedAvatar);
+  const coachRole = getAvatarRole(selectedAvatar);
+  const todayPlan = weeklyPlan?.days.find((day) => day.dayLabel === getTodayWeeklyPlanLabel()) ?? weeklyPlan?.days[0] ?? null;
+  const completedWeeklyDays = weeklyPlan?.days.filter((day) => day.completed).length ?? 0;
+  const progressTrends = useMemo(
+    () =>
+      deriveProgressTrends({
+        workoutHistory,
+        weeklyPlan,
+        bodyProfile,
+        userStats,
+      }),
+    [bodyProfile, userStats, weeklyPlan, workoutHistory]
+  );
+  const coachRecommendation = useMemo(
+    () =>
+      getCoachAdaptationRecommendation({
+        bodyProfile,
+        weeklyPlan,
+        workoutHistory,
+        latestWorkoutSummary,
+        userStats,
+        progressTrends,
+      }),
+    [bodyProfile, latestWorkoutSummary, progressTrends, userStats, weeklyPlan, workoutHistory]
+  );
+  const priorityTone =
+    coachRecommendation.priority === "high"
+      ? "border-amber-400/18 bg-amber-500/10 text-amber-200"
+      : coachRecommendation.priority === "medium"
+        ? "border-blue-400/18 bg-blue-500/10 text-blue-200"
+        : "border-emerald-400/18 bg-emerald-500/10 text-emerald-200";
+
+  const isFirstSession =
+    userStats.workoutsCompleted === 0 &&
+    userStats.streak === 0 &&
+    userStats.totalMinutes === 0;
 
   return (
     <main className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.22),_transparent_24%),radial-gradient(circle_at_bottom,_rgba(59,130,246,0.14),_transparent_24%),linear-gradient(180deg,_#020617_0%,_#020617_48%,_#030712_100%)] px-4 pb-10 pt-8 text-white antialiased sm:px-6 sm:pt-10 lg:px-8 lg:py-12">
       <div className="mx-auto w-full max-w-md lg:max-w-5xl xl:max-w-6xl">
         <div className="rounded-[2.25rem] border border-white/8 bg-[linear-gradient(180deg,rgba(15,23,42,0.82),rgba(2,6,23,0.94))] p-5 shadow-[0_30px_80px_rgba(15,23,42,0.5)] backdrop-blur-2xl sm:p-6 lg:rounded-[2.5rem] lg:p-8 xl:p-9">
-          <header className="mb-6">
+
+          {/* ── Header ── */}
+          <header className="mb-5">
             <div className="mb-5 flex items-center justify-between gap-3">
               <BrandMark compact />
               <div className="text-center">
@@ -125,6 +181,7 @@ export function LandingScreen({
               </div>
             </div>
 
+            {/* Hero */}
             <section className="relative overflow-hidden rounded-[2rem] border border-white/8 bg-slate-950/58 p-5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] lg:p-7">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,_rgba(99,102,241,0.24),_transparent_32%),radial-gradient(circle_at_bottom_left,_rgba(168,85,247,0.18),_transparent_34%)]" />
               <div className="relative flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between xl:grid xl:grid-cols-[minmax(0,1.2fr)_320px] xl:gap-8">
@@ -148,57 +205,21 @@ export function LandingScreen({
                       </div>
                     ))}
                   </div>
-                  <p className="mt-4 text-xs leading-relaxed text-slate-500">
-                    Start with a custom workout, turn on the camera coach when you want live form help, and keep building streaks over time.
-                  </p>
                 </div>
+
+                {/* Coach card */}
                 <div className="relative mx-auto w-full max-w-[14rem] shrink-0 pt-1 sm:mx-0 sm:w-[12rem] lg:w-[15rem] xl:w-full xl:max-w-[20rem]">
                   <div className="absolute inset-2 rounded-[2rem] bg-gradient-to-br from-blue-500/30 via-indigo-500/20 to-fuchsia-500/30 blur-3xl" />
-                  <div className="relative overflow-hidden rounded-[2rem] border border-fuchsia-400/20 bg-slate-900/72 shadow-[0_0_56px_rgba(99,102,241,0.28)] lg:rounded-[2.25rem]">
-                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.12),_transparent_30%),radial-gradient(circle_at_bottom,_rgba(99,102,241,0.16),_transparent_38%)]" />
-                    <div className="absolute left-4 right-4 top-4 z-20 flex items-center justify-between gap-2">
-                      <p className="rounded-full border border-fuchsia-400/18 bg-slate-950/55 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-fuchsia-200 backdrop-blur-md">
-                        AI Coach
-                      </p>
-                      <div className="rounded-full border border-emerald-400/24 bg-emerald-500/12 px-3 py-1 text-[9px] font-black uppercase tracking-[0.2em] text-emerald-100 shadow-[0_0_20px_rgba(16,185,129,0.18)] backdrop-blur-md">
-                        Ready
-                      </div>
-                    </div>
-                    <div className={`relative h-72 bg-gradient-to-br ${avatarMeta.accent} sm:h-80 lg:h-[24rem] xl:h-[26rem]`}>
-                      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.14),_transparent_28%)]" />
-                      <div className="absolute inset-[10%] rounded-[2rem] border border-blue-300/10" />
-                      <div className="absolute inset-x-6 top-12 bottom-24 overflow-hidden rounded-[1.8rem] border border-white/10 bg-slate-950/55 shadow-[0_24px_50px_rgba(2,6,23,0.42)] lg:top-14 lg:bottom-28">
-                        <Image
-                          src={avatarAsset}
-                          alt={`${avatarMeta.name} avatar`}
-                          fill
-                          sizes="(max-width: 640px) 216px, 224px"
-                          className={`relative z-10 object-cover ${avatarMeta.imagePosition}`}
-                          onError={(event) => {
-                            event.currentTarget.style.display = "none";
-                          }}
-                        />
-                        <div className="absolute inset-0 z-0 flex items-center justify-center bg-slate-950/30">
-                          <div className="text-center">
-                            <div className="mx-auto h-4 w-4 rounded-full bg-blue-200/90" />
-                            <div className="mx-auto mt-1 h-7 w-[2px] rounded-full bg-fuchsia-200/90" />
-                            <div className="mx-auto -mt-4 h-[2px] w-8 rounded-full bg-blue-200/90" />
-                            <div className="mx-auto mt-3 flex items-center justify-center gap-0.5 text-xs font-black tracking-tight text-white">
-                              <span>G</span>
-                              <span className="text-blue-300">T</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="absolute inset-x-0 bottom-0 z-10 h-28 bg-gradient-to-t from-slate-950 via-slate-950/82 to-transparent" />
-                      <div className="absolute inset-x-5 bottom-5 z-20">
-                        <p className="text-lg font-black tracking-tight text-white lg:text-xl">{avatarMeta.name}</p>
-                        <p className="mt-1 text-[11px] font-black uppercase tracking-[0.22em] text-slate-300">
-                          {avatarMeta.subtitle}
-                        </p>
-                        <p className="mt-2 text-xs font-semibold leading-relaxed text-slate-200">{avatarMeta.personality}</p>
-                        <p className="mt-1 text-xs leading-relaxed text-slate-400">{avatarMeta.status}</p>
-                      </div>
+                  <div className="relative">
+                    <Coach3D
+                      selectedAvatar={selectedAvatar}
+                      animationHint="idle"
+                      previewFrame="full_body"
+                      lightingMode="neutral"
+                    />
+                    <div className="mt-2 px-1">
+                      <p className="text-base font-black tracking-tight text-white">{coachName}</p>
+                      <p className="mt-0.5 text-[11px] font-black uppercase tracking-[0.22em] text-slate-300">{coachRole}</p>
                     </div>
                   </div>
                 </div>
@@ -206,122 +227,217 @@ export function LandingScreen({
             </section>
           </header>
 
-          <section className="mb-5 rounded-[1.7rem] border border-fuchsia-400/14 bg-gradient-to-r from-blue-500/10 via-slate-950/30 to-fuchsia-500/10 p-4 text-left shadow-[0_0_32px_rgba(99,102,241,0.12)] xl:px-5 xl:py-5">
-            <p className="text-[11px] font-black uppercase tracking-[0.28em] text-fuchsia-300">AI Camera Coach</p>
-            <p className="mt-2 text-sm leading-relaxed text-slate-300">
-              Camera coach for squats, push-ups, and planks with live pose tracking, private on-device feedback, and no uploads.
-            </p>
-          </section>
-
-          <section className="mb-6 grid grid-cols-3 gap-3 lg:gap-4 xl:grid-cols-3">
-            <DashboardStat icon="🏋️" value={userStats.workoutsCompleted} label="Workouts" accentClass="text-blue-400" />
-            <DashboardStat icon="⚡" value={userStats.streak} label="Streak" accentClass="text-fuchsia-400" />
-            <DashboardStat icon="⏱" value={userStats.totalMinutes} label="Minutes" accentClass="text-indigo-400" />
-          </section>
-
-          <section className="mb-5 space-y-3 lg:grid lg:grid-cols-2 lg:gap-4 lg:space-y-0 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          {/* ── Primary CTA — immediately after hero ── */}
+          <section className="mb-5 space-y-3">
             {hasResumeSession ? (
               <button
                 onClick={onResumeWorkout}
-                className="flex w-full items-center justify-between rounded-[1.65rem] border border-blue-400/20 bg-gradient-to-r from-blue-600 to-fuchsia-600 px-4 py-4 text-left shadow-[0_18px_40px_rgba(99,102,241,0.26)] transition hover:brightness-105"
+                className="flex w-full items-center justify-between rounded-[1.65rem] border border-amber-400/24 bg-gradient-to-r from-amber-500/20 to-orange-500/18 px-5 py-4 text-left transition hover:brightness-105 active:scale-[0.99]"
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-lg">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/15 bg-white/8 text-lg">
                     ▶
                   </div>
                   <div>
                     <p className="text-base font-black text-white">Resume Workout</p>
-                    <p className="text-xs text-blue-100/85">Jump back into your active training session</p>
+                    <p className="text-xs text-amber-100/80">Jump back into your active session</p>
                   </div>
                 </div>
-                <div className="text-xl text-white/90">→</div>
+                <div className="text-xl text-white/70">→</div>
               </button>
             ) : null}
 
             <button
               onClick={onStartWorkout}
-              className={`flex w-full items-center justify-between rounded-[1.75rem] border border-blue-400/20 bg-gradient-to-r from-blue-600 to-fuchsia-600 px-4 py-4 text-left shadow-[0_18px_40px_rgba(99,102,241,0.26)] transition hover:brightness-105 ${hasResumeSession ? "lg:col-span-1" : "lg:col-span-2"}`}
+              className="flex w-full items-center justify-between rounded-[1.75rem] border border-blue-400/20 bg-gradient-to-r from-blue-600 to-fuchsia-600 px-5 py-5 text-left shadow-[0_18px_40px_rgba(99,102,241,0.3)] transition hover:brightness-105 active:scale-[0.99]"
             >
               <div className="flex items-center gap-3">
                 <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/20 bg-white/10 text-lg">
                   ▶
                 </div>
                 <div>
-                  <p className="text-base font-black text-white">Start Workout</p>
-                  <p className="text-xs text-blue-100/85">Launch a fresh guided GymTwin session</p>
+                  <p className="text-base font-black text-white">
+                    {hasResumeSession ? "Start New Workout" : "Start Workout"}
+                  </p>
+                  <p className="text-xs text-blue-100/80">Launch a fresh guided GymTwin session</p>
                 </div>
               </div>
-              <div className="text-xl text-white/90">→</div>
+              <div className="text-xl text-white/80">→</div>
             </button>
           </section>
 
+          {/* ── Today's Plan ── */}
+          <section className="mb-5 rounded-[1.8rem] border border-emerald-400/14 bg-slate-950/58 p-5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[11px] font-black uppercase tracking-[0.28em] text-emerald-300">Today&apos;s Plan</p>
+                <h3 className="mt-1 truncate text-lg font-black text-white">
+                  {todayPlan ? todayPlan.focus : "No plan yet"}
+                </h3>
+                {todayPlan ? (
+                  <p className="mt-1 text-xs text-slate-400">
+                    {todayPlan.dayLabel} · {todayPlan.recommendedWorkout} · {todayPlan.durationMinutes} min
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs text-slate-400">
+                    Generate a 7-day plan to give your week structure.
+                  </p>
+                )}
+              </div>
+              <div className="shrink-0 rounded-full border border-emerald-400/14 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-emerald-200">
+                {weeklyPlan ? `${completedWeeklyDays}/7` : "No plan"}
+              </div>
+            </div>
+            <button
+              onClick={weeklyPlan ? onStartTodaysWorkout : onGenerateWeeklyPlan}
+              className="mt-4 w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-sm font-black text-slate-100 transition hover:border-blue-400/30 hover:bg-slate-800"
+            >
+              {weeklyPlan ? "Start Today's Workout" : "Generate Weekly Plan"}
+            </button>
+          </section>
+
+          {/* ── Stats ── */}
+          <section className="mb-5">
+            {isFirstSession ? (
+              <div className="rounded-[1.7rem] border border-white/8 bg-slate-950/58 px-5 py-6 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+                <p className="text-2xl">🏋️</p>
+                <p className="mt-3 text-sm font-black text-white">Your journey starts here</p>
+                <p className="mt-1 text-xs leading-relaxed text-slate-400">
+                  Complete your first session to start tracking workouts, streaks, and minutes.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-3 lg:gap-4">
+                <DashboardStat
+                  icon={
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <rect x="1" y="6" width="3" height="4" rx="1" fill="currentColor" />
+                      <rect x="12" y="6" width="3" height="4" rx="1" fill="currentColor" />
+                      <rect x="4" y="5" width="8" height="6" rx="1.5" fill="currentColor" opacity="0.7" />
+                      <rect x="6" y="3" width="4" height="2" rx="0.5" fill="currentColor" opacity="0.5" />
+                      <rect x="6" y="11" width="4" height="2" rx="0.5" fill="currentColor" opacity="0.5" />
+                    </svg>
+                  }
+                  value={userStats.workoutsCompleted}
+                  label="Workouts"
+                  accentClass="text-blue-400"
+                />
+                <DashboardStat
+                  icon={
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <path d="M8 1L9.8 5.8L15 6.3L11.2 9.7L12.4 15L8 12.3L3.6 15L4.8 9.7L1 6.3L6.2 5.8L8 1Z" fill="currentColor" />
+                    </svg>
+                  }
+                  value={userStats.streak}
+                  label="Streak"
+                  accentClass="text-fuchsia-400"
+                />
+                <DashboardStat
+                  icon={
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                      <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.5" fill="none" />
+                      <path d="M8 5v3l2 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                    </svg>
+                  }
+                  value={userStats.totalMinutes}
+                  label="Minutes"
+                  accentClass="text-indigo-400"
+                />
+              </div>
+            )}
+          </section>
+
+          {/* ── Coach Insight ── */}
+          <section className="mb-5 rounded-[1.75rem] border border-cyan-400/14 bg-[linear-gradient(135deg,rgba(8,47,73,0.52),rgba(2,6,23,0.92))] px-5 py-4 text-left shadow-[0_0_28px_rgba(34,211,238,0.08)]">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[11px] font-black uppercase tracking-[0.28em] text-cyan-300">Coach Insight</p>
+                <p className="mt-2 text-sm font-black text-white">{coachRecommendation.title}</p>
+                <p className="mt-1 text-xs leading-relaxed text-slate-300">{coachRecommendation.message}</p>
+              </div>
+              <div className={`shrink-0 rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] ${priorityTone}`}>
+                {coachRecommendation.priority}
+              </div>
+            </div>
+          </section>
+
+          {/* ── Secondary Actions ── */}
           <section className="mb-6 space-y-3 lg:grid lg:grid-cols-2 lg:gap-4 lg:space-y-0">
             <SecondaryAction
               title="View Progress"
-              subtitle="Track your performance over time"
+              subtitle="Charts, XP, badges, and trends"
+              icon={
+                <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+                  <rect x="1" y="9" width="3" height="5" rx="1" fill="currentColor" opacity="0.7" />
+                  <rect x="6" y="5" width="3" height="9" rx="1" fill="currentColor" opacity="0.9" />
+                  <rect x="11" y="1" width="3" height="13" rx="1" fill="currentColor" />
+                </svg>
+              }
               onClick={onViewProgress}
             />
             <SecondaryAction
-              title="Camera Sandbox"
-              subtitle="Test the AI camera coach"
+              title="Camera Coach"
+              subtitle="Live pose tracking, squats, push-ups, planks"
+              icon={
+                <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+                  <rect x="1" y="3" width="10" height="9" rx="2" stroke="currentColor" strokeWidth="1.3" fill="none" />
+                  <path d="M11 6l3-2v7l-3-2V6Z" fill="currentColor" opacity="0.8" />
+                </svg>
+              }
               onClick={onOpenCameraSandbox}
             />
           </section>
 
-          <section className="mb-6 grid grid-cols-[minmax(0,1fr)_80px] items-center gap-4 rounded-[1.7rem] border border-blue-400/12 bg-slate-950/58 p-4 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] lg:grid-cols-[minmax(0,1fr)_96px] lg:p-5 xl:grid-cols-[minmax(0,1fr)_112px]">
-            <div className="max-w-full">
-              <p className="text-sm font-black text-blue-300">Coming next</p>
-              <p className="mt-2 text-xs leading-relaxed text-slate-400">
-                Camera form correction with pose tracking, rep counting, and real-time prompts to help tighten technique.
-              </p>
-            </div>
-            <div className="relative h-20 w-20 shrink-0 rounded-[1.5rem] border border-white/8 bg-gradient-to-br from-blue-500/10 to-fuchsia-500/10">
-              <div className="absolute left-1/2 top-3 h-3 w-3 -translate-x-1/2 rounded-full bg-blue-300" />
-              <div className="absolute left-1/2 top-6 h-5 w-px -translate-x-1/2 bg-blue-300/80" />
-              <div className="absolute left-[38%] top-8 h-px w-6 bg-fuchsia-300/80" />
-              <div className="absolute left-[44%] top-6 h-8 w-px rotate-35 bg-blue-300/80" />
-              <div className="absolute left-[56%] top-6 h-8 w-px -rotate-35 bg-blue-300/80" />
-              <div className="absolute left-[44%] top-11 h-8 w-px rotate-15 bg-fuchsia-300/80" />
-              <div className="absolute left-[56%] top-11 h-8 w-px -rotate-15 bg-fuchsia-300/80" />
-            </div>
-          </section>
-
-          <nav className="grid grid-cols-4 gap-2 rounded-[1.6rem] border border-white/8 bg-slate-950/65 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] xl:max-w-3xl xl:mx-auto">
+          {/* ── Bottom Nav ── */}
+          <nav className="grid grid-cols-4 gap-2 rounded-[1.6rem] border border-white/8 bg-slate-950/65 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] xl:mx-auto xl:max-w-3xl">
             <button
               type="button"
               onClick={scrollToTop}
               className="rounded-[1.2rem] border border-blue-400/18 bg-gradient-to-r from-blue-500/18 to-fuchsia-500/12 px-2 py-3 text-center transition hover:border-blue-400/28"
             >
-              <div className="mx-auto flex h-6 w-6 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-[11px] font-black text-white">
+              <div className="mx-auto flex h-6 w-6 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-[10px] font-black text-white">
                 GT
               </div>
-              <p className="mt-1 text-[10px] font-black uppercase tracking-[0.22em] text-white">Home</p>
+              <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em] text-white">Home</p>
             </button>
             <button
               type="button"
               onClick={onStartWorkout}
               className="rounded-[1.2rem] px-2 py-3 text-center text-slate-500 transition hover:bg-white/5 hover:text-slate-300"
             >
-              <p className="text-lg">◫</p>
-              <p className="mt-1 text-[10px] font-black uppercase tracking-[0.22em]">Workouts</p>
+              <svg className="mx-auto" width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <rect x="1" y="1" width="7" height="7" rx="2" fill="currentColor" opacity="0.6" />
+                <rect x="10" y="1" width="7" height="7" rx="2" fill="currentColor" opacity="0.6" />
+                <rect x="1" y="10" width="7" height="7" rx="2" fill="currentColor" opacity="0.6" />
+                <rect x="10" y="10" width="7" height="7" rx="2" fill="currentColor" opacity="0.6" />
+              </svg>
+              <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em]">Workouts</p>
             </button>
             <button
               type="button"
               onClick={onViewProgress}
               className="rounded-[1.2rem] px-2 py-3 text-center text-slate-500 transition hover:bg-white/5 hover:text-slate-300"
             >
-              <p className="text-lg">◔</p>
-              <p className="mt-1 text-[10px] font-black uppercase tracking-[0.22em]">Progress</p>
+              <svg className="mx-auto" width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <rect x="1" y="11" width="4" height="6" rx="1" fill="currentColor" opacity="0.6" />
+                <rect x="7" y="7" width="4" height="10" rx="1" fill="currentColor" opacity="0.8" />
+                <rect x="13" y="2" width="4" height="15" rx="1" fill="currentColor" />
+              </svg>
+              <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em]">Progress</p>
             </button>
             <button
               type="button"
               onClick={onOpenSettings}
               className="rounded-[1.2rem] px-2 py-3 text-center text-slate-500 transition hover:bg-white/5 hover:text-slate-300"
             >
-              <p className="text-lg">⚙</p>
+              <svg className="mx-auto" width="18" height="18" viewBox="0 0 18 18" fill="none">
+                <circle cx="9" cy="9" r="2.5" fill="currentColor" />
+                <path d="M9 1v2M9 15v2M1 9h2M15 9h2M3.1 3.1l1.4 1.4M13.5 13.5l1.4 1.4M14.9 3.1l-1.4 1.4M4.5 13.5l-1.4 1.4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.7" />
+              </svg>
               <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em]">Settings</p>
             </button>
           </nav>
+
         </div>
       </div>
     </main>

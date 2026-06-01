@@ -1,6 +1,15 @@
-import { FloatingCoachAvatar } from "@/components/FloatingCoachAvatar";
+"use client";
+
+import { useState } from "react";
+import { Coach3D } from "@/components/Coach3D";
 import { getAvatarLabel } from "@/lib/avatarAssets";
-import type { CoachAvatar } from "@/types";
+import { clearBodyProfile, saveBodyProfile } from "@/lib/bodyProfileStorage";
+import type {
+  AvatarDisplayMode,
+  AvatarDisplaySettings,
+  BodyProfile,
+  CoachAvatar,
+} from "@/types";
 
 type SettingsScreenProps = {
   onBackHome: () => void;
@@ -8,6 +17,10 @@ type SettingsScreenProps = {
   onOpenModelLab: () => void;
   onResetLocalData?: () => void;
   selectedAvatar?: CoachAvatar;
+  bodyProfile?: BodyProfile | null;
+  onBodyProfileChange?: (profile: BodyProfile | null) => void;
+  avatarDisplaySettings: AvatarDisplaySettings;
+  onAvatarDisplaySettingsChange: (settings: AvatarDisplaySettings) => void;
 };
 
 function SettingsCard({
@@ -31,7 +44,84 @@ export function SettingsScreen({
   onOpenModelLab,
   onResetLocalData,
   selectedAvatar = "Nova",
+  bodyProfile,
+  onBodyProfileChange,
+  avatarDisplaySettings,
+  onAvatarDisplaySettingsChange,
 }: SettingsScreenProps) {
+  const [draftProfile, setDraftProfile] = useState<BodyProfile>(() => ({
+      sex: "prefer_not_to_say",
+      activityGoal: "",
+      ...bodyProfile,
+    }));
+  const avatarModeOptions: Array<{
+    mode: AvatarDisplayMode;
+    title: string;
+    description: string;
+  }> = [
+    {
+      mode: "coach_card",
+      title: "Coach Card",
+      description: "Keep the avatar in the normal coach panel.",
+    },
+    {
+      mode: "floating_overlay",
+      title: "Floating Overlay",
+      description: "Float the coach above the workout layout.",
+    },
+    {
+      mode: "camera_corner",
+      title: "Camera Corner",
+      description: "Keep the coach small near the camera area.",
+    },
+    {
+      mode: "hidden",
+      title: "Hidden",
+      description: "Hide avatar visuals and keep coaching text only.",
+    },
+  ];
+
+  function updateField<K extends keyof BodyProfile>(field: K, value: BodyProfile[K]) {
+    setDraftProfile((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function parseNumberInput(value: string) {
+    if (!value.trim()) return undefined;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+
+  function handleSaveBodyProfile() {
+    const nextProfile: BodyProfile = {
+      ...draftProfile,
+      activityGoal: draftProfile.activityGoal?.trim() || undefined,
+      lastUpdated: new Date().toISOString(),
+    };
+
+    saveBodyProfile(nextProfile);
+    onBodyProfileChange?.(nextProfile);
+  }
+
+  function handleClearBodyProfile() {
+    clearBodyProfile();
+    const cleared: BodyProfile = {
+      sex: "prefer_not_to_say",
+      activityGoal: "",
+    };
+    setDraftProfile(cleared);
+    onBodyProfileChange?.(null);
+  }
+
+  function updateAvatarDisplaySettings(patch: Partial<AvatarDisplaySettings>) {
+    onAvatarDisplaySettingsChange({
+      ...avatarDisplaySettings,
+      ...patch,
+    });
+  }
+
   return (
     <main className="min-h-screen overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.2),_transparent_24%),radial-gradient(circle_at_bottom,_rgba(59,130,246,0.12),_transparent_24%),linear-gradient(180deg,_#020617_0%,_#020617_48%,_#030712_100%)] px-4 pb-10 pt-8 text-white antialiased sm:px-6 lg:px-8 lg:py-12">
       <div className="mx-auto w-full max-w-md lg:max-w-5xl xl:max-w-6xl">
@@ -49,15 +139,14 @@ export function SettingsScreen({
           <div className="space-y-4 lg:grid lg:grid-cols-2 lg:gap-4 lg:space-y-0">
             <SettingsCard title="Avatar System">
               <div className="space-y-4">
-                <div className="max-w-md">
-                  <FloatingCoachAvatar
-                    selectedAvatar={selectedAvatar}
-                    mood="idle"
-                    message={`Current coach: ${getAvatarLabel(selectedAvatar)}\n3D coach preview is enabled when model files are available.`}
-                    position="inline"
-                    compact
-                  />
-                </div>
+                <Coach3D
+                  selectedAvatar={selectedAvatar}
+                  animationHint="idle"
+                  previewFrame="bust"
+                  compact
+                  lightingMode="neutral"
+                />
+                <p className="text-xs text-slate-400">Current coach: {getAvatarLabel(selectedAvatar)}. 3D preview loads when model files are available.</p>
                 <p className="text-slate-400">Nova and Atlas stay visually consistent across workouts, camera coaching, summaries, and progress screens.</p>
                 <button
                   onClick={onOpenModelLab}
@@ -68,9 +157,160 @@ export function SettingsScreen({
               </div>
             </SettingsCard>
 
-            <SettingsCard title="Avatar Preferences">
-              <p>Nova and Atlas keep the interface personalized across training, camera coaching, and summary screens.</p>
-              <p className="mt-2 text-slate-400">Avatar selection is managed from the session builder so the coaching style stays consistent.</p>
+            <SettingsCard title="Avatar Display">
+              <div className="space-y-4">
+                <div>
+                  <p>Choose how Nova/Atlas appears while you train.</p>
+                  <p className="mt-2 text-slate-400">
+                    Avatar selection is still managed from the session builder so the coaching style stays consistent.
+                  </p>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {avatarModeOptions.map((option) => {
+                    const isActive = avatarDisplaySettings.mode === option.mode;
+                    return (
+                      <button
+                        key={option.mode}
+                        type="button"
+                        onClick={() => updateAvatarDisplaySettings({ mode: option.mode })}
+                        className={`rounded-[1.35rem] border px-4 py-4 text-left transition ${
+                          isActive
+                            ? "border-blue-400/28 bg-gradient-to-br from-blue-500/14 via-slate-950/72 to-fuchsia-500/14 text-white shadow-[0_0_24px_rgba(99,102,241,0.18)]"
+                            : "border-white/8 bg-slate-900/72 text-slate-300 hover:border-white/15 hover:text-white"
+                        }`}
+                      >
+                        <p className="text-sm font-black">{option.title}</p>
+                        <p className="mt-2 text-xs leading-relaxed text-slate-400">{option.description}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="space-y-3">
+                  {[
+                    {
+                      key: "show3DCoach" as const,
+                      label: "Show 3D Coach",
+                      description: "Prefer the full 3D coach card where supported.",
+                    },
+                    {
+                      key: "compactInWorkout" as const,
+                      label: "Compact in Workout",
+                      description: "Keep the avatar tighter so main controls stay clear.",
+                    },
+                    {
+                      key: "showDuringCamera" as const,
+                      label: "Show During Camera",
+                      description: "Allow avatar overlays while camera coaching is active.",
+                    },
+                    {
+                      key: "showExerciseDemos" as const,
+                      label: "Show Exercise Demos",
+                      description: "Keep workout demo cards visible while real exercise clips are phased in.",
+                    },
+                    {
+                      key: "minimalCameraHud" as const,
+                      label: "Minimal Camera HUD",
+                      description: "Reduce lower-priority camera panels during active tracking and focus mode.",
+                    },
+                  ].map((toggle) => (
+                    <label
+                      key={toggle.key}
+                      className="flex items-start justify-between gap-4 rounded-[1.25rem] border border-white/8 bg-slate-900/72 px-4 py-4"
+                    >
+                      <div>
+                        <p className="text-sm font-black text-white">{toggle.label}</p>
+                        <p className="mt-1 text-xs leading-relaxed text-slate-400">{toggle.description}</p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={avatarDisplaySettings[toggle.key]}
+                        onChange={(event) =>
+                          updateAvatarDisplaySettings({
+                            [toggle.key]: event.target.checked,
+                          } as Partial<AvatarDisplaySettings>)
+                        }
+                        className="mt-1 h-5 w-5 rounded border-white/15 bg-slate-950 text-blue-500 accent-blue-500"
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </SettingsCard>
+
+            <SettingsCard title="Body Profile">
+              <div className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Height (in)</span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      value={draftProfile.heightInches ?? ""}
+                      onChange={(event) => updateField("heightInches", parseNumberInput(event.target.value))}
+                      className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-slate-100 outline-none transition focus:border-blue-400/30"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Weight (lb)</span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      value={draftProfile.weightLbs ?? ""}
+                      onChange={(event) => updateField("weightLbs", parseNumberInput(event.target.value))}
+                      className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-slate-100 outline-none transition focus:border-blue-400/30"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Goal Weight (lb)</span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      value={draftProfile.goalWeightLbs ?? ""}
+                      onChange={(event) => updateField("goalWeightLbs", parseNumberInput(event.target.value))}
+                      className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-slate-100 outline-none transition focus:border-blue-400/30"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Activity Goal</span>
+                    <select
+                      value={draftProfile.activityGoal ?? ""}
+                      onChange={(event) => updateField("activityGoal", event.target.value)}
+                      className="mt-2 w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3 text-slate-100 outline-none transition focus:border-blue-400/30"
+                    >
+                      <option value="">Select a goal</option>
+                      <option value="Fat loss">Fat loss</option>
+                      <option value="Lean muscle">Lean muscle</option>
+                      <option value="Maintenance">Maintenance</option>
+                      <option value="Performance">Performance</option>
+                      <option value="Mobility">Mobility</option>
+                    </select>
+                  </label>
+                </div>
+
+                <p className="text-xs leading-relaxed text-slate-400">
+                  Body metrics are for fitness progress only and are not medical advice.
+                </p>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <button
+                    onClick={handleSaveBodyProfile}
+                    className="w-full rounded-2xl border border-blue-400/20 bg-gradient-to-r from-blue-600 to-fuchsia-600 px-4 py-4 text-sm font-black text-white shadow-[0_18px_40px_rgba(99,102,241,0.26)] transition hover:brightness-105 active:scale-95"
+                  >
+                    Save Body Profile
+                  </button>
+                  <button
+                    onClick={handleClearBodyProfile}
+                    className="w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-4 text-sm font-black text-slate-100 transition hover:border-blue-400/30 hover:bg-slate-800 active:scale-95"
+                  >
+                    Clear Body Profile
+                  </button>
+                </div>
+              </div>
             </SettingsCard>
 
             <SettingsCard title="Voice Commands">

@@ -1,12 +1,27 @@
 import { useEffect, useMemo, useState } from "react";
+import { Coach3D } from "@/components/Coach3D";
 import { FloatingCoachAvatar } from "@/components/FloatingCoachAvatar";
+import { ExerciseDemoCard } from "@/components/ExerciseDemoCard";
 import { useCameraCoach } from "@/hooks/useCameraCoach";
 import type { TrackingMode } from "@/hooks/useCameraCoach";
 import { useVoiceCommands } from "@/hooks/useVoiceCommands";
 import { getAvatarLabel } from "@/lib/avatarAssets";
+import { getAvatarCoachLayerState } from "@/lib/avatarCoachLayer";
+import { getExerciseDemoDescriptor } from "@/lib/exerciseDemoLibrary";
 import { getCameraCoachLabel, getCameraCoachModeForMovementName } from "@/lib/cameraCoachMapping";
 import { getCoachBrainResponse } from "@/lib/coachBrain";
-import type { CoachAvatar, CoachName, WorkoutMovement } from "@/types";
+import { getExerciseClipName } from "@/lib/exerciseAnimationMap";
+import {
+  getConversationResponse,
+  parseConversationIntent,
+  type ConversationIntent,
+} from "@/lib/conversationCommands";
+import type {
+  AvatarDisplaySettings,
+  CoachAvatar,
+  CoachName,
+  WorkoutMovement,
+} from "@/types";
 
 type WorkoutPlayerScreenProps = {
   activeMovement: WorkoutMovement;
@@ -21,6 +36,7 @@ type WorkoutPlayerScreenProps = {
   elapsedMinutes: number;
   selectedCoach: CoachName;
   selectedAvatar: CoachAvatar;
+  avatarDisplaySettings: AvatarDisplaySettings;
   isMuted: boolean;
   displayedSpeech: string;
   cleanMovementName: (name: string) => string;
@@ -48,6 +64,7 @@ export function WorkoutPlayerScreen({
   elapsedMinutes,
   selectedCoach,
   selectedAvatar,
+  avatarDisplaySettings,
   isMuted,
   displayedSpeech,
   cleanMovementName,
@@ -69,6 +86,10 @@ export function WorkoutPlayerScreen({
     bestCue: string;
     trackingConfidenceAverage: number;
     coachNote: string;
+  } | null>(null);
+  const [conversationState, setConversationState] = useState<{
+    intent: ConversationIntent;
+    answer: string;
   } | null>(null);
   const {
     videoRef,
@@ -116,7 +137,24 @@ export function WorkoutPlayerScreen({
     startListening,
     stopListening,
   } = useVoiceCommands({
-    onCommand: (command) => {
+    onCommand: (command, rawTranscript) => {
+      const intent = parseConversationIntent(rawTranscript);
+      if (intent !== "unknown") {
+        setConversationState(
+          getConversationResponse({
+            intent,
+            selectedAvatarName: getAvatarLabel(selectedAvatar),
+            latestIssue,
+            bestCue,
+            cleanRepCount,
+            needsWorkRepCount,
+            trackingConfidence: trackingReadiness.confidenceScore,
+            placementMessage: cameraPlacement.message,
+            coachBrainMessage: displayedSpeech || feedbackMessage || "I’m ready when you are.",
+          })
+        );
+      }
+
       switch (command) {
         case "complete_set":
           if (!isRestPhase) handleCompleteSet();
@@ -154,6 +192,14 @@ export function WorkoutPlayerScreen({
   const supportedCameraMode = useMemo<TrackingMode | null>(() => {
     return getCameraCoachModeForMovementName(activeMovement.name);
   }, [activeMovement.name]);
+  const demoClipName = useMemo(
+    () => getExerciseClipName(activeMovement),
+    [activeMovement]
+  );
+  const exerciseDemoDescriptor = useMemo(
+    () => getExerciseDemoDescriptor(activeMovement.name, selectedAvatar),
+    [activeMovement.name, selectedAvatar]
+  );
 
   useEffect(() => {
     if (!supportedCameraMode) {
@@ -315,6 +361,22 @@ export function WorkoutPlayerScreen({
         {voiceErrorMessage ? (
           <p className="mt-3 text-xs leading-relaxed text-red-200">{voiceErrorMessage}</p>
         ) : null}
+        {conversationState ? (
+          <div className="mt-4 rounded-[1.2rem] border border-fuchsia-400/18 bg-gradient-to-br from-blue-500/10 via-slate-950/65 to-fuchsia-500/10 px-4 py-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-fuchsia-200">Conversation Mode</p>
+                <p className="mt-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                  Intent: {conversationState.intent.replaceAll("_", " ")}
+                </p>
+              </div>
+              <div className="rounded-full border border-white/10 bg-slate-900/70 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-slate-200">
+                Local
+              </div>
+            </div>
+            <p className="mt-3 text-sm font-medium leading-relaxed text-white">{conversationState.answer}</p>
+          </div>
+        ) : null}
         {isSupported ? (
           <button
             onClick={isListening ? stopListening : startListening}
@@ -456,6 +518,64 @@ export function WorkoutPlayerScreen({
 
   const persistentCoachMessage =
     coachBrain.mood === "idle" && displayedSpeech ? displayedSpeech : coachBrain.message;
+  const avatarCoachState = useMemo(
+    () =>
+      getAvatarCoachLayerState({
+        surface: "workout_tracking",
+        selectedAvatar,
+        coachBrain: {
+          ...coachBrain,
+          message: persistentCoachMessage,
+        },
+        exerciseName: cleanMovementName(activeMovement.name),
+        cameraActive: isCameraCoachOpen,
+        trackingIssue:
+          trackingLost ||
+          !trackingReadiness.fullBodyVisible ||
+          statusLabel === "Camera Error",
+        warningActive:
+          feedbackSeverity === "warning" ||
+          feedbackSeverity === "error" ||
+          Boolean(trackingWarning),
+        isVoiceListening: isListening,
+        isRestPhase,
+        highlightDemo: avatarDisplaySettings.showExerciseDemos,
+        compactPreference: avatarDisplaySettings.compactInWorkout,
+      }),
+    [
+      activeMovement.name,
+      avatarDisplaySettings.compactInWorkout,
+      avatarDisplaySettings.showExerciseDemos,
+      cleanMovementName,
+      coachBrain,
+      feedbackSeverity,
+      isCameraCoachOpen,
+      isListening,
+      isRestPhase,
+      persistentCoachMessage,
+      selectedAvatar,
+      statusLabel,
+      trackingLost,
+      trackingReadiness.fullBodyVisible,
+      trackingWarning,
+    ]
+  );
+  const showAvatarVisual = avatarDisplaySettings.mode !== "hidden";
+  const showSidebarAvatar = showAvatarVisual && avatarDisplaySettings.mode === "coach_card";
+  const showFloatingWorkoutOverlay =
+    showAvatarVisual && avatarDisplaySettings.mode === "floating_overlay";
+  const showCameraAvatar =
+    showAvatarVisual && avatarDisplaySettings.showDuringCamera && isCameraCoachOpen;
+  const showCameraCornerAvatar =
+    showCameraAvatar && avatarDisplaySettings.mode === "camera_corner";
+  const showCameraOverlayAvatar = false;
+  const useMinimalCameraHud = avatarDisplaySettings.minimalCameraHud && isCameraCoachOpen;
+  const showExerciseDemoCard =
+    avatarDisplaySettings.showExerciseDemos &&
+    avatarCoachState.shouldShowDemoCard &&
+    (!useMinimalCameraHud || !isCameraCoachOpen);
+  const showDemoCoach = Boolean(demoClipName);
+  const showVoicePanel = !useMinimalCameraHud;
 
   const cameraCoachPanel = supportedCameraMode ? (
     <div className="rounded-[1.7rem] border border-white/8 bg-white/6 p-4 backdrop-blur-xl shadow-[0_18px_60px_rgba(15,23,42,0.45)]">
@@ -500,15 +620,17 @@ export function WorkoutPlayerScreen({
                   <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">Mode</p>
                   <p className="mt-1 text-xs font-bold text-slate-100">{cameraModeLabel}</p>
                 </div>
-                <div className="max-w-[13rem]">
-                  <FloatingCoachAvatar
-                    selectedAvatar={selectedAvatar}
-                    mood={coachBrain.mood}
-                    message={`${cameraMetrics.phase}\n${coachBrain.message}`}
-                    position="stage-overlay"
-                    compact
-                  />
-                </div>
+                {showCameraOverlayAvatar || showCameraCornerAvatar ? (
+                  <div className={showCameraCornerAvatar ? "max-w-[10rem]" : "max-w-[13rem]"}>
+                    <FloatingCoachAvatar
+                      selectedAvatar={selectedAvatar}
+                      mood={coachBrain.mood}
+                      message={`${cameraMetrics.phase}\n${coachBrain.message}`}
+                      position="stage-overlay"
+                      compact={showCameraCornerAvatar || avatarDisplaySettings.compactInWorkout}
+                    />
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>
@@ -597,6 +719,12 @@ export function WorkoutPlayerScreen({
             </div>
             {trackingWarning ? <p className="mt-2 text-xs leading-relaxed opacity-80">{trackingWarning}</p> : null}
             {errorMessage ? <p className="mt-2 text-xs leading-relaxed text-red-200">{errorMessage}</p> : null}
+            {conversationState ? (
+              <div className="mt-3 rounded-2xl border border-fuchsia-400/16 bg-fuchsia-500/10 px-4 py-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-fuchsia-200">Conversation Mode</p>
+                <p className="mt-2 text-sm font-medium leading-relaxed text-white">{conversationState.answer}</p>
+              </div>
+            ) : null}
             <p className="mt-3 text-[11px] leading-relaxed text-slate-300/80">
               Camera processing stays on this device.
             </p>
@@ -746,17 +874,33 @@ export function WorkoutPlayerScreen({
 
           <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
             <div className="rounded-[1.8rem] border border-white/8 bg-white/6 p-4 backdrop-blur-xl shadow-[0_18px_60px_rgba(15,23,42,0.45)]">
-              <FloatingCoachAvatar
-                selectedAvatar={selectedAvatar}
-                mood={coachBrain.mood}
-                message={persistentCoachMessage}
-                position="inline"
-                emphasis="standard"
-              />
+              {showSidebarAvatar ? (
+                <FloatingCoachAvatar
+                  selectedAvatar={selectedAvatar}
+                  mood={avatarCoachState.mood}
+                  message={avatarCoachState.message}
+                  position="inline"
+                  compact={avatarDisplaySettings.compactInWorkout}
+                  emphasis="standard"
+                />
+              ) : (
+                <div className="rounded-[1.4rem] border border-white/8 bg-slate-950/55 px-4 py-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-blue-300">Coach Guidance</p>
+                  <p className="mt-2 text-sm font-bold leading-relaxed text-white">{avatarCoachState.message}</p>
+                </div>
+              )}
               <div className="mt-4 flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">{selectedCoach}</p>
-                  <p className="mt-1 text-xs text-slate-400">Persistent coach guidance stays visible while your main controls stay clear.</p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    {avatarDisplaySettings.mode === "hidden"
+                      ? "Coaching text stays active while avatar visuals stay hidden."
+                      : avatarDisplaySettings.mode === "camera_corner"
+                        ? "Avatar visuals move near the camera panel so the workout layout stays clean."
+                        : avatarDisplaySettings.mode === "floating_overlay"
+                          ? "The coach floats over the workout so the sidebar stays lighter."
+                          : "Persistent coach guidance stays visible while your main controls stay clear."}
+                  </p>
                 </div>
                 <div className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] ${
                   supportedCameraMode
@@ -771,16 +915,67 @@ export function WorkoutPlayerScreen({
                   ? "Camera Coach is available for this movement whenever you want live tracking."
                   : "Camera coaching not available for this movement yet."}
               </p>
+              <div className="mt-3 rounded-[1.25rem] border border-white/8 bg-slate-950/55 px-4 py-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Demo Pipeline</p>
+                <p className="mt-1 text-sm font-semibold text-white">
+                  {avatarCoachState.demoDescriptor?.title ?? exerciseDemoDescriptor.title}
+                </p>
+                <p className="mt-2 text-xs leading-relaxed text-slate-400">
+                  {avatarCoachState.demoDescriptor?.summary ?? exerciseDemoDescriptor.summary}
+                </p>
+              </div>
               <button onClick={onRecallCoachDialogue} className="mt-4 w-full rounded-2xl border border-slate-800 bg-slate-900 py-3 text-xs font-black uppercase tracking-wider text-slate-400 transition hover:bg-slate-800 active:scale-95">
                 Speak Coach Line
               </button>
             </div>
 
-            {voicePanel}
+            {showExerciseDemoCard ? (
+              <ExerciseDemoCard
+                selectedAvatar={selectedAvatar}
+                exerciseName={cleanMovementName(activeMovement.name)}
+                demoClipName={demoClipName}
+                compact={avatarCoachState.shouldPreferCompact}
+              />
+            ) : null}
+
+            {showVoicePanel ? voicePanel : null}
+
+            {showDemoCoach && isCameraCoachOpen ? (
+              <div className="rounded-[1.7rem] border border-white/8 bg-white/6 backdrop-blur-xl shadow-[0_18px_60px_rgba(15,23,42,0.45)]">
+                <div className="px-4 pt-4">
+                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-fuchsia-300">Coach Demo</p>
+                  <p className="mt-1 text-sm font-black tracking-tight text-white">{cleanMovementName(activeMovement.name)}</p>
+                </div>
+                <Coach3D
+                  selectedAvatar={selectedAvatar}
+                  animationHint="idle"
+                  demoClipName={demoClipName}
+                  compact
+                  previewFrame="full_body"
+                  lightingMode="neutral"
+                />
+              </div>
+            ) : null}
+
             {cameraCoachPanel}
           </aside>
         </div>
       </section>
+
+      {showFloatingWorkoutOverlay ? (
+        <div className="pointer-events-none fixed inset-x-4 bottom-4 z-20 sm:inset-x-auto sm:bottom-6 sm:right-6">
+          <div className="ml-auto max-w-[14rem] sm:max-w-[15rem]">
+            <FloatingCoachAvatar
+              selectedAvatar={selectedAvatar}
+              mood={avatarCoachState.mood}
+              message={avatarCoachState.message}
+              position="stage-overlay"
+              compact={avatarDisplaySettings.compactInWorkout}
+              emphasis="standard"
+            />
+          </div>
+        </div>
+      ) : null}
 
       {isRestPhase ? (
         <footer className="border-t border-slate-900 bg-slate-950 px-4 py-4 pb-8 lg:hidden">

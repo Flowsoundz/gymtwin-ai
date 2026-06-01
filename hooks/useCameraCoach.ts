@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { NormalizedLandmark, PoseLandmarker as PoseLandmarkerType } from "@mediapipe/tasks-vision";
+import type { BodyScanEstimate } from "@/types";
 
 type SquatPhase = "standing" | "descending" | "bottom" | "rising" | "unknown";
 type PushupPhase = "up" | "descending" | "bottom" | "rising" | "unknown";
@@ -69,6 +70,11 @@ const emptyCameraPlacement: CameraPlacement = {
   placementScore: 0,
 };
 
+const emptyBodyScanEstimate: BodyScanEstimate = {
+  scanConfidence: 0,
+  message: "Step back and stand tall for a cleaner body scan.",
+};
+
 export function useCameraCoach() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -88,6 +94,7 @@ export function useCameraCoach() {
   const plankLastTimestampRef = useRef<number | null>(null);
   const trackingReadinessRef = useRef<TrackingReadiness>(emptyTrackingReadiness);
   const cameraPlacementRef = useRef<CameraPlacement>(emptyCameraPlacement);
+  const bodyScanEstimateRef = useRef<BodyScanEstimate>(emptyBodyScanEstimate);
   const lowConfidenceStartRef = useRef<number | null>(null);
   const bodyMissingStartRef = useRef<number | null>(null);
   const trackingRecoveryExpiresAtRef = useRef<number | null>(null);
@@ -120,6 +127,7 @@ export function useCameraCoach() {
   const [feedbackSeverity, setFeedbackSeverity] = useState<FeedbackSeverity>("neutral");
   const [trackingReadiness, setTrackingReadiness] = useState<TrackingReadiness>(emptyTrackingReadiness);
   const [cameraPlacement, setCameraPlacement] = useState<CameraPlacement>(emptyCameraPlacement);
+  const [bodyScanEstimate, setBodyScanEstimate] = useState<BodyScanEstimate>(emptyBodyScanEstimate);
   const [trackingLost, setTrackingLost] = useState(false);
   const [trackingLostReason, setTrackingLostReason] = useState("Tracking looks stable.");
   const [trackingLostSeconds, setTrackingLostSeconds] = useState(0);
@@ -158,6 +166,7 @@ export function useCameraCoach() {
     plankLastTimestampRef.current = null;
     trackingReadinessRef.current = emptyTrackingReadiness;
     cameraPlacementRef.current = emptyCameraPlacement;
+    bodyScanEstimateRef.current = emptyBodyScanEstimate;
     lowConfidenceStartRef.current = null;
     bodyMissingStartRef.current = null;
     trackingRecoveryExpiresAtRef.current = null;
@@ -188,6 +197,10 @@ export function useCameraCoach() {
     setCameraPlacement({
       ...emptyCameraPlacement,
       message: "Place your phone so your full body fits cleanly in frame.",
+    });
+    setBodyScanEstimate({
+      ...emptyBodyScanEstimate,
+      message: "Step back and stand tall for a cleaner body scan.",
     });
     setTrackingLost(false);
     setTrackingLostReason("Tracking looks stable.");
@@ -369,6 +382,84 @@ export function useCameraCoach() {
         likelyFrontView,
         message,
         placementScore,
+      };
+    },
+    [hasReliableLandmark]
+  );
+
+  const deriveBodyScanEstimate = useCallback(
+    (landmarks: NormalizedLandmark[] | null | undefined, readiness: TrackingReadiness): BodyScanEstimate => {
+      if (!landmarks || landmarks.length === 0) {
+        return {
+          ...emptyBodyScanEstimate,
+          message: "Start camera and stand tall so I can estimate your posture and proportions.",
+        };
+      }
+
+      const shouldersReady = hasReliableLandmark(landmarks[11], 0.4) && hasReliableLandmark(landmarks[12], 0.4);
+      const hipsReady = hasReliableLandmark(landmarks[23], 0.4) && hasReliableLandmark(landmarks[24], 0.4);
+      const anklesReady = hasReliableLandmark(landmarks[27], 0.4) && hasReliableLandmark(landmarks[28], 0.4);
+      const noseReady = hasReliableLandmark(landmarks[0], 0.35);
+
+      if (!shouldersReady || !hipsReady) {
+        return {
+          ...emptyBodyScanEstimate,
+          message: "Step back and stand tall for a cleaner body scan.",
+        };
+      }
+
+      const leftShoulder = landmarks[11];
+      const rightShoulder = landmarks[12];
+      const leftHip = landmarks[23];
+      const rightHip = landmarks[24];
+      const leftAnkle = landmarks[27];
+      const rightAnkle = landmarks[28];
+
+      const shoulderWidth = Math.abs((leftShoulder?.x ?? 0) - (rightShoulder?.x ?? 0));
+      const hipWidth = Math.abs((leftHip?.x ?? 0) - (rightHip?.x ?? 0));
+      const topY = noseReady ? landmarks[0]?.y ?? Math.min(leftShoulder.y, rightShoulder.y) : Math.min(leftShoulder.y, rightShoulder.y);
+      const bottomY = anklesReady ? Math.max(leftAnkle.y, rightAnkle.y) : Math.max(leftHip.y, rightHip.y);
+      const visibleHeightRatio = Math.max(0, Math.min(1, bottomY - topY));
+
+      const shoulderCenterX = (leftShoulder.x + rightShoulder.x) / 2;
+      const hipCenterX = (leftHip.x + rightHip.x) / 2;
+      const ankleCenterX =
+        anklesReady && leftAnkle && rightAnkle ? (leftAnkle.x + rightAnkle.x) / 2 : hipCenterX;
+      const centerDrift =
+        (Math.abs(shoulderCenterX - hipCenterX) + Math.abs(hipCenterX - ankleCenterX)) / 2;
+      const symmetryPenalty =
+        Math.abs((leftShoulder.visibility ?? 0) - (rightShoulder.visibility ?? 0)) +
+        Math.abs((leftHip.visibility ?? 0) - (rightHip.visibility ?? 0));
+
+      const postureAlignmentScore = Math.max(
+        0,
+        Math.min(100, Math.round(100 - centerDrift * 320 - symmetryPenalty * 18))
+      );
+
+      let scanConfidence = readiness.fullBodyVisible
+        ? Math.round((readiness.confidenceScore + postureAlignmentScore) / 2)
+        : Math.round(readiness.confidenceScore * 0.45);
+
+      if (!anklesReady || !noseReady) {
+        scanConfidence = Math.round(scanConfidence * 0.82);
+      }
+      scanConfidence = Math.max(0, Math.min(100, scanConfidence));
+
+      let message = "Body scan ready. We can track visual progress over time.";
+      if (!readiness.fullBodyVisible || scanConfidence < 70) {
+        message = "Step back and stand tall for a cleaner body scan.";
+      } else if (postureAlignmentScore < 72) {
+        message = "Stand tall and stay centered for a cleaner body scan.";
+      }
+
+      return {
+        shoulderWidthRatio: Number(shoulderWidth.toFixed(3)),
+        hipWidthRatio: Number(hipWidth.toFixed(3)),
+        shoulderToHipRatio: hipWidth > 0 ? Number((shoulderWidth / hipWidth).toFixed(2)) : undefined,
+        visibleHeightRatio: Number(visibleHeightRatio.toFixed(2)),
+        postureAlignmentScore,
+        scanConfidence,
+        message,
       };
     },
     [hasReliableLandmark]
@@ -1259,8 +1350,10 @@ export function useCameraCoach() {
           const landmarks = result.landmarks[0];
           const readiness = deriveTrackingReadiness(landmarks);
           const placement = deriveCameraPlacement(landmarks, readiness, selectedMode);
+          const bodyScan = deriveBodyScanEstimate(landmarks, readiness);
           trackingReadinessRef.current = readiness;
           cameraPlacementRef.current = placement;
+          bodyScanEstimateRef.current = bodyScan;
           trackingConfidenceTotalRef.current += readiness.confidenceScore;
           trackingConfidenceSampleCountRef.current += 1;
           setTrackingConfidenceAverage(
@@ -1268,6 +1361,7 @@ export function useCameraCoach() {
           );
           setTrackingReadiness(readiness);
           setCameraPlacement(placement);
+          setBodyScanEstimate(bodyScan);
           updateTrackingLostState(readiness, placement, timestampMs);
 
           if (landmarks && landmarks.length > 0) {
@@ -1324,8 +1418,14 @@ export function useCameraCoach() {
               ...emptyCameraPlacement,
               message: "Get your body in frame so I can check phone placement.",
             };
+            const emptyBodyScan = {
+              ...emptyBodyScanEstimate,
+              message: "Step back and stand tall for a cleaner body scan.",
+            };
             cameraPlacementRef.current = emptyPlacement;
+            bodyScanEstimateRef.current = emptyBodyScan;
             setCameraPlacement(emptyPlacement);
+            setBodyScanEstimate(emptyBodyScan);
             updateTrackingLostState(
               {
                 ...emptyTrackingReadiness,
@@ -1350,6 +1450,7 @@ export function useCameraCoach() {
   }, [
     deriveTrackingReadiness,
     deriveCameraPlacement,
+    deriveBodyScanEstimate,
     drawOverlay,
     selectedMode,
     setFeedbackIfChanged,
@@ -1502,6 +1603,7 @@ export function useCameraCoach() {
     feedbackSeverity,
     trackingReadiness,
     cameraPlacement,
+    bodyScanEstimate,
     trackingLost,
     trackingLostReason,
     trackingLostSeconds,

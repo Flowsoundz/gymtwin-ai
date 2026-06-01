@@ -3,12 +3,15 @@
 import React, { useEffect, useEffectEvent, useMemo, useState } from "react";
 import type {
   AppScreen,
+  AvatarDisplaySettings,
+  BodyProfile,
   CoachAvatar,
   CoachName,
   WorkoutGoal,
   WorkoutLevel,
   Equipment,
   TraineeStats,
+  WeeklyPlan,
   WorkoutSummaryData,
   WorkoutMovement,
   ActiveSessionData,
@@ -51,11 +54,24 @@ import {
   buildScoredWorkoutSummary,
 } from "@/lib/sessionScoring";
 import { getAchievementBadges } from "@/lib/achievementEngine";
+import { readBodyProfile, saveBodyProfile } from "@/lib/bodyProfileStorage";
+import { generateWeeklyPlan } from "@/lib/weeklyPlanEngine";
+import { clearWeeklyPlan, markTodayComplete, readWeeklyPlan, saveWeeklyPlan } from "@/lib/weeklyPlanStorage";
 import { buildRoutine, cleanMovementName } from "@/lib/workoutEngine";
+import {
+  defaultAvatarDisplaySettings,
+  readAvatarDisplaySettings,
+  saveAvatarDisplaySettings,
+} from "@/lib/avatarDisplaySettings";
 
 export default function GymTwinApp() {
   const [currentScreen, setCurrentScreen] = useState<AppScreen>("landing");
   const [userStats, setUserStats] = useState<TraineeStats>({ workoutsCompleted: 0, streak: 0, lastWorkoutDate: null, totalMinutes: 0 });
+  const [bodyProfile, setBodyProfile] = useState<BodyProfile | null>(null);
+  const [weeklyPlan, setWeeklyPlan] = useState<WeeklyPlan | null>(null);
+  const [avatarDisplaySettings, setAvatarDisplaySettings] = useState<AvatarDisplaySettings>(
+    defaultAvatarDisplaySettings
+  );
   const [lastWorkoutSummary, setLastWorkoutSummary] = useState<WorkoutSummaryData | null>(null);
   const [workoutHistory, setWorkoutHistory] = useState<WorkoutSummaryData[]>([]);
   const [selectedWorkoutDetail, setSelectedWorkoutDetail] = useState<WorkoutSummaryData | null>(null);
@@ -66,7 +82,7 @@ export default function GymTwinApp() {
   const [selectedEquipment, setSelectedEquipment] = useState<Equipment>("None");
   const [sessionLength, setSessionLength] = useState("20");
   const [selectedAvatar, setSelectedAvatar] = useState<CoachAvatar>("Nova");
-  const [selectedCoach, setSelectedCoach] = useState<CoachName>("Dominican Hype Coach");
+  const [selectedCoach, setSelectedCoach] = useState<CoachName>("Supportive");
 
   const [activeRoutine, setActiveRoutine] = useState<WorkoutMovement[]>([]);
   const [movementIndex, setMovementIndex] = useState(0);
@@ -134,7 +150,9 @@ export default function GymTwinApp() {
   function resetLocalAppData() {
     clearActiveSession();
     clearWorkoutStorage();
+    clearWeeklyPlan();
     setUserStats({ workoutsCompleted: 0, streak: 0, lastWorkoutDate: null, totalMinutes: 0 });
+    setWeeklyPlan(null);
     setLastWorkoutSummary(null);
     setWorkoutHistory([]);
     setSelectedWorkoutDetail(null);
@@ -150,9 +168,18 @@ export default function GymTwinApp() {
     if (savedSummary) setLastWorkoutSummary(savedSummary);
 
     setWorkoutHistory(readWorkoutHistory());
+    setBodyProfile(readBodyProfile());
+    setWeeklyPlan(readWeeklyPlan());
+    setAvatarDisplaySettings(readAvatarDisplaySettings());
 
     setHasResumeSession(hasStoredActiveSession());
   }, []);
+
+  function handleGenerateWeeklyPlan() {
+    const nextPlan = generateWeeklyPlan(selectedGoal, selectedLevel, selectedEquipment);
+    setWeeklyPlan(nextPlan);
+    saveWeeklyPlan(nextPlan);
+  }
 
   useEffect(() => {
     if (currentScreen !== "player" || activeRoutine.length === 0) return;
@@ -339,6 +366,8 @@ export default function GymTwinApp() {
     setLastWorkoutSummary(summaryPayload); saveLastWorkoutSummary(summaryPayload);
     const updatedHistory = [summaryPayload, ...workoutHistory].slice(0, 10); setWorkoutHistory(updatedHistory);
     saveWorkoutHistory(updatedHistory);
+    const updatedWeeklyPlan = markTodayComplete(weeklyPlan);
+    if (updatedWeeklyPlan) setWeeklyPlan(updatedWeeklyPlan);
 
     clearActiveSession(); setSessionStartedAt(null);
     const line = `Workout complete. ${getCoachQuote(selectedCoach, "outro")}`;
@@ -373,9 +402,15 @@ export default function GymTwinApp() {
         hasResumeSession={hasResumeSession}
         onResumeWorkout={resumeWorkoutSession}
         onStartWorkout={() => setCurrentScreen("setup")}
+        onStartTodaysWorkout={() => setCurrentScreen("setup")}
         onViewProgress={() => setCurrentScreen("progress")}
         onOpenCameraSandbox={() => setCurrentScreen("camera_sandbox")}
         onOpenSettings={() => setCurrentScreen("settings")}
+        weeklyPlan={weeklyPlan}
+        bodyProfile={bodyProfile}
+        workoutHistory={workoutHistory}
+        latestWorkoutSummary={lastWorkoutSummary}
+        onGenerateWeeklyPlan={handleGenerateWeeklyPlan}
         selectedAvatar={selectedAvatar}
         primaryButton={primaryButton}
         secondaryButton={secondaryButton}
@@ -391,6 +426,16 @@ export default function GymTwinApp() {
         onOpenModelLab={() => setCurrentScreen("model_lab")}
         onResetLocalData={resetLocalAppData}
         selectedAvatar={selectedAvatar}
+        bodyProfile={bodyProfile}
+        avatarDisplaySettings={avatarDisplaySettings}
+        onBodyProfileChange={(profile) => {
+          setBodyProfile(profile);
+          if (profile) saveBodyProfile(profile);
+        }}
+        onAvatarDisplaySettingsChange={(settings) => {
+          setAvatarDisplaySettings(settings);
+          saveAvatarDisplaySettings(settings);
+        }}
       />
     );
   }
@@ -412,6 +457,7 @@ export default function GymTwinApp() {
         primaryButton={primaryButton}
         secondaryButton={secondaryButton}
         selectedAvatar={selectedAvatar}
+        avatarDisplaySettings={avatarDisplaySettings}
       />
     );
   }
@@ -472,6 +518,7 @@ export default function GymTwinApp() {
         elapsedMinutes={elapsedMinutes}
         selectedCoach={selectedCoach}
         selectedAvatar={selectedAvatar}
+        avatarDisplaySettings={avatarDisplaySettings}
         isMuted={isMuted}
         displayedSpeech={displayedSpeech}
         cleanMovementName={cleanMovementName}
@@ -494,6 +541,10 @@ export default function GymTwinApp() {
         lastWorkoutSummary={lastWorkoutSummary}
         displayedSpeech={displayedSpeech}
         selectedAvatar={selectedAvatar}
+        bodyProfile={bodyProfile}
+        weeklyPlan={weeklyPlan}
+        workoutHistory={workoutHistory}
+        userStats={userStats}
         onSubmitDifficultyFeedback={submitDifficultyFeedback}
         onRepeatWorkout={initializeTrainingSession}
         onStartNewWorkout={() => setCurrentScreen("setup")}
@@ -530,7 +581,10 @@ export default function GymTwinApp() {
   if (currentScreen === "progress") {
     return (
       <ProgressScreen
+        selectedAvatar={selectedAvatar}
         badges={achievementBadges}
+        bodyProfile={bodyProfile}
+        weeklyPlan={weeklyPlan}
         userStats={userStats}
         workoutHistory={workoutHistory}
         onStartAnotherWorkout={() => setCurrentScreen("setup")}

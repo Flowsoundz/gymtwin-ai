@@ -1,14 +1,23 @@
-import { FloatingCoachAvatar } from "@/components/FloatingCoachAvatar";
+import { Coach3D } from "@/components/Coach3D";
 import { MetricRow } from "@/components/ui/MetricRow";
 import { StatCard } from "@/components/ui/StatCard";
 import { getAvatarLabel } from "@/lib/avatarAssets";
+import { getAvatarCoachLayerState } from "@/lib/avatarCoachLayer";
+import { getCoachAdaptationRecommendation } from "@/lib/coachAdaptationEngine";
 import { getCoachBrainResponse } from "@/lib/coachBrain";
-import type { CoachAvatar, WorkoutSummaryData } from "@/types";
+import { getDifficultyAdjustmentRecommendation } from "@/lib/difficultyAdjustmentEngine";
+import { deriveProgressTrends } from "@/lib/progressTrends";
+import { useMemo } from "react";
+import type { BodyProfile, CoachAvatar, TraineeStats, WeeklyPlan, WorkoutSummaryData } from "@/types";
 
 type WorkoutSummaryScreenProps = {
   lastWorkoutSummary: WorkoutSummaryData;
   displayedSpeech: string;
   selectedAvatar: CoachAvatar;
+  bodyProfile?: BodyProfile | null;
+  weeklyPlan?: WeeklyPlan | null;
+  workoutHistory: WorkoutSummaryData[];
+  userStats: TraineeStats;
   onSubmitDifficultyFeedback: (feedback: "too_easy" | "perfect" | "too_hard") => void;
   onRepeatWorkout: () => void;
   onStartNewWorkout: () => void;
@@ -21,6 +30,10 @@ export function WorkoutSummaryScreen({
   lastWorkoutSummary,
   displayedSpeech,
   selectedAvatar,
+  bodyProfile,
+  weeklyPlan,
+  workoutHistory,
+  userStats,
   onSubmitDifficultyFeedback,
   onRepeatWorkout,
   onStartNewWorkout,
@@ -38,6 +51,65 @@ export function WorkoutSummaryScreen({
     xpEarned: lastWorkoutSummary.xpEarned,
     isWorkoutComplete: true,
   });
+  const progressTrends = useMemo(
+    () =>
+      deriveProgressTrends({
+        workoutHistory,
+        weeklyPlan,
+        bodyProfile,
+        userStats,
+      }),
+    [bodyProfile, userStats, weeklyPlan, workoutHistory]
+  );
+  const nextBestMove = useMemo(
+    () =>
+      getCoachAdaptationRecommendation({
+        bodyProfile,
+        weeklyPlan,
+        workoutHistory,
+        latestWorkoutSummary: lastWorkoutSummary,
+        userStats,
+        progressTrends,
+      }),
+    [bodyProfile, lastWorkoutSummary, progressTrends, userStats, weeklyPlan, workoutHistory]
+  );
+  const smartAdjustment = useMemo(
+    () =>
+      getDifficultyAdjustmentRecommendation({
+        latestWorkoutSummary: lastWorkoutSummary,
+        workoutHistory,
+        userStats,
+        bodyProfile,
+        weeklyPlan,
+      }),
+    [bodyProfile, lastWorkoutSummary, userStats, weeklyPlan, workoutHistory]
+  );
+  const recommendationTone =
+    nextBestMove.priority === "high"
+      ? "border-amber-400/18 bg-amber-500/10 text-amber-200"
+      : nextBestMove.priority === "medium"
+        ? "border-blue-400/18 bg-blue-500/10 text-blue-200"
+        : "border-emerald-400/18 bg-emerald-500/10 text-emerald-200";
+  const adjustmentTone =
+    smartAdjustment.direction === "increase"
+      ? "border-emerald-400/18 bg-emerald-500/10 text-emerald-200"
+      : smartAdjustment.direction === "decrease"
+        ? "border-amber-400/18 bg-amber-500/10 text-amber-200"
+        : smartAdjustment.direction === "form_focus"
+          ? "border-cyan-400/18 bg-cyan-500/10 text-cyan-200"
+          : smartAdjustment.direction === "recovery"
+            ? "border-fuchsia-400/18 bg-fuchsia-500/10 text-fuchsia-200"
+            : "border-blue-400/18 bg-blue-500/10 text-blue-200";
+  const avatarCoachState = useMemo(
+    () =>
+      getAvatarCoachLayerState({
+        surface: "summary",
+        selectedAvatar,
+        coachBrain,
+        isWorkoutComplete: true,
+      }),
+    [coachBrain, selectedAvatar]
+  );
 
   return (
     <main className="min-h-screen overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.2),_transparent_24%),radial-gradient(circle_at_bottom,_rgba(59,130,246,0.12),_transparent_24%),linear-gradient(180deg,_#020617_0%,_#020617_48%,_#030712_100%)] px-4 pb-10 pt-8 text-white antialiased sm:px-6 lg:px-8 lg:py-12">
@@ -54,6 +126,16 @@ export function WorkoutSummaryScreen({
               Review your completed session, track your actual work, and calibrate how the next workout should feel.
             </p>
           </header>
+
+          <section className="mb-6">
+            <Coach3D
+              selectedAvatar={selectedAvatar}
+              animationHint={coachBrain.animationHint}
+              previewFrame="bust"
+              compact
+              lightingMode="neutral"
+            />
+          </section>
 
           <section className="mb-6 rounded-[1.7rem] border border-blue-400/14 bg-blue-950/12 p-4 text-left shadow-inner">
             <div className="mb-3 inline-flex rounded-full border border-blue-400/20 bg-slate-950 px-3 py-1 text-[10px] font-black uppercase tracking-[0.24em] text-blue-300">
@@ -106,12 +188,13 @@ export function WorkoutSummaryScreen({
               <p className="mt-2 text-sm leading-relaxed text-amber-50/85">
                 Strong output this round. Sessions with elite score or major XP gains can push badge progress forward.
               </p>
-              <div className="mt-4 max-w-md">
-                <FloatingCoachAvatar
+              <div className="mt-4">
+                <Coach3D
                   selectedAvatar={selectedAvatar}
-                  mood={coachBrain.mood}
-                  message={lastWorkoutSummary.coachNote ?? coachBrain.message}
-                  position="inline"
+                  animationHint={coachBrain.animationHint}
+                  previewFrame="full_body"
+                  compact
+                  lightingMode="neutral"
                 />
               </div>
             </section>
@@ -120,8 +203,54 @@ export function WorkoutSummaryScreen({
           <section className="mb-8 rounded-[1.8rem] border border-white/8 bg-slate-950/60 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
             <p className="text-[11px] font-black uppercase tracking-[0.26em] text-blue-300">Coach Note</p>
             <p className="mt-3 text-sm leading-relaxed text-slate-300">
-              {lastWorkoutSummary.coachNote ?? coachBrain.message}
+              {lastWorkoutSummary.coachNote ?? avatarCoachState.message}
             </p>
+          </section>
+
+          <section className="mb-8 rounded-[1.8rem] border border-cyan-400/14 bg-[linear-gradient(135deg,rgba(8,47,73,0.52),rgba(2,6,23,0.92))] p-5 shadow-[0_0_28px_rgba(34,211,238,0.08)]">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-[0.26em] text-cyan-300">Next Best Move</p>
+                <h3 className="mt-2 text-xl font-black text-white">{nextBestMove.title}</h3>
+              </div>
+              <div className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] ${recommendationTone}`}>
+                {nextBestMove.priority}
+              </div>
+            </div>
+            <p className="mt-3 text-sm leading-relaxed text-slate-300">{nextBestMove.message}</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl border border-white/8 bg-slate-950/55 px-4 py-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Suggested Action</p>
+                <p className="mt-1 text-sm font-semibold text-cyan-100">{nextBestMove.suggestedAction}</p>
+              </div>
+              <div className="rounded-2xl border border-white/8 bg-slate-950/55 px-4 py-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Reason</p>
+                <p className="mt-1 text-sm leading-relaxed text-slate-300">{nextBestMove.reason}</p>
+              </div>
+            </div>
+          </section>
+
+          <section className="mb-8 rounded-[1.8rem] border border-white/8 bg-slate-950/60 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-[0.26em] text-fuchsia-300">Smart Adjustment</p>
+                <h3 className="mt-2 text-xl font-black text-white">{smartAdjustment.title}</h3>
+              </div>
+              <div className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] ${adjustmentTone}`}>
+                {smartAdjustment.direction.replace("_", " ")}
+              </div>
+            </div>
+            <p className="mt-3 text-sm leading-relaxed text-slate-300">{smartAdjustment.message}</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-2xl border border-white/8 bg-slate-950/55 px-4 py-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Adjustment</p>
+                <p className="mt-1 text-sm font-semibold text-fuchsia-100">{smartAdjustment.adjustmentLabel}</p>
+              </div>
+              <div className="rounded-2xl border border-white/8 bg-slate-950/55 px-4 py-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Reason</p>
+                <p className="mt-1 text-sm leading-relaxed text-slate-300">{smartAdjustment.reason}</p>
+              </div>
+            </div>
           </section>
 
           <section className="mb-8 rounded-[1.8rem] border border-white/8 bg-slate-950/60 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">

@@ -3,9 +3,15 @@
 import * as React from "react";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Html, PresentationControls, useAnimations, useGLTF } from "@react-three/drei";
+import { Html, OrbitControls, useAnimations, useGLTF } from "@react-three/drei";
+import { Box3, LoopOnce, LoopRepeat, Vector3 } from "three";
 import type { AnimationClip, Group, Object3D } from "three";
 import { getAvatarLabel, getAvatarModelPaths } from "@/lib/avatarAssets";
+import {
+  getAnimationForHint,
+  getAvatarAnimationClipById,
+} from "@/lib/avatarAnimationLibrary";
+import { useCoachSpeech } from "@/hooks/useCoachSpeech";
 import type { CoachAnimationHint } from "@/lib/coachBrain";
 import type { CoachAvatar } from "@/types";
 
@@ -24,6 +30,13 @@ type Coach3DProps = {
   compact?: boolean;
   modelPathOverride?: string;
   animationHint?: CoachAnimationHint;
+  animationClipId?: string | null;
+  demoClipName?: string | null;
+  previewTransform?: PreviewTransform;
+  previewFrame?: Coach3DPreviewFrame;
+  lightingMode?: "mood" | "neutral";
+  onClipsDetected?: (clips: string[]) => void;
+  message?: string | null;
 };
 
 type ModelStatus = "checking" | "available" | "missing" | "error";
@@ -40,6 +53,24 @@ type MoodSceneMeta = {
   lightIntensityA: number;
   lightIntensityB: number;
 };
+
+type ModelTransform = {
+  position: [number, number, number];
+  rotation: [number, number, number];
+  scale: number;
+  cameraPosition: [number, number, number];
+  fovCompact: number;
+  fovDefault: number;
+};
+
+export type PreviewTransform = {
+  position?: [number, number, number];
+  scale?: number;
+  rotation?: [number, number, number];
+  cameraPosition?: [number, number, number];
+};
+
+export type Coach3DPreviewFrame = "full_body" | "in_frame" | "bust";
 
 class Coach3DErrorBoundary extends React.Component<
   { fallback: React.ReactNode; children: React.ReactNode },
@@ -63,63 +94,198 @@ class Coach3DErrorBoundary extends React.Component<
   }
 }
 
-function getDefaultAnimationClip(animations: AnimationClip[]) {
-  if (!animations.length) {
-    return null;
+class AnimPackErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { failed: boolean }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { failed: false };
   }
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
 
-  const preferredNames = [
-    "Idle",
-    "idle",
-    "Breathing",
-    "breathing",
-    "Armature|mixamo.com|Layer0",
-  ];
+function AnimationPackLoader({
+  path,
+  onClipsLoaded,
+}: {
+  path: string;
+  onClipsLoaded: (clips: AnimationClip[]) => void;
+}) {
+  const { animations } = useGLTF(path) as { animations: AnimationClip[] };
+  useEffect(() => {
+    if (animations.length) onClipsLoaded(animations);
+  }, [animations, onClipsLoaded]);
+  return null;
+}
 
-  return (
-    animations.find((clip) => preferredNames.includes(clip.name)) ??
-    animations[0]
-  );
+const HINT_CLIP_NAMES: Record<CoachAnimationHint, string[]> = {
+  idle:      ["Idle", "idle", "StandardIdle", "Breathing", "breathing", "TPose", "Armature|mixamo.com|Layer0"],
+  talking:   ["Talking", "talking", "Rallying", "rallying", "Talk", "talk", "Speaking", "Wave", "wave", "Gesture"],
+  listening: ["Listening", "listening", "StandardIdle", "Thinking", "thinking", "HeadNod", "Nod", "nod"],
+  pointing:  ["Pointing", "pointing", "Rallying", "rallying", "Point", "point", "Direct"],
+  thumbs_up: ["ThumbsUp", "thumbs_up", "Clapping", "clapping", "Thumbsup", "Victory", "victory", "Approve"],
+  warning:   ["Warning", "warning", "ThoughtfulHeadShake", "Shake", "shake", "HeadShake", "No", "Deny"],
+  celebrate: ["Celebrate", "celebrate", "Cheering", "cheering", "Celebration", "Jump", "jump", "Dance", "dance", "Cheer"],
+};
+
+function resolveClipName(hint: CoachAnimationHint, animations: AnimationClip[]): string | null {
+  if (!animations.length) return null;
+  const candidates = HINT_CLIP_NAMES[hint].map((c) => c.toLowerCase());
+  const found = animations.find((clip) => candidates.includes(clip.name.toLowerCase()));
+  if (found) return found.name;
+  if (hint !== "idle") {
+    const idleCandidates = HINT_CLIP_NAMES["idle"].map((c) => c.toLowerCase());
+    const idleFound = animations.find((clip) => idleCandidates.includes(clip.name.toLowerCase()));
+    if (idleFound) return idleFound.name;
+  }
+  return null;
+}
+
+function getAnimationPackPath(modelPath: string): string {
+  // atlas-coach-mobile.glb uses a Mixamo humanoid rig — incompatible with the animal-rig
+  // atlas-animations.glb / nova-animations.glb. Route it to the Mixamo pack which will
+  // fail gracefully (AnimPackErrorBoundary) until that file is exported.
+  if (modelPath.includes("atlas-coach-mobile")) return "/models/animations/mixamo-animations.glb";
+  if (modelPath.includes("atlas")) return "/models/animations/atlas-animations.glb";
+  return "/models/animations/nova-animations.glb";
 }
 
 function CoachModel({
   modelPath,
-  modelScale,
+  transform,
   animationHint,
+  demoClipName,
+  previewFrame,
+  isSpeaking,
+  onClipsDetected,
 }: {
   modelPath: string;
-  modelScale: number;
+  transform: ModelTransform;
   animationHint: CoachAnimationHint;
+  demoClipName?: string | null;
+  previewFrame: Coach3DPreviewFrame;
+  isSpeaking?: boolean;
+  onClipsDetected?: (clips: string[]) => void;
 }) {
   const modelGroupRef = React.useRef<Group>(null);
-  const { scene, animations } = useGLTF(modelPath) as {
+  const headBoneRef = React.useRef<Object3D | null>(null);
+  const earBoneRef = React.useRef<Object3D | null>(null);
+  const rEarBoneRef = React.useRef<Object3D | null>(null);
+  const { scene, animations: embeddedClips } = useGLTF(modelPath) as {
     scene: Object3D;
     animations: AnimationClip[];
   };
   const clonedScene = useMemo(() => scene.clone(), [scene]);
-  const { actions } = useAnimations(animations, modelGroupRef);
-  const defaultClip = useMemo(() => getDefaultAnimationClip(animations), [animations]);
-  const hasEmbeddedAnimations = animations.length > 0;
+  const [externalClips, setExternalClips] = useState<AnimationClip[]>([]);
+  const [fitnessClips, setFitnessClips] = useState<AnimationClip[]>([]);
+  const animations = useMemo(() => {
+    const base = embeddedClips.length ? embeddedClips : externalClips;
+    return [...base, ...fitnessClips];
+  }, [embeddedClips, externalClips, fitnessClips]);
+  const { mixer } = useAnimations(animations, modelGroupRef);
+  const activeActionRef = React.useRef<string | null>(null);
+  // Capture T-pose bounding box once — never re-run when previewFrame changes,
+  // which prevents the Y-axis drift caused by setFromObject on an animated scene.
+  const sceneMetrics = useMemo(() => {
+    const box = new Box3().setFromObject(clonedScene);
+    const size = box.getSize(new Vector3());
+    const center = box.getCenter(new Vector3());
+    return { height: size.y, cx: center.x, cy: box.min.y, cz: center.z };
+  }, [clonedScene]);
+
+  const fitProfile = useMemo(() => {
+    const safeHeight = sceneMetrics.height > 0 ? sceneMetrics.height : 1;
+    const targetHeight = previewFrame === "in_frame" ? 2.45 : 2.2;
+    const fitScale = Math.min(1.18, Math.max(0.88, targetHeight / safeHeight));
+    // Offset must be multiplied by the same total scale applied to the primitive,
+    // otherwise the model drifts on Y when fitScale changes between frames.
+    const totalScale = fitScale * transform.scale;
+    return {
+      fitScale,
+      offset: [
+        -sceneMetrics.cx * totalScale,
+        -sceneMetrics.cy * totalScale,
+        -sceneMetrics.cz * totalScale,
+      ] as [number, number, number],
+    };
+  }, [sceneMetrics, previewFrame, transform.scale]);
 
   useEffect(() => {
-    if (!defaultClip?.name) {
-      return;
+    headBoneRef.current = null;
+    earBoneRef.current = null;
+    rEarBoneRef.current = null;
+    clonedScene.traverse((obj) => {
+      if (obj.name === "head") headBoneRef.current = obj;
+      else if (obj.name === "earend") earBoneRef.current = obj;
+      else if (obj.name === "R_earend") rEarBoneRef.current = obj;
+    });
+  }, [clonedScene]);
+
+  useEffect(() => {
+    if (!animations.length) return;
+
+    // demoClipName (exercise demo) takes priority over hint-based resolution
+    const targetClipName = demoClipName
+      ? (animations.find((c) => c.name === demoClipName)?.name ?? resolveClipName(animationHint, animations))
+      : resolveClipName(animationHint, animations);
+    if (!targetClipName) return;
+    if (activeActionRef.current === targetClipName) return;
+
+    const ONE_SHOT_HINTS: CoachAnimationHint[] = ["thumbs_up", "pointing", "celebrate"];
+    const isOneShot = !demoClipName && ONE_SHOT_HINTS.includes(animationHint);
+
+    const targetClip = animations.find((clip) => clip.name === targetClipName);
+    if (!targetClip) return;
+
+    const incoming = mixer.clipAction(targetClip, clonedScene);
+    if (!incoming) return;
+
+    const prevName = activeActionRef.current;
+    if (prevName && prevName !== targetClipName) {
+      const previousClip = animations.find((clip) => clip.name === prevName);
+      if (previousClip) {
+        mixer.clipAction(previousClip, clonedScene).fadeOut(0.35);
+      }
     }
 
-    const action = actions[defaultClip.name];
-    if (!action) {
-      return;
+    incoming.reset();
+    incoming.fadeIn(0.35);
+    if (isOneShot) {
+      incoming.setLoop(LoopOnce, 1);
+    } else {
+      incoming.setLoop(LoopRepeat, Infinity);
     }
+    incoming.play();
+    activeActionRef.current = targetClipName;
 
-    action.reset();
-    action.fadeIn(0.35);
-    action.play();
+    if (isOneShot) {
+      const idleClipName = resolveClipName("idle", animations);
+      const onFinish = () => {
+        if (idleClipName && activeActionRef.current === targetClipName) {
+          const idleClip = animations.find((clip) => clip.name === idleClipName);
+          const idleAction = idleClip ? mixer.clipAction(idleClip, clonedScene) : null;
+          if (idleAction) {
+            incoming.fadeOut(0.45);
+            idleAction.reset().fadeIn(0.45).play();
+            activeActionRef.current = idleClipName;
+          }
+        }
+      };
+      const mixer = incoming.getMixer();
+      mixer.addEventListener("finished", onFinish);
+      return () => mixer.removeEventListener("finished", onFinish);
+    }
+  }, [animationHint, demoClipName, animations, clonedScene, mixer]);
 
-    return () => {
-      action.fadeOut(0.25);
-      action.stop();
-    };
-  }, [actions, defaultClip]);
+  useEffect(() => {
+    onClipsDetected?.(animations.map((c) => c.name));
+  }, [animations, onClipsDetected]);
 
   useFrame((state) => {
     const group = modelGroupRef.current;
@@ -128,6 +294,36 @@ function CoachModel({
     }
 
     const elapsed = state.clock.getElapsedTime();
+    const hasRealAnimations = animations.length > 0;
+
+    if (hasRealAnimations) {
+      // Subtle speaking bob — Y bounce proportional to speech amplitude approximated by sine
+      const speakBob = isSpeaking ? Math.abs(Math.sin(elapsed * 8.5)) * 0.009 : 0;
+      // Gentle ambient sway so the coach never feels frozen
+      const ambientSway = Math.sin(elapsed * 0.38) * 0.055;
+      group.position.x = transform.position[0];
+      group.position.y = transform.position[1] + speakBob;
+      group.position.z = transform.position[2];
+      group.rotation.x = transform.rotation[0];
+      group.rotation.y = transform.rotation[1] + ambientSway;
+      group.rotation.z = transform.rotation[2];
+
+      // Procedural ear flick added on top of whatever the mixer set this frame
+      // earend / R_earend are tip bones — rotating x creates a forward/back flick
+      const earWave = Math.sin(elapsed * 1.6) * 0.07;
+      const earMoodOffset =
+        animationHint === "celebrate" ? -0.4 :
+        animationHint === "warning"   ?  0.32 :
+        isSpeaking                    ?  Math.sin(elapsed * 6) * 0.12 :
+                                         0;
+      if (earBoneRef.current) {
+        earBoneRef.current.rotation.x = earBoneRef.current.rotation.x + earWave + earMoodOffset;
+      }
+      if (rEarBoneRef.current) {
+        rEarBoneRef.current.rotation.x = rEarBoneRef.current.rotation.x + earWave + earMoodOffset;
+      }
+      return;
+    }
 
     const motionByHint: Record<
       CoachAnimationHint,
@@ -142,12 +338,12 @@ function CoachModel({
       }
     > = {
       idle: {
-        floatAmplitude: 0.045,
-        floatSpeed: 1.15,
-        tiltAmplitude: 0.03,
-        turnAmplitude: 0.04,
+        floatAmplitude: 0,
+        floatSpeed: 0,
+        tiltAmplitude: 0,
+        turnAmplitude: 0.005,
         forwardOffset: 0,
-        rollAmplitude: 0.012,
+        rollAmplitude: 0,
         extraBounce: 0,
       },
       talking: {
@@ -207,27 +403,54 @@ function CoachModel({
     };
 
     const motion = motionByHint[animationHint];
-    const baseY = -1.75 + Math.sin(elapsed * motion.floatSpeed) * motion.floatAmplitude;
-    const bounceY = Math.max(0, Math.sin(elapsed * motion.floatSpeed * 1.45)) * motion.extraBounce;
-    const turnY = 0.08 + Math.sin(elapsed * 0.7) * motion.turnAmplitude;
-    const tiltX = Math.sin(elapsed * 0.85) * motion.tiltAmplitude;
-    const rollZ = Math.sin(elapsed * 0.65) * motion.rollAmplitude;
-    const forwardZ = motion.forwardOffset + Math.sin(elapsed * 0.9) * 0.02;
+    const baseY =
+      transform.position[1] +
+      (motion.floatSpeed > 0 ? Math.sin(elapsed * motion.floatSpeed) * motion.floatAmplitude : 0);
+    const bounceY =
+      motion.floatSpeed > 0
+        ? Math.max(0, Math.sin(elapsed * motion.floatSpeed * 1.45)) * motion.extraBounce
+        : 0;
+    const turnY = transform.rotation[1] + Math.sin(elapsed * 0.7) * motion.turnAmplitude;
+    const tiltX = transform.rotation[0] + Math.sin(elapsed * 0.85) * motion.tiltAmplitude;
+    const rollZ = transform.rotation[2] + Math.sin(elapsed * 0.65) * motion.rollAmplitude;
+    const forwardZ =
+      transform.position[2] +
+      motion.forwardOffset +
+      (motion.floatSpeed > 0 ? Math.sin(elapsed * 0.9) * 0.02 : 0);
 
     group.position.y = baseY + bounceY;
     group.position.z = forwardZ;
     group.rotation.x = tiltX;
     group.rotation.y = turnY;
     group.rotation.z = rollZ;
-
-    if (hasEmbeddedAnimations && animationHint === "celebrate") {
-      group.rotation.y += Math.sin(elapsed * 1.8) * 0.05;
-    }
   });
+
+  const animPackPath = getAnimationPackPath(modelPath);
 
   return (
     <group ref={modelGroupRef}>
-      <primitive object={clonedScene} scale={modelScale} />
+      {!embeddedClips.length && (
+        <Suspense fallback={null}>
+          <AnimPackErrorBoundary>
+            <AnimationPackLoader path={animPackPath} onClipsLoaded={setExternalClips} />
+          </AnimPackErrorBoundary>
+        </Suspense>
+      )}
+      {demoClipName && (
+        <Suspense fallback={null}>
+          <AnimPackErrorBoundary>
+            <AnimationPackLoader
+              path="/models/animations/fitness-animations.glb"
+              onClipsLoaded={setFitnessClips}
+            />
+          </AnimPackErrorBoundary>
+        </Suspense>
+      )}
+      <primitive
+        object={clonedScene}
+        scale={transform.scale * fitProfile.fitScale}
+        position={fitProfile.offset}
+      />
     </group>
   );
 }
@@ -338,6 +561,56 @@ function getMoodSceneMeta(mood: Coach3DMood): MoodSceneMeta {
   }
 }
 
+export function getCoachModelTransformPreset(modelPath: string): ModelTransform {
+  if (modelPath.includes("atlas-coach-mobile.glb")) {
+    return {
+      position: [0, -0.7, 0],
+      rotation: [0, 0, 0],
+      scale: 1.58,
+      cameraPosition: [0, 0.92, 5.35],
+      fovCompact: 36,
+      fovDefault: 33,
+    };
+  }
+
+  if (modelPath.includes("atlas-coach.glb")) {
+    return {
+      position: [0, -0.7, 0],
+      rotation: [0, 0, 0],
+      scale: 1.52,
+      cameraPosition: [0, 0.96, 5.55],
+      fovCompact: 36,
+      fovDefault: 33,
+    };
+  }
+
+  return {
+    position: [0, -0.68, 0],
+    rotation: [0, 0, 0],
+    scale: 1.26,
+    cameraPosition: [0, 1, 4.8],
+    fovCompact: 34,
+    fovDefault: 31,
+  };
+}
+
+function mergePreviewTransform(
+  baseTransform: ModelTransform,
+  previewTransform?: PreviewTransform
+): ModelTransform {
+  if (!previewTransform) {
+    return baseTransform;
+  }
+
+  return {
+    ...baseTransform,
+    position: previewTransform.position ?? baseTransform.position,
+    scale: previewTransform.scale ?? baseTransform.scale,
+    rotation: previewTransform.rotation ?? baseTransform.rotation,
+    cameraPosition: previewTransform.cameraPosition ?? baseTransform.cameraPosition,
+  };
+}
+
 function CoachFallback({
   avatarLabel,
   meta,
@@ -394,7 +667,15 @@ export function Coach3D({
   compact = false,
   modelPathOverride,
   animationHint = "idle",
+  animationClipId,
+  demoClipName,
+  previewTransform,
+  previewFrame = "in_frame",
+  lightingMode = "mood",
+  onClipsDetected,
+  message,
 }: Coach3DProps) {
+  const { isSpeaking } = useCoachSpeech(message);
   const [modelStatus, setModelStatus] = useState<ModelStatus>("checking");
   const [resolvedModelPath, setResolvedModelPath] = useState<string | null>(null);
 
@@ -404,6 +685,22 @@ export function Coach3D({
     [modelPathOverride, selectedAvatar]
   );
   const meta = getMoodSceneMeta(mood);
+  const isNeutralLighting = lightingMode === "neutral";
+  const resolvedAnimationClip = useMemo(
+    () =>
+      (animationClipId
+        ? getAvatarAnimationClipById(animationClipId, selectedAvatar)
+        : getAnimationForHint(animationHint, selectedAvatar)) ?? null,
+    [animationClipId, animationHint, selectedAvatar]
+  );
+  const modelTransform = useMemo(
+    () =>
+      mergePreviewTransform(
+        getCoachModelTransformPreset(resolvedModelPath ?? modelPathOverride ?? candidateModelPaths[0] ?? ""),
+        previewTransform
+      ),
+    [candidateModelPaths, modelPathOverride, previewTransform, resolvedModelPath]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -462,40 +759,99 @@ export function Coach3D({
     return fallbackNode;
   }
 
+  const appliedCameraPosition: [number, number, number] = [
+    modelTransform.cameraPosition[0],
+    modelTransform.cameraPosition[1] + (previewFrame === "full_body" ? 0.02 : previewFrame === "bust" ? 0.65 : -0.04),
+    modelTransform.cameraPosition[2] + (previewFrame === "full_body" ? 0.24 : previewFrame === "bust" ? -0.85 : 0.1),
+  ];
+  const appliedFov =
+    (compact ? modelTransform.fovCompact : modelTransform.fovDefault) +
+    (previewFrame === "full_body" ? 1 : previewFrame === "bust" ? -8 : -1);
+  const stageGradient = isNeutralLighting
+    ? "from-slate-700/95 via-slate-800/92 to-[#0f172a]"
+    : meta.gradient;
+  const backgroundColor = isNeutralLighting ? "#233047" : "#0b1220";
+  const fogColor = isNeutralLighting ? "#233047" : "#0b1220";
+  const ambientIntensity = isNeutralLighting ? 3.8 : 1.85;
+  const keyLightAColor = isNeutralLighting ? "#f8fafc" : meta.lightA;
+  const keyLightBColor = isNeutralLighting ? "#e2e8f0" : meta.lightB;
+  const keyLightAIntensity = isNeutralLighting ? 6.8 : meta.lightIntensityB + 2;
+  const keyLightBIntensity = isNeutralLighting ? 6.1 : 8.5;
+  const frontFillIntensity = isNeutralLighting ? 22 : 12;
+  const floorGlowColor = isNeutralLighting ? "#cbd5e1" : "#60a5fa";
+
   return (
     <div className={`rounded-[1.5rem] border ${meta.border} bg-slate-950/72 p-4 ${meta.glow}`}>
-      <div className={`relative overflow-hidden rounded-[1.35rem] border border-white/8 bg-gradient-to-br ${meta.gradient}`}>
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.08),_transparent_28%),linear-gradient(180deg,transparent,rgba(2,6,23,0.42))]" />
+      <div className={`relative overflow-hidden rounded-[1.35rem] border border-white/8 bg-gradient-to-br ${stageGradient}`}>
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.12),_transparent_28%),linear-gradient(180deg,transparent,rgba(15,23,42,0.22))]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_22%,_rgba(226,232,240,0.18),_transparent_42%),linear-gradient(180deg,rgba(30,41,59,0.08),rgba(51,65,85,0.18)_58%,rgba(15,23,42,0.34)_100%)]" />
         <div className="absolute left-4 top-4 z-10 rounded-full border border-white/10 bg-slate-950/72 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-slate-200 backdrop-blur-md">
           {resolvedModelPath}
         </div>
         <div className="absolute right-4 top-4 z-10 rounded-full border border-white/10 bg-slate-950/72 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-slate-200 backdrop-blur-md">
-          {animationHint}
+          {resolvedAnimationClip?.label ?? animationHint}
         </div>
-        <div className={`relative ${compact ? "h-[240px]" : "h-[300px]"}`}>
+        <div
+          className={`relative ${compact ? (previewFrame === "bust" ? "h-[240px]" : "h-[300px]") : previewFrame === "full_body" ? "h-[560px]" : previewFrame === "bust" ? "h-[320px]" : "h-[420px]"}`}
+          style={{ touchAction: "none", overscrollBehavior: "contain" }}
+          onWheelCapture={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+        >
           <Coach3DErrorBoundary fallback={fallbackNode}>
-            <Canvas camera={{ position: [0, 0.6, 4.8], fov: compact ? 34 : 30 }} dpr={[1, 1.8]}>
-              <color attach="background" args={["#000000"]} />
-              <fog attach="fog" args={["#020617", 5, 10]} />
-              <ambientLight intensity={0.9} />
-              <directionalLight position={[4, 6, 4]} intensity={meta.lightIntensityA} color={meta.lightA} />
-              <pointLight position={[-3, 2, 3]} intensity={meta.lightIntensityB} color={meta.lightB} distance={12} />
-              <pointLight position={[2, -2, 3]} intensity={10} color={meta.lightA} distance={10} />
+            <Canvas
+              camera={{
+                position: appliedCameraPosition,
+                fov: appliedFov,
+              }}
+              dpr={[1, 1.8]}
+            >
+              <color attach="background" args={[backgroundColor]} />
+              <fog attach="fog" args={[fogColor, 10, 22]} />
+              <ambientLight intensity={ambientIntensity} color="#f8fafc" />
+              <directionalLight position={[1.2, 5.2, 5.4]} intensity={isNeutralLighting ? 1.85 : meta.lightIntensityA + 0.7} color="#ffffff" />
+              <directionalLight position={[-2.8, 4.2, 3.4]} intensity={isNeutralLighting ? 1.55 : 1.2} color="#dbeafe" />
+              <pointLight position={[0, 1.4, 4.3]} intensity={frontFillIntensity} color="#f8fafc" distance={11} />
+              <pointLight position={[2.8, 2.2, -1.8]} intensity={keyLightAIntensity} color={keyLightBColor} distance={14} />
+              <pointLight position={[-2.2, 1.4, 2.4]} intensity={keyLightBIntensity} color={keyLightAColor} distance={11} />
+              <pointLight position={[0, -0.4, 3.6]} intensity={isNeutralLighting ? 8.6 : 10} color={isNeutralLighting ? "#dbeafe" : "#93c5fd"} distance={10} />
+              <pointLight position={[0, 1.8, -4.2]} intensity={isNeutralLighting ? 14 : 7} color={isNeutralLighting ? "#e2e8f0" : "#818cf8"} distance={14} />
+              <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.96, 0]}>
+                <circleGeometry args={[3.2, 56]} />
+                <meshBasicMaterial color={floorGlowColor} transparent opacity={isNeutralLighting ? 0.18 : 0.12} />
+              </mesh>
+              <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.9, -0.3]}>
+                <ringGeometry args={[1.65, 3.4, 56]} />
+                <meshBasicMaterial color="#e2e8f0" transparent opacity={isNeutralLighting ? 0.18 : 0.08} />
+              </mesh>
               <Suspense fallback={<LoadingSceneLabel />}>
-                <PresentationControls
-                  global={false}
-                  snap
-                  rotation={[0, 0.08, 0]}
-                  polar={[-0.18, 0.24]}
-                  azimuth={[-0.35, 0.35]}
-                  speed={1.2}
-                >
-                  <CoachModel
-                    modelPath={resolvedModelPath}
-                    modelScale={meta.modelScale}
-                    animationHint={animationHint}
-                  />
-                </PresentationControls>
+                <OrbitControls
+                  enablePan={false}
+                  enableZoom={true}
+                  enableRotate={true}
+                  enableDamping={true}
+                  dampingFactor={0.08}
+                  minDistance={2}
+                  maxDistance={12}
+                  target={previewFrame === "bust" ? [0, 1.1, 0] : [0, 0.42, 0]}
+                  touches={{
+                    ONE: 2,
+                    TWO: 512 as never,
+                  }}
+                />
+                <CoachModel
+                  modelPath={resolvedModelPath}
+                  transform={{
+                    ...modelTransform,
+                    scale: modelTransform.scale * (meta.modelScale / 1.6),
+                  }}
+                  animationHint={animationHint}
+                  demoClipName={demoClipName}
+                  previewFrame={previewFrame}
+                  isSpeaking={isSpeaking}
+                  onClipsDetected={onClipsDetected}
+                />
               </Suspense>
             </Canvas>
           </Coach3DErrorBoundary>

@@ -40,6 +40,9 @@ export type CoachBrainInput = {
   cameraPlacementMessage?: string;
   likelyFrontView?: boolean;
   likelySideView?: boolean;
+  bodyScanConfidence?: number;
+  bodyScanMessage?: string;
+  postureAlignmentScore?: number;
   trackingMode?: "squat" | "pushup" | "plank";
   latestRepQualityLabel?: "clean" | "shallow" | "unstable" | "lost_tracking" | "unknown";
   latestRepQualityMessage?: string;
@@ -202,6 +205,21 @@ export function getCoachBrainResponse(input: CoachBrainInput): CoachBrainOutput 
   if (
     input.isCameraActive &&
     input.cameraStatusLabel === "Pose Tracking Active" &&
+    (input.bodyScanConfidence ?? 0) < 45 &&
+    input.fullBodyVisible !== false &&
+    (input.placementScore ?? 100) >= 70
+  ) {
+    return {
+      mood: "warning",
+      message: input.bodyScanMessage ?? "Step back and stand tall for a cleaner body scan.",
+      shouldSpeak: false,
+      animationHint: "pointing",
+    };
+  }
+
+  if (
+    input.isCameraActive &&
+    input.cameraStatusLabel === "Pose Tracking Active" &&
     input.trackingMode === "plank" &&
     input.plankQualityLabel
   ) {
@@ -269,6 +287,15 @@ export function getCoachBrainResponse(input: CoachBrainInput): CoachBrainOutput 
     input.cameraStatusLabel === "Pose Tracking Active" &&
     input.trackingMode
   ) {
+    if ((input.bodyScanConfidence ?? 0) >= 80) {
+      return {
+        mood: "coaching",
+        message: input.bodyScanMessage ?? "Body scan ready. We can track visual progress over time.",
+        shouldSpeak: false,
+        animationHint: "talking",
+      };
+    }
+
     const severityState = getSeverityState(input.feedbackSeverity);
 
     return {

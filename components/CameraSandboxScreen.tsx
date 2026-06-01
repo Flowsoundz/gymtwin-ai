@@ -1,28 +1,81 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
+import { Coach3D } from "@/components/Coach3D";
 import { Coach3DPlaceholder } from "@/components/Coach3DPlaceholder";
 import { FloatingCoachAvatar } from "@/components/FloatingCoachAvatar";
 import { useCameraCoach } from "@/hooks/useCameraCoach";
 import { useVoiceCommands } from "@/hooks/useVoiceCommands";
 import { getAvatarLabel } from "@/lib/avatarAssets";
+import { getAvatarCoachLayerState } from "@/lib/avatarCoachLayer";
 import { getCoachBrainResponse } from "@/lib/coachBrain";
-import type { CoachAvatar } from "@/types";
+import {
+  getConversationResponse,
+  parseConversationIntent,
+  type ConversationIntent,
+} from "@/lib/conversationCommands";
+import type { AvatarDisplaySettings, CoachAvatar } from "@/types";
 
 type CameraSandboxScreenProps = {
   onBack: () => void;
   primaryButton: string;
   secondaryButton: string;
   selectedAvatar?: CoachAvatar;
+  avatarDisplaySettings: AvatarDisplaySettings;
 };
+
+type CollapsibleSectionProps = {
+  title: string;
+  subtitle?: string;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+};
+
+function CollapsibleSection({
+  title,
+  subtitle,
+  open,
+  onToggle,
+  children,
+}: CollapsibleSectionProps) {
+  return (
+    <section className="rounded-[1.6rem] border border-white/8 bg-white/6 p-3 backdrop-blur-xl shadow-[0_18px_60px_rgba(15,23,42,0.45)]">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center justify-between gap-3 rounded-[1.1rem] px-2 py-2 text-left transition hover:bg-white/5"
+      >
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-[0.28em] text-slate-300">{title}</p>
+          {subtitle ? <p className="mt-1 text-xs text-slate-500">{subtitle}</p> : null}
+        </div>
+        <span className="rounded-full border border-white/10 bg-slate-950/70 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-slate-300">
+          {open ? "Hide" : "Show"}
+        </span>
+      </button>
+      {open ? <div className="mt-3">{children}</div> : null}
+    </section>
+  );
+}
 
 export function CameraSandboxScreen({
   onBack,
   primaryButton,
   secondaryButton,
   selectedAvatar = "Nova",
+  avatarDisplaySettings,
 }: CameraSandboxScreenProps) {
   const [isCameraFocusMode, setIsCameraFocusMode] = useState(false);
+  const [trackingDetailsOpen, setTrackingDetailsOpen] = useState(false);
+  const [bodyScanOpen, setBodyScanOpen] = useState(false);
+  const [coachPreviewOpen, setCoachPreviewOpen] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [privacyOpen, setPrivacyOpen] = useState(false);
+  const [conversationState, setConversationState] = useState<{
+    intent: ConversationIntent;
+    answer: string;
+  } | null>(null);
 
   const {
     videoRef,
@@ -45,6 +98,7 @@ export function CameraSandboxScreen({
     feedbackSeverity,
     trackingReadiness,
     cameraPlacement,
+    bodyScanEstimate,
     trackingLost,
     trackingLostReason,
     trackingLostSeconds,
@@ -80,7 +134,24 @@ export function CameraSandboxScreen({
     startListening,
     stopListening,
   } = useVoiceCommands({
-    onCommand: (command) => {
+    onCommand: (command, rawTranscript) => {
+      const intent = parseConversationIntent(rawTranscript);
+      if (intent !== "unknown") {
+        setConversationState(
+          getConversationResponse({
+            intent,
+            selectedAvatarName: getAvatarLabel(selectedAvatar),
+            latestIssue,
+            bestCue,
+            cleanRepCount,
+            needsWorkRepCount,
+            trackingConfidence: trackingReadiness.confidenceScore,
+            placementMessage: cameraPlacement.message,
+            coachBrainMessage: coachBrain.message,
+          })
+        );
+      }
+
       switch (command) {
         case "start_camera":
           void handleStartCamera();
@@ -182,77 +253,71 @@ export function CameraSandboxScreen({
   const primaryControlClass = isCameraRunning ? controlButtonClass : primaryButton;
   const stopControlClass =
     !isCameraRunning && statusLabel !== "Camera Error" ? controlButtonClass : secondaryButton;
-  const coachBrain = useMemo(
-    () =>
-      getCoachBrainResponse({
-        selectedAvatarName: getAvatarLabel(selectedAvatar),
-        screenContext: "camera_sandbox",
-        isVoiceListening: isListening,
-        isCameraActive: isCameraRunning,
-        cameraStatusLabel: statusLabel,
-        trackingMode: selectedMode,
-        trackingConfidence: trackingReadiness.confidenceScore,
-        fullBodyVisible: trackingReadiness.fullBodyVisible,
-        trackingReadinessMessage: trackingReadiness.message,
-        trackingLost,
-        trackingLostReason,
-        trackingRecoveredAt,
-        placementScore: cameraPlacement.placementScore,
-        cameraPlacementMessage: cameraPlacement.message,
-        likelyFrontView: cameraPlacement.likelyFrontView,
-        likelySideView: cameraPlacement.likelySideView,
-        latestRepQualityLabel: latestRepQuality?.label,
-        latestRepQualityMessage: latestRepQuality?.message,
-        cleanRepCount,
-        needsWorkRepCount,
-        latestIssue,
-        bestCue,
-        plankQualityLabel,
-        plankQualityMessage,
-        phase: selectedMode === "squat" ? squatPhase : selectedMode === "pushup" ? pushupPhase : plankPostureStatus,
-        reps: selectedMode === "squat" ? squatRepCount : selectedMode === "pushup" ? pushupRepCount : undefined,
-        holdSeconds: selectedMode === "plank" ? plankHoldSeconds : undefined,
-        angleLabel: selectedMode === "squat" ? kneeAngleDisplay : selectedMode === "pushup" ? elbowAngleDisplay : plankAlignmentScore,
-        formFeedback: feedbackMessage,
-        feedbackSeverity,
-      }),
-    [
-      selectedAvatar,
-      isListening,
-      isCameraRunning,
-      statusLabel,
-      selectedMode,
-      squatPhase,
-      pushupPhase,
-      plankPostureStatus,
-      squatRepCount,
-      pushupRepCount,
-      plankHoldSeconds,
-      kneeAngleDisplay,
-      elbowAngleDisplay,
-      plankAlignmentScore,
-      trackingReadiness.confidenceScore,
-      trackingReadiness.fullBodyVisible,
-      trackingReadiness.message,
-      trackingLost,
-      trackingLostReason,
-      trackingRecoveredAt,
-      cameraPlacement.placementScore,
-      cameraPlacement.message,
-      cameraPlacement.likelyFrontView,
-      cameraPlacement.likelySideView,
-      latestRepQuality,
-      cleanRepCount,
-      needsWorkRepCount,
-      latestIssue,
-      bestCue,
-      plankQualityLabel,
-      plankQualityMessage,
-      feedbackMessage,
-      feedbackSeverity,
-    ]
-  );
+  const coachBrain = getCoachBrainResponse({
+    selectedAvatarName: getAvatarLabel(selectedAvatar),
+    screenContext: "camera_sandbox",
+    isVoiceListening: isListening,
+    isCameraActive: isCameraRunning,
+    cameraStatusLabel: statusLabel,
+    trackingMode: selectedMode,
+    trackingConfidence: trackingReadiness.confidenceScore,
+    fullBodyVisible: trackingReadiness.fullBodyVisible,
+    trackingReadinessMessage: trackingReadiness.message,
+    trackingLost,
+    trackingLostReason,
+    trackingRecoveredAt,
+    placementScore: cameraPlacement.placementScore,
+    cameraPlacementMessage: cameraPlacement.message,
+    likelyFrontView: cameraPlacement.likelyFrontView,
+    likelySideView: cameraPlacement.likelySideView,
+    bodyScanConfidence: bodyScanEstimate.scanConfidence,
+    bodyScanMessage: bodyScanEstimate.message,
+    postureAlignmentScore: bodyScanEstimate.postureAlignmentScore,
+    latestRepQualityLabel: latestRepQuality?.label,
+    latestRepQualityMessage: latestRepQuality?.message,
+    cleanRepCount,
+    needsWorkRepCount,
+    latestIssue,
+    bestCue,
+    plankQualityLabel,
+    plankQualityMessage,
+    phase: selectedMode === "squat" ? squatPhase : selectedMode === "pushup" ? pushupPhase : plankPostureStatus,
+    reps: selectedMode === "squat" ? squatRepCount : selectedMode === "pushup" ? pushupRepCount : undefined,
+    holdSeconds: selectedMode === "plank" ? plankHoldSeconds : undefined,
+    angleLabel: selectedMode === "squat" ? kneeAngleDisplay : selectedMode === "pushup" ? elbowAngleDisplay : plankAlignmentScore,
+    formFeedback: feedbackMessage,
+    feedbackSeverity,
+  });
+  const avatarCoachState = getAvatarCoachLayerState({
+    surface: "camera_setup",
+    selectedAvatar,
+    coachBrain,
+    exerciseName: modeMeta.label,
+    cameraActive: isCameraRunning,
+    trackingIssue:
+      trackingLost ||
+      !trackingReadiness.fullBodyVisible ||
+      statusLabel === "Camera Error",
+    warningActive:
+      feedbackSeverity === "warning" ||
+      feedbackSeverity === "error" ||
+      Boolean(trackingWarning) ||
+      cameraPlacement.placementScore < 75,
+    isVoiceListening: isListening,
+    highlightDemo: avatarDisplaySettings.showExerciseDemos,
+    compactPreference: avatarDisplaySettings.compactInWorkout,
+  });
   const showCameraFocusMode = isCameraFocusMode && statusLabel !== "Camera Off";
+  const showAvatarVisual = avatarDisplaySettings.mode !== "hidden";
+  const showCameraAvatar = showAvatarVisual && avatarDisplaySettings.showDuringCamera;
+  const showSidebarCoachCard = showAvatarVisual && avatarDisplaySettings.mode === "coach_card";
+  const showStageOverlayAvatar =
+    showCameraAvatar && avatarDisplaySettings.mode === "floating_overlay";
+  const showStageCornerAvatar =
+    showCameraAvatar && avatarDisplaySettings.mode === "camera_corner";
+  const useMinimalCameraHud = avatarDisplaySettings.minimalCameraHud && isCameraRunning;
+  const MODE_DEMO_CLIP: Record<string, string> = { squat: "Squat", pushup: "PushUp", plank: "Plank" };
+  const modeDemoClipName = selectedMode ? (MODE_DEMO_CLIP[selectedMode] ?? null) : null;
   const trackingLockTone =
     statusLabel === "Camera Error"
       ? "border-red-400/20 bg-red-500/10 text-red-100"
@@ -315,6 +380,77 @@ export function CameraSandboxScreen({
     : cameraPlacement.likelyFrontView
       ? "Front"
       : "Unknown";
+  const bodyScanTone =
+    (bodyScanEstimate.scanConfidence ?? 0) >= 80
+      ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-100"
+      : (bodyScanEstimate.scanConfidence ?? 0) >= 45
+        ? "border-blue-400/20 bg-blue-500/10 text-blue-100"
+        : "border-amber-400/20 bg-amber-500/10 text-amber-100";
+  const trackingChecklist = [
+    { label: "Head / Upper Body", ready: trackingReadiness.headVisible },
+    { label: "Shoulders", ready: trackingReadiness.shouldersVisible },
+    { label: "Hips", ready: trackingReadiness.hipsVisible },
+    { label: "Knees", ready: trackingReadiness.kneesVisible },
+    { label: "Feet", ready: trackingReadiness.feetVisible },
+  ];
+  const repSummaryCount =
+    selectedMode === "plank" ? "Live" : `${cleanRepCount}/${cleanRepCount + needsWorkRepCount || 0}`;
+  const coachGuidance =
+    statusLabel === "Camera Error"
+      ? {
+          tone: "border-red-400/20 bg-red-500/10 text-red-100",
+          eyebrow: "Camera Error",
+          title: "Fix camera access before tracking",
+          message: errorMessage ?? "Allow camera access and try again.",
+          reason: "Tracking cannot run until the camera is available.",
+        }
+      : trackingLost
+        ? {
+            tone: "border-amber-400/20 bg-amber-500/10 text-amber-100",
+            eyebrow: "Tracking Paused",
+            title: "Step back so your full body is visible",
+            message: trackingLostReason,
+            reason: "Landmarks dropped out and the coach is waiting to re-lock.",
+          }
+        : !trackingReadiness.fullBodyVisible
+          ? {
+              tone: trackingLockTone,
+              eyebrow: "Tracking Lock",
+              title: "Get your full body into frame",
+              message: trackingReadiness.message,
+              reason: "Head, hips, knees, and feet must stay visible for reliable reps.",
+            }
+          : cameraPlacement.placementScore < 75
+            ? {
+                tone: placementTone,
+                eyebrow: "Phone Placement",
+                title: placementLabel,
+                message: cameraPlacement.message,
+                reason: `Current view reads as ${placementViewLabel.toLowerCase()} and needs adjustment.`,
+              }
+            : feedbackSeverity === "warning" || feedbackSeverity === "error"
+              ? {
+                  tone: feedbackTone,
+                  eyebrow: "Coach Guidance",
+                  title: latestRepQualityLabel,
+                  message: feedbackMessage,
+                  reason: bestCue,
+                }
+              : latestRepQualityMessage
+                ? {
+                    tone: repQualityTone,
+                    eyebrow: selectedMode === "plank" ? "Hold Quality" : "Rep Quality",
+                    title: latestRepQualityLabel,
+                    message: latestRepQualityMessage,
+                    reason: bestCue,
+                  }
+                : {
+                    tone: feedbackTone,
+                    eyebrow: "Coach Guidance",
+                    title: "Keep stacking quality reps",
+                    message: avatarCoachState.message,
+                    reason: `Tracking confidence is ${trackingReadiness.confidenceScore}% right now.`,
+                  };
 
   const modeSwitcher = (
     <div className="grid grid-cols-3 gap-2">
@@ -360,7 +496,7 @@ export function CameraSandboxScreen({
           className={`relative w-full ${
             isFocusMode
               ? "h-[100svh] min-h-[100svh] sm:h-screen sm:min-h-screen"
-              : "h-[58vh] min-h-[440px] sm:h-[64vh] lg:h-[70vh] lg:max-h-[780px]"
+              : "h-[62vh] min-h-[500px] sm:h-[68vh] lg:h-[78vh] lg:max-h-[860px]"
           }`}
         >
           <div className="pointer-events-none absolute inset-0 z-[1] opacity-80">
@@ -444,14 +580,12 @@ export function CameraSandboxScreen({
             </div>
           ) : null}
 
-          <div className="pointer-events-none absolute inset-x-3 top-3 z-[4] flex items-start justify-between gap-3 sm:inset-x-5 sm:top-5">
-            <div className="rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 backdrop-blur-md shadow-[0_10px_30px_rgba(15,23,42,0.35)]">
+          <div className="pointer-events-none absolute left-3 top-3 z-[4] sm:left-5 sm:top-5">
+            <div className="rounded-2xl border border-white/10 bg-slate-950/64 px-4 py-2 backdrop-blur-md shadow-[0_10px_30px_rgba(15,23,42,0.35)]">
               <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">Tracking</p>
-              <p className="mt-1 text-xs font-bold text-slate-200">{trackingWarning ? "Low Confidence" : "Ready"}</p>
-            </div>
-            <div className="hidden rounded-2xl border border-white/10 bg-slate-950/60 px-3 py-2 text-right backdrop-blur-md shadow-[0_10px_30px_rgba(15,23,42,0.35)] sm:block">
-              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">Mode</p>
-              <p className="mt-1 text-xs font-bold text-slate-200">{modeMeta.label}</p>
+              <p className="mt-1 text-xs font-bold text-slate-100">
+                {trackingWarning ? "Low Confidence" : `${modeMeta.label} Ready`}
+              </p>
             </div>
           </div>
 
@@ -521,33 +655,63 @@ export function CameraSandboxScreen({
                     <p className="mt-1 text-xs font-medium leading-relaxed text-white">{cameraPlacement.message}</p>
                   </div>
                 ) : null}
+                {(bodyScanEstimate.scanConfidence ?? 0) >= 80 || (bodyScanEstimate.scanConfidence ?? 0) < 45 ? (
+                  <div className={`col-span-2 rounded-2xl border px-3 py-3 text-left backdrop-blur-md ${bodyScanTone}`}>
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-[10px] font-black uppercase tracking-[0.24em] opacity-80">Body Scan Beta</p>
+                      <p className="text-sm font-black text-white">{bodyScanEstimate.scanConfidence ?? 0}%</p>
+                    </div>
+                    <p className="mt-1 text-xs font-medium leading-relaxed text-white">{bodyScanEstimate.message}</p>
+                  </div>
+                ) : null}
               </div>
 
-              <div className="pointer-events-none absolute bottom-28 left-3 right-3 z-[4] sm:bottom-32 sm:left-5 sm:right-5">
-                <div className="ml-auto max-w-[13rem] sm:max-w-[18rem]">
-                  <FloatingCoachAvatar
-                    selectedAvatar={selectedAvatar}
-                    mood={coachBrain.mood}
-                    message={`${modeMeta.label} • ${modeMeta.phase}\n${coachBrain.message}`}
-                    position="stage-overlay"
-                    compact
-                    emphasis="focus"
-                  />
+              {showStageCornerAvatar ? (
+                <div className="pointer-events-none absolute bottom-28 left-3 right-3 z-[4] sm:bottom-32 sm:left-5 sm:right-5">
+                  <div className="ml-auto max-w-[10rem] sm:max-w-[11rem]">
+                    <FloatingCoachAvatar
+                      selectedAvatar={selectedAvatar}
+                      mood={avatarCoachState.mood}
+                      message={`${modeMeta.label} • ${modeMeta.phase}\n${avatarCoachState.message}`}
+                      position="stage-overlay"
+                      compact
+                      emphasis="focus"
+                    />
+                  </div>
                 </div>
-              </div>
+              ) : null}
             </>
           ) : (
-            <div className="pointer-events-none absolute bottom-3 left-3 right-3 z-[4] sm:bottom-5 sm:left-5 sm:right-5">
-              <div className="ml-auto max-w-[20rem]">
-                <FloatingCoachAvatar
-                  selectedAvatar={selectedAvatar}
-                  mood={coachBrain.mood}
-                  message={`${modeMeta.label} • ${modeMeta.phase}\n${coachBrain.message}`}
-                  position="stage-overlay"
-                  emphasis="standard"
-                />
-              </div>
-            </div>
+            <>
+              {showStageOverlayAvatar ? (
+                <div className="pointer-events-none absolute bottom-3 left-3 right-3 z-[4] sm:bottom-5 sm:left-5 sm:right-5">
+                  <div className="ml-auto max-w-[20rem]">
+                    <FloatingCoachAvatar
+                      selectedAvatar={selectedAvatar}
+                      mood={avatarCoachState.mood}
+                      message={`${modeMeta.label} • ${modeMeta.phase}\n${avatarCoachState.message}`}
+                      position="stage-overlay"
+                      compact={avatarDisplaySettings.compactInWorkout}
+                      emphasis="standard"
+                    />
+                  </div>
+                </div>
+              ) : null}
+              {showStageCornerAvatar ? (
+                <div className="pointer-events-none absolute bottom-3 left-3 right-3 z-[4] sm:bottom-5 sm:left-5 sm:right-5">
+                  <div className="ml-auto max-w-[10rem] sm:max-w-[11rem]">
+                    <FloatingCoachAvatar
+                      selectedAvatar={selectedAvatar}
+                      mood={avatarCoachState.mood}
+                      message={`${modeMeta.label} • ${modeMeta.phase}\n${avatarCoachState.message}`}
+                      position="stage-overlay"
+                      compact
+                      emphasis="focus"
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </>
           )}
         </div>
       </div>
@@ -635,73 +799,41 @@ export function CameraSandboxScreen({
           </div>
         </header>
 
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,0.85fr)]">
-          <section className="order-1">{cameraStage(false)}</section>
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(340px,0.9fr)]">
+          <section className="order-1 space-y-4">
+            {cameraStage(false)}
+          </section>
 
-          <aside className="order-2 space-y-4 xl:sticky xl:top-6 xl:self-start">
-            <section className={`${hudCardClass} p-3`}>
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <p className="px-2 text-[11px] font-black uppercase tracking-[0.28em] text-slate-500">Tracking Mode</p>
-                <div className="rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-blue-200">
-                  Local Tracking
+          <aside className="order-2 space-y-4 xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:self-start xl:overflow-y-auto xl:pr-1">
+            {modeDemoClipName ? (
+              <div>
+                <p className="mb-2 px-1 text-[10px] font-black uppercase tracking-[0.24em] text-fuchsia-300">
+                  Coach Demo · {modeMeta.label}
+                </p>
+                <Coach3D
+                  selectedAvatar={selectedAvatar}
+                  animationHint="idle"
+                  demoClipName={modeDemoClipName}
+                  compact
+                  previewFrame="full_body"
+                  lightingMode="neutral"
+                />
+              </div>
+            ) : null}
+
+            <section className={`${hudCardClass} p-4`}>
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.28em] text-slate-500">Tracking Mode</p>
+                  <h2 className="mt-2 text-2xl font-black tracking-tight text-white">{modeMeta.label}</h2>
+                </div>
+                <div className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] ${statusTone}`}>
+                  {trackingReadiness.confidenceScore}% Ready
                 </div>
               </div>
               {modeSwitcher}
-            </section>
 
-            <section className={`${hudCardClass} p-4`}>
-              <div className={`mb-4 rounded-[1.35rem] border px-4 py-4 ${trackingLockTone}`}>
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[11px] font-black uppercase tracking-[0.28em] opacity-80">Tracking Lock</p>
-                    <h3 className="mt-1 text-xl font-black tracking-tight text-white">
-                      {trackingLost ? "Tracking Paused" : trackingLockLabel}
-                    </h3>
-                  </div>
-                  <div className="rounded-full border border-white/10 bg-black/10 px-3 py-1 text-sm font-black text-white">
-                    {trackingReadiness.confidenceScore}%
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-xs font-semibold text-white/90 sm:grid-cols-3">
-                  {[
-                    { label: "Head / Upper Body", ready: trackingReadiness.headVisible },
-                    { label: "Shoulders", ready: trackingReadiness.shouldersVisible },
-                    { label: "Hips", ready: trackingReadiness.hipsVisible },
-                    { label: "Knees", ready: trackingReadiness.kneesVisible },
-                    { label: "Feet", ready: trackingReadiness.feetVisible },
-                  ].map((zone) => (
-                    <div
-                      key={zone.label}
-                      className={`rounded-xl border px-3 py-2 ${
-                        zone.ready
-                          ? "border-emerald-300/24 bg-emerald-500/12 text-emerald-50"
-                          : "border-white/10 bg-slate-950/35 text-white/70"
-                      }`}
-                    >
-                      {zone.ready ? "✓" : "•"} {zone.label}
-                    </div>
-                  ))}
-                </div>
-                <p className="mt-3 text-sm leading-relaxed text-white">
-                  {trackingLost ? trackingLostReason : trackingReadiness.message}
-                </p>
-                {trackingRecentlyRecovered ? (
-                  <p className="mt-2 text-xs font-semibold text-emerald-200">Tracking recovered. Let’s keep going.</p>
-                ) : null}
-              </div>
-
-              <div className="mb-4 flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[11px] font-black uppercase tracking-[0.28em] text-blue-300">Workout HUD</p>
-                  <h2 className="mt-1 text-2xl font-black tracking-tight text-white">{modeMeta.label}</h2>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className={metricCardClass}>
-                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">Exercise</p>
-                  <p className="mt-1 text-lg font-black text-white">{modeMeta.label}</p>
-                </div>
+              <div className="mt-4 grid grid-cols-2 gap-3">
                 <div className={metricCardClass}>
                   <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">
                     {selectedMode === "plank" ? "Hold" : "Reps"}
@@ -712,190 +844,30 @@ export function CameraSandboxScreen({
                   <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">Phase</p>
                   <p className="mt-1 text-lg font-bold capitalize text-slate-100">{modeMeta.phase}</p>
                 </div>
-                <div className={metricCardClass}>
-                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">
-                    {selectedMode === "squat" ? "Knee Angle" : selectedMode === "pushup" ? "Elbow Angle" : "Alignment Score"}
-                  </p>
-                  <p className="mt-1 text-lg font-bold text-slate-100">{modeMeta.angle}</p>
-                </div>
               </div>
 
-              <div className={`mt-4 rounded-[1.35rem] border px-4 py-4 ${repQualityTone}`}>
-                <div className="mb-3 flex items-center justify-between gap-3">
+              <div className={`mt-4 rounded-[1.35rem] border px-4 py-4 ${coachGuidance.tone}`}>
+                <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-[11px] font-black uppercase tracking-[0.28em] opacity-80">Rep Quality</p>
-                    <h3 className="mt-1 text-xl font-black tracking-tight text-white">
-                      {selectedMode === "plank" ? "Hold Quality" : latestRepQualityLabel}
-                    </h3>
+                    <p className="text-[10px] font-black uppercase tracking-[0.24em] opacity-80">{coachGuidance.eyebrow}</p>
+                    <h3 className="mt-2 text-xl font-black tracking-tight text-white">{coachGuidance.title}</h3>
                   </div>
-                  <div className="rounded-full border border-white/10 bg-black/10 px-3 py-1 text-sm font-black text-white">
-                    {selectedMode === "plank" ? "Live" : `${cleanRepCount}/${cleanRepCount + needsWorkRepCount || 0}`}
+                  <div className="rounded-full border border-white/10 bg-black/15 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-white">
+                    {trackingWarning ? "Watch Form" : "Live"}
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className={metricCardClass}>
-                    <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">Clean Reps</p>
-                    <p className="mt-1 text-3xl font-black tracking-tight text-white">{cleanRepCount}</p>
-                  </div>
-                  <div className={metricCardClass}>
-                    <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">Needs Work</p>
-                    <p className="mt-1 text-3xl font-black tracking-tight text-white">{needsWorkRepCount}</p>
-                  </div>
-                </div>
-                <p className="mt-3 text-sm leading-relaxed text-white">{latestRepQualityMessage}</p>
-              </div>
-
-              <div className={`mt-4 rounded-[1.35rem] border px-4 py-4 ${placementTone}`}>
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[11px] font-black uppercase tracking-[0.28em] opacity-80">Phone Placement</p>
-                    <h3 className="mt-1 text-xl font-black tracking-tight text-white">{placementLabel}</h3>
-                  </div>
-                  <div className="rounded-full border border-white/10 bg-black/10 px-3 py-1 text-sm font-black text-white">
-                    {cameraPlacement.placementScore}%
-                  </div>
-                </div>
-                <div className="flex items-center justify-between gap-3 text-xs font-semibold text-white/90">
-                  <span className="rounded-xl border border-white/10 bg-black/10 px-3 py-2">
-                    View: {placementViewLabel}
-                  </span>
-                  <span className="rounded-xl border border-white/10 bg-black/10 px-3 py-2">
-                    {cameraPlacement.tooClose
-                      ? "Too Close"
-                      : cameraPlacement.tooFar
-                        ? "Too Far"
-                        : cameraPlacement.tooHigh
-                          ? "Too High"
-                          : cameraPlacement.tooLow
-                            ? "Too Low"
-                            : "Looks Good"}
-                  </span>
-                </div>
-                <p className="mt-3 text-sm leading-relaxed text-white">{cameraPlacement.message}</p>
-              </div>
-
-              <div className="mt-4 rounded-[1.35rem] border border-white/8 bg-slate-950/55 px-4 py-4">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[11px] font-black uppercase tracking-[0.28em] text-blue-300">Session Recap</p>
-                    <h3 className="mt-1 text-xl font-black tracking-tight text-white">Form Summary</h3>
-                  </div>
-                  <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-sm font-black text-white">
-                    {trackingConfidenceAverage}%
-                  </div>
-                </div>
-                <p className="text-sm leading-relaxed text-slate-300">
-                  Main fix:{" "}
-                  <span className="font-semibold text-white">
-                    {latestIssue === "shallow"
-                      ? "Go a little deeper."
-                      : latestIssue === "lost_tracking"
-                        ? "Step back before you start."
-                        : latestIssue === "unstable"
-                          ? "Slow down and control the movement."
-                          : latestIssue === "hips_high"
-                            ? "Lower your hips slightly."
-                            : latestIssue === "hips_low"
-                              ? "Lift your hips and brace your core."
-                              : "Keep stacking clean reps."}
-                  </span>
-                </p>
-                <p className="mt-2 text-sm leading-relaxed text-slate-400">{bestCue}</p>
-              </div>
-
-              <p className="mt-4 text-xs leading-relaxed text-slate-400">
-                {selectedMode === "squat"
-                  ? "Counts a rep after the knee angle drops below 110° and returns above 160°."
-                  : selectedMode === "pushup"
-                    ? "Counts a rep after the elbow angle drops below 95° and returns above 155°."
-                    : "Tracks hold time while scoring shoulder-hip-ankle body-line alignment from 0 to 100."}
-              </p>
-              {trackingWarning ? (
-                <p className="mt-2 text-xs leading-relaxed text-amber-200">{trackingWarning}</p>
-              ) : null}
-            </section>
-
-            <section className={`${hudCardClass} p-4`}>
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-[11px] font-black uppercase tracking-[0.28em] text-fuchsia-300">Form Feedback</p>
-                  <h3 className="mt-1 text-xl font-black tracking-tight text-white">Coach Guidance</h3>
-                </div>
-                <div className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] ${feedbackTone}`}>
-                  {feedbackSeverity}
-                </div>
-              </div>
-
-              <div className={`rounded-[1.35rem] border px-4 py-4 ${feedbackTone}`}>
-                <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-black/15 text-sm font-black">
-                    AI
-                  </div>
-                  <div>
-                    <p className="text-base font-bold leading-relaxed">{feedbackMessage}</p>
-                    <p className="mt-2 text-xs uppercase tracking-[0.22em] opacity-80">{modeMeta.label} · {modeMeta.phase}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-3 space-y-1 text-xs leading-relaxed text-slate-400">
-                <p>Prototype feedback only — not medical advice.</p>
-                <p>Camera processing stays on this device.</p>
+                <p className="mt-3 text-sm font-semibold leading-relaxed text-white">{coachGuidance.message}</p>
+                <p className="mt-2 text-xs leading-relaxed text-white/75">{coachGuidance.reason}</p>
               </div>
             </section>
-
-            <Coach3DPlaceholder
-              selectedAvatar={selectedAvatar}
-              mood={coachBrain.mood}
-              animationHint={coachBrain.animationHint}
-            />
 
             <section className={`${hudCardClass} p-3`}>
-              <div className="mb-3 rounded-[1.25rem] border border-white/8 bg-slate-950/55 px-4 py-4 text-left text-sm leading-relaxed text-slate-300">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.24em] text-blue-300">Voice Control</p>
-                    <p className="mt-1 text-xs font-bold text-slate-100">
-                      {isSupported ? (isListening ? "Listening" : "Off") : "Unavailable"}
-                    </p>
-                  </div>
-                  <div className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] ${isListening ? "border-emerald-400/30 bg-emerald-500/15 text-emerald-200" : "border-slate-700/60 bg-slate-900/70 text-slate-300"}`}>
-                    {isListening ? "Listening" : "Voice"}
-                  </div>
+              <div className="mb-3 flex items-center justify-between gap-3 px-1">
+                <p className="text-[11px] font-black uppercase tracking-[0.28em] text-slate-500">Camera Controls</p>
+                <div className="rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-blue-200">
+                  Local Tracking
                 </div>
-                <p className="mt-3 text-xs leading-relaxed text-slate-400">
-                  {isSupported
-                    ? "Try “start camera”, “stop camera”, “switch to squat”, “switch to push up”, or “switch to plank”."
-                    : "Voice commands are not supported in this browser yet."}
-                </p>
-                {transcript ? (
-                  <p className="mt-3 rounded-xl border border-white/8 bg-slate-900/75 px-3 py-2 text-xs text-slate-200">
-                    Heard: <span className="font-semibold">{transcript}</span>
-                  </p>
-                ) : null}
-                {voiceErrorMessage ? (
-                  <p className="mt-3 text-xs leading-relaxed text-red-200">{voiceErrorMessage}</p>
-                ) : null}
-                {voiceControlButton ? <div className="mt-4">{voiceControlButton}</div> : null}
               </div>
-              <div className="mt-3 rounded-[1.35rem] border border-white/8 bg-slate-950/55 px-4 py-4 text-left">
-            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-blue-300">Privacy &amp; Setup</p>
-            <p className="mt-2 text-sm leading-relaxed text-slate-300">
-              Camera processing stays on this device. No video, images, or pose landmarks are uploaded.
-            </p>
-            <div className="mt-3 text-xs leading-relaxed text-slate-400">
-              {guidanceCard}
-            </div>
-          </div>
-              {errorMessage ? (
-                <div className="mt-3 rounded-[1.4rem] border border-red-400/20 bg-red-500/10 p-4 text-sm leading-relaxed text-red-200 backdrop-blur-md">
-                  {errorMessage}
-                </div>
-              ) : null}
-            </section>
-
-            <div className={`${hudCardClass} p-3`}>
-              <p className="mb-3 px-1 text-[11px] font-black uppercase tracking-[0.28em] text-slate-500">Camera Controls</p>
               <div className="grid grid-cols-2 gap-3">
                 <button onClick={() => void handleStartCamera()} disabled={isCameraRunning} className={primaryControlClass}>
                   {isCameraRunning ? "Camera Active" : "Start Camera"}
@@ -908,8 +880,265 @@ export function CameraSandboxScreen({
                 </button>
                 <button onClick={onBack} className={secondaryButton}>Back</button>
               </div>
-            </div>
+              {trackingWarning ? <p className="mt-3 text-xs leading-relaxed text-amber-200">{trackingWarning}</p> : null}
+              {errorMessage ? <p className="mt-2 text-xs leading-relaxed text-red-200">{errorMessage}</p> : null}
+            </section>
+
+            <CollapsibleSection
+              title="Tracking Details"
+              subtitle="Confidence, rep quality, placement, and current thresholds."
+              open={trackingDetailsOpen}
+              onToggle={() => setTrackingDetailsOpen((value) => !value)}
+            >
+              <div className="space-y-3">
+                <div className={`rounded-[1.25rem] border px-4 py-4 ${trackingLockTone}`}>
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.24em] opacity-80">Tracking Status</p>
+                      <p className="mt-1 text-lg font-black text-white">{trackingLost ? "Tracking Paused" : trackingLockLabel}</p>
+                    </div>
+                    <div className="rounded-full border border-white/10 bg-black/10 px-3 py-1 text-sm font-black text-white">
+                      {trackingReadiness.confidenceScore}%
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs font-semibold text-white/90 sm:grid-cols-3">
+                    {trackingChecklist.map((zone) => (
+                      <div
+                        key={zone.label}
+                        className={`rounded-xl border px-3 py-2 ${
+                          zone.ready
+                            ? "border-emerald-300/24 bg-emerald-500/12 text-emerald-50"
+                            : "border-white/10 bg-slate-950/35 text-white/70"
+                        }`}
+                      >
+                        {zone.ready ? "✓" : "•"} {zone.label}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-3 text-sm leading-relaxed text-white">
+                    {trackingLost ? trackingLostReason : trackingReadiness.message}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className={metricCardClass}>
+                    <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">Quality</p>
+                    <p className="mt-1 text-lg font-black text-white">{selectedMode === "plank" ? "Hold Quality" : latestRepQualityLabel}</p>
+                    <p className="mt-2 text-xs text-slate-400">{latestRepQualityMessage}</p>
+                  </div>
+                  <div className={metricCardClass}>
+                    <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">Rep Summary</p>
+                    <p className="mt-1 text-lg font-black text-white">{repSummaryCount}</p>
+                    <p className="mt-2 text-xs text-slate-400">Clean {cleanRepCount} · Needs work {needsWorkRepCount}</p>
+                  </div>
+                  <div className={metricCardClass}>
+                    <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">Placement</p>
+                    <p className="mt-1 text-lg font-black text-white">{cameraPlacement.placementScore}%</p>
+                    <p className="mt-2 text-xs text-slate-400">{placementViewLabel} view</p>
+                  </div>
+                  <div className={metricCardClass}>
+                    <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">
+                      {selectedMode === "squat" ? "Knee Angle" : selectedMode === "pushup" ? "Elbow Angle" : "Alignment Score"}
+                    </p>
+                    <p className="mt-1 text-lg font-black text-white">{modeMeta.angle}</p>
+                    <p className="mt-2 text-xs text-slate-400">Average confidence {trackingConfidenceAverage}%</p>
+                  </div>
+                </div>
+
+                <div className="rounded-[1.25rem] border border-white/8 bg-slate-950/55 px-4 py-4 text-sm text-slate-300">
+                  <p className="font-semibold text-white">{bestCue}</p>
+                  <p className="mt-2 text-xs leading-relaxed text-slate-400">
+                    {selectedMode === "squat"
+                      ? "Counts a rep after the knee angle drops below 110° and returns above 160°."
+                      : selectedMode === "pushup"
+                        ? "Counts a rep after the elbow angle drops below 95° and returns above 155°."
+                        : "Tracks hold time while scoring shoulder-hip-ankle body-line alignment from 0 to 100."}
+                  </p>
+                </div>
+              </div>
+            </CollapsibleSection>
+
+            {!useMinimalCameraHud ? (
+              <CollapsibleSection
+                title="Body Scan Beta"
+                subtitle="Prototype posture and proportion estimates."
+                open={bodyScanOpen}
+                onToggle={() => setBodyScanOpen((value) => !value)}
+              >
+                <div className={`rounded-[1.25rem] border px-4 py-4 ${bodyScanTone}`}>
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.24em] opacity-80">Body Scan Beta</p>
+                      <p className="mt-1 text-lg font-black text-white">
+                        {isCameraRunning ? "Posture & Proportions" : "Camera Required"}
+                      </p>
+                    </div>
+                    <div className="rounded-full border border-white/10 bg-black/10 px-3 py-1 text-sm font-black text-white">
+                      {isCameraRunning ? `${bodyScanEstimate.scanConfidence ?? 0}%` : "--"}
+                    </div>
+                  </div>
+                  {isCameraRunning ? (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className={metricCardClass}>
+                        <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">Posture Alignment</p>
+                        <p className="mt-1 text-2xl font-black text-white">{bodyScanEstimate.postureAlignmentScore ?? "--"}</p>
+                      </div>
+                      <div className={metricCardClass}>
+                        <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">Shoulder / Hip Ratio</p>
+                        <p className="mt-1 text-2xl font-black text-white">{bodyScanEstimate.shoulderToHipRatio ?? "--"}</p>
+                      </div>
+                      <div className={metricCardClass}>
+                        <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">Visible Height</p>
+                        <p className="mt-1 text-2xl font-black text-white">
+                          {bodyScanEstimate.visibleHeightRatio !== undefined
+                            ? `${Math.round(bodyScanEstimate.visibleHeightRatio * 100)}%`
+                            : "--"}
+                        </p>
+                      </div>
+                      <div className={metricCardClass}>
+                        <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">Scan Confidence</p>
+                        <p className="mt-1 text-2xl font-black text-white">{bodyScanEstimate.scanConfidence ?? "--"}</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm leading-relaxed text-white">Start camera to run Body Scan Beta.</p>
+                  )}
+                  <p className="mt-3 text-sm leading-relaxed text-white">{bodyScanEstimate.message}</p>
+                  <p className="mt-3 text-xs leading-relaxed text-slate-300/80">
+                    Body Scan Beta estimates posture and body proportions from landmarks. It does not measure weight or diagnose body fat.
+                  </p>
+                </div>
+              </CollapsibleSection>
+            ) : null}
+
+            {!useMinimalCameraHud ? (
+              <CollapsibleSection
+                title="3D Coach Preview"
+                subtitle="Avatar visibility and demo preview."
+                open={coachPreviewOpen}
+                onToggle={() => setCoachPreviewOpen((value) => !value)}
+              >
+                {showSidebarCoachCard ? (
+                  avatarDisplaySettings.show3DCoach ? (
+                    <Coach3DPlaceholder
+                      selectedAvatar={selectedAvatar}
+                      mood={avatarCoachState.mood}
+                      animationHint={avatarCoachState.animationHint}
+                    />
+                  ) : (
+                    <div className={`${hudCardClass} p-4`}>
+                      <FloatingCoachAvatar
+                        selectedAvatar={selectedAvatar}
+                        mood={avatarCoachState.mood}
+                        message={avatarCoachState.message}
+                        position="inline"
+                        compact={avatarDisplaySettings.compactInWorkout}
+                        emphasis="standard"
+                      />
+                    </div>
+                  )
+                ) : (
+                  <div className="rounded-[1.25rem] border border-white/8 bg-slate-950/55 px-4 py-4 text-left">
+                    <p className="text-sm leading-relaxed text-slate-300">
+                      {avatarDisplaySettings.mode === "hidden"
+                        ? "Avatar visuals are hidden here, but tracking cues and coaching text remain active."
+                        : avatarDisplaySettings.mode === "camera_corner"
+                          ? "Avatar visuals stay near the camera stage so the side HUD remains focused."
+                          : "Avatar visuals float over the camera stage while the sidebar stays dedicated to tracking."}
+                    </p>
+                  </div>
+                )}
+              </CollapsibleSection>
+            ) : null}
+
+            {!useMinimalCameraHud ? (
+              <CollapsibleSection
+                title="Voice Control"
+                subtitle="Local voice commands and conversation mode."
+                open={voiceOpen}
+                onToggle={() => setVoiceOpen((value) => !value)}
+              >
+                <div className="rounded-[1.25rem] border border-white/8 bg-slate-950/55 px-4 py-4 text-left text-sm leading-relaxed text-slate-300">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.24em] text-blue-300">Voice Control</p>
+                      <p className="mt-1 text-xs font-bold text-slate-100">
+                        {isSupported ? (isListening ? "Listening" : "Off") : "Unavailable"}
+                      </p>
+                    </div>
+                    <div className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] ${isListening ? "border-emerald-400/30 bg-emerald-500/15 text-emerald-200" : "border-slate-700/60 bg-slate-900/70 text-slate-300"}`}>
+                      {isListening ? "Listening" : "Voice"}
+                    </div>
+                  </div>
+                  <p className="mt-3 text-xs leading-relaxed text-slate-400">
+                    {isSupported
+                      ? "Try “start camera”, “stop camera”, “switch to squat”, “switch to push up”, or “switch to plank”."
+                      : "Voice commands are not supported in this browser yet."}
+                  </p>
+                  {transcript ? (
+                    <p className="mt-3 rounded-xl border border-white/8 bg-slate-900/75 px-3 py-2 text-xs text-slate-200">
+                      Heard: <span className="font-semibold">{transcript}</span>
+                    </p>
+                  ) : null}
+                  {voiceErrorMessage ? (
+                    <p className="mt-3 text-xs leading-relaxed text-red-200">{voiceErrorMessage}</p>
+                  ) : null}
+                  {conversationState ? (
+                    <div className="mt-4 rounded-[1.2rem] border border-fuchsia-400/18 bg-gradient-to-br from-blue-500/10 via-slate-950/65 to-fuchsia-500/10 px-4 py-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-fuchsia-200">Conversation Mode</p>
+                          <p className="mt-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+                            Intent: {conversationState.intent.replaceAll("_", " ")}
+                          </p>
+                        </div>
+                        <div className="rounded-full border border-white/10 bg-slate-900/70 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-slate-200">
+                          Local
+                        </div>
+                      </div>
+                      <p className="mt-3 text-sm font-medium leading-relaxed text-white">{conversationState.answer}</p>
+                    </div>
+                  ) : null}
+                  {voiceControlButton ? <div className="mt-4">{voiceControlButton}</div> : null}
+                </div>
+              </CollapsibleSection>
+            ) : null}
+
+            {!useMinimalCameraHud ? (
+              <CollapsibleSection
+                title="Privacy & Setup"
+                subtitle="Setup guidance and on-device processing notes."
+                open={privacyOpen}
+                onToggle={() => setPrivacyOpen((value) => !value)}
+              >
+                <div className="space-y-3">
+                  <div className="rounded-[1.25rem] border border-white/8 bg-slate-950/55 px-4 py-4 text-left">
+                    <p className="text-sm leading-relaxed text-slate-300">
+                      Camera processing stays on this device. No video, images, or pose landmarks are uploaded.
+                    </p>
+                  </div>
+                  {guidanceCard}
+                </div>
+              </CollapsibleSection>
+            ) : null}
           </aside>
+        </div>
+      </div>
+
+      <div className="sticky bottom-0 z-30 -mx-4 mt-6 border-t border-white/8 bg-slate-950/92 px-4 py-3 backdrop-blur-xl sm:-mx-5 sm:px-5 xl:hidden">
+        <div className="mx-auto grid max-w-6xl grid-cols-4 gap-2">
+          <button onClick={onBack} className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-[11px] font-black uppercase tracking-[0.18em] text-slate-200">
+            Back
+          </button>
+          <button onClick={() => void handleStartCamera()} disabled={isCameraRunning} className="rounded-2xl border border-blue-400/25 bg-blue-500/15 px-3 py-3 text-[11px] font-black uppercase tracking-[0.18em] text-blue-100 disabled:border-slate-800 disabled:bg-slate-900/40 disabled:text-slate-600">
+            {isCameraRunning ? "Active" : "Start"}
+          </button>
+          <button onClick={handleStopCamera} disabled={!isCameraRunning && statusLabel !== "Camera Error"} className="rounded-2xl border border-fuchsia-400/20 bg-fuchsia-500/12 px-3 py-3 text-[11px] font-black uppercase tracking-[0.18em] text-fuchsia-100 disabled:border-slate-800 disabled:bg-slate-900/40 disabled:text-slate-600">
+            Stop
+          </button>
+          <button type="button" disabled className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-[11px] font-black uppercase tracking-[0.18em] text-slate-400 disabled:text-slate-600">
+            Flip
+          </button>
         </div>
       </div>
     </main>

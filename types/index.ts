@@ -12,13 +12,18 @@ export type AppScreen =
   | "safety_stop";
 
 export type CoachName =
-  | "Calm Coach"
-  | "Drill Coach"
-  | "Anime Warrior Coach"
-  | "Funny Coach"
-  | "Dominican Hype Coach";
+  | "Supportive"
+  | "Intense"
+  | "Motivational"
+  | "Playful"
+  | "High Energy";
 
 export type CoachAvatar = "Nova" | "Atlas";
+export type AvatarDisplayMode =
+  | "coach_card"
+  | "floating_overlay"
+  | "camera_corner"
+  | "hidden";
 
 export type WorkoutGoal = "Lose weight" | "Build muscle" | "Tone" | "Mobility" | "Stamina";
 export type WorkoutLevel = "Beginner" | "Intermediate" | "Advanced";
@@ -30,6 +35,97 @@ export interface TraineeStats {
   streak: number;
   lastWorkoutDate: string | null;
   totalMinutes: number;
+}
+
+export interface BodyProfile {
+  heightInches?: number;
+  weightLbs?: number;
+  goalWeightLbs?: number;
+  age?: number;
+  sex?: "male" | "female" | "prefer_not_to_say";
+  activityGoal?: string;
+  lastUpdated?: string;
+}
+
+export interface AvatarDisplaySettings {
+  mode: AvatarDisplayMode;
+  show3DCoach: boolean;
+  compactInWorkout: boolean;
+  showDuringCamera: boolean;
+  showExerciseDemos: boolean;
+  minimalCameraHud: boolean;
+}
+
+export type AvatarAnimationCategory =
+  | "idle"
+  | "reaction"
+  | "conversation"
+  | "workout_demo"
+  | "celebration"
+  | "dance";
+
+export interface AvatarAnimationClip {
+  id: string;
+  label: string;
+  category: AvatarAnimationCategory;
+  animationHint:
+    | "idle"
+    | "talking"
+    | "listening"
+    | "pointing"
+    | "thumbs_up"
+    | "warning"
+    | "celebrate";
+  filePath?: string;
+  embeddedClipName?: string;
+  isPremium?: boolean;
+  isAvailable: boolean;
+  description: string;
+}
+
+export type AvatarCoachSurface =
+  | "landing"
+  | "workout_tracking"
+  | "camera_setup"
+  | "summary"
+  | "progress"
+  | "model_lab";
+
+export type AvatarCoachRole =
+  | "presence"
+  | "demo"
+  | "warning"
+  | "encouragement"
+  | "celebration"
+  | "setup";
+
+export interface BodyScanEstimate {
+  shoulderWidthRatio?: number;
+  hipWidthRatio?: number;
+  shoulderToHipRatio?: number;
+  visibleHeightRatio?: number;
+  postureAlignmentScore?: number;
+  scanConfidence?: number;
+  message: string;
+}
+
+export interface WeeklyPlanDay {
+  id: string;
+  dayLabel: string;
+  focus: string;
+  durationMinutes: number;
+  difficulty: "beginner" | "intermediate" | "advanced";
+  recommendedWorkout: string;
+  completed: boolean;
+}
+
+export interface WeeklyPlan {
+  id: string;
+  createdAt: string;
+  goal?: string;
+  level?: string;
+  equipment?: string;
+  days: WeeklyPlanDay[];
 }
 
 export type AchievementBadgeId =
@@ -49,6 +145,22 @@ export interface AchievementBadge {
   description: string;
   icon: string;
   unlocked: boolean;
+}
+
+export interface CoachAdaptationRecommendation {
+  priority: "low" | "medium" | "high";
+  title: string;
+  message: string;
+  suggestedAction: string;
+  reason: string;
+}
+
+export interface DifficultyAdjustmentRecommendation {
+  direction: "increase" | "decrease" | "maintain" | "form_focus" | "recovery";
+  title: string;
+  message: string;
+  adjustmentLabel: string;
+  reason: string;
 }
 
 export interface WorkoutSummaryData {
