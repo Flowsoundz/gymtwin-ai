@@ -659,9 +659,9 @@ export function getCoachModelTransformPreset(modelPath: string): ModelTransform 
       position: [0, 0, 0],
       rotation: [0, 0, 0],
       scale: 1.0,
-      cameraPosition: [0, 1.8, 4.5],
-      fovCompact: 50,
-      fovDefault: 45,
+      cameraPosition: [0, 1.8, 9.0],
+      fovCompact: 46,
+      fovDefault: 42,
     };
   }
 
@@ -845,13 +845,13 @@ export function Coach3D({
 
   const appliedCameraPosition: [number, number, number] = [
     modelTransform.cameraPosition[0],
-    // bust: look at upper chest — camera rises and moves in; full_body: standard preset
-    modelTransform.cameraPosition[1] + (previewFrame === "bust" ? 0.55 : previewFrame === "full_body" ? -0.3 : 0),
-    modelTransform.cameraPosition[2] + (previewFrame === "bust" ? -1.6 : previewFrame === "full_body" ? 0.5 : 0),
+    // bust pulls camera up and in for a chest-up portrait; full_body/in_frame use the preset directly
+    modelTransform.cameraPosition[1] + (previewFrame === "bust" ? 0.5 : 0),
+    modelTransform.cameraPosition[2] + (previewFrame === "bust" ? -4.5 : 0),
   ];
   const appliedFov =
     (compact ? modelTransform.fovCompact : modelTransform.fovDefault) +
-    (previewFrame === "bust" ? -12 : previewFrame === "full_body" ? 6 : 0);
+    (previewFrame === "bust" ? -8 : 0);
   const stageGradient = isNeutralLighting
     ? "from-slate-700/95 via-slate-800/92 to-[#0f172a]"
     : meta.gradient;
