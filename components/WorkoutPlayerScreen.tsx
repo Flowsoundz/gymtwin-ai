@@ -8,10 +8,16 @@ import { useVoiceCommands } from "@/hooks/useVoiceCommands";
 import { getAvatarLabel } from "@/lib/avatarAssets";
 import { getAvatarCoachLayerState } from "@/lib/avatarCoachLayer";
 import { getExerciseDemoDescriptor } from "@/lib/exerciseDemoLibrary";
+import { playCountdownCue, playSetStartCue } from "@/lib/audioCues";
 import { getCameraCoachLabel, getCameraCoachModeForMovementName } from "@/lib/cameraCoachMapping";
 import { getCoachBrainResponse } from "@/lib/coachBrain";
 import type { CoachAnimationHint } from "@/lib/coachBrain";
-import { getExerciseClipName } from "@/lib/exerciseAnimationMap";
+import { getExerciseClipName, isFloorMovementName } from "@/lib/exerciseAnimationMap";
+import {
+  ENABLE_CAMERA_TRACKING,
+  ENABLE_EXERCISE_DEMOS,
+  ENABLE_MEDIAPIPE,
+} from "@/lib/featureFlags";
 import {
   getConversationResponse,
   parseConversationIntent,
@@ -22,6 +28,7 @@ import type {
   AvatarDisplaySettings,
   CoachAvatar,
   CoachName,
+  PersonalizedWorkoutPlan,
   WorkoutMovement,
 } from "@/types";
 
@@ -51,6 +58,7 @@ type WorkoutPlayerScreenProps = {
   onChangeDifficultyEasy: () => void;
   onChangeDifficultyHard: () => void;
   onCoachAnimHint?: (hint: CoachAnimationHint) => void;
+  personalizedPlan?: PersonalizedWorkoutPlan;
   isFirstWorkout?: boolean;
   onFirstHintsDismissed?: () => void;
   primaryButton: string;
@@ -81,12 +89,17 @@ export function WorkoutPlayerScreen({
   onTriggerRestPhase,
   onChangeDifficultyEasy,
   onChangeDifficultyHard,
+  personalizedPlan,
   onCoachAnimHint,
   isFirstWorkout = false,
   onFirstHintsDismissed,
   primaryButton,
 }: WorkoutPlayerScreenProps) {
   const [hintsVisible, setHintsVisible] = useState(isFirstWorkout);
+  const [quickSettingsOpen, setQuickSettingsOpen] = useState(false);
+  const [coachLinePlaying, setCoachLinePlaying] = useState(false);
+  const previousRestCountdownRef = useRef<number | null>(null);
+  const previousActiveSetKeyRef = useRef<string | null>(null);
 
   function dismissHints() {
     setHintsVisible(false);
@@ -107,6 +120,7 @@ export function WorkoutPlayerScreen({
     answer: string;
   } | null>(null);
   const {
+    isCameraRunning,
     videoRef,
     canvasRef,
     selectedMode,
@@ -211,10 +225,33 @@ export function WorkoutPlayerScreen({
     () => getExerciseClipName(activeMovement),
     [activeMovement]
   );
+  const isFloorDemo = useMemo(
+    () => isFloorMovementName(activeMovement.name),
+    [activeMovement.name]
+  );
   const exerciseDemoDescriptor = useMemo(
     () => getExerciseDemoDescriptor(activeMovement.name, selectedAvatar),
     [activeMovement.name, selectedAvatar]
   );
+
+  // Look up the richer PersonalizedExercise data for the current and next movements
+  const allPlanExercises = useMemo(
+    () => personalizedPlan
+      ? [...personalizedPlan.warmup, ...personalizedPlan.mainBlock, ...personalizedPlan.cooldown]
+      : [],
+    [personalizedPlan]
+  );
+  const personalizedExercise = useMemo(
+    () => allPlanExercises.find((ex) => ex.name === cleanMovementName(activeMovement.name)) ?? null,
+    [allPlanExercises, activeMovement.name, cleanMovementName]
+  );
+  const nextPersonalizedExercise = useMemo(() => {
+    const nextMove = workingSet < activeMovement.sets
+      ? null  // same exercise, next set
+      : activeRoutine[movementIndex + 1] ?? null;
+    if (!nextMove) return null;
+    return allPlanExercises.find((ex) => ex.name === cleanMovementName(nextMove.name)) ?? null;
+  }, [allPlanExercises, activeMovement.sets, activeRoutine, cleanMovementName, movementIndex, workingSet]);
 
   useEffect(() => {
     if (!supportedCameraMode) {
@@ -237,7 +274,7 @@ export function WorkoutPlayerScreen({
   }, [stopCamera, stopListening]);
 
   const handleStartCameraCoach = async () => {
-    if (!supportedCameraMode) return;
+    if (!supportedCameraMode || !ENABLE_CAMERA_TRACKING) return;
     setSelectedMode(supportedCameraMode);
     setIsCameraCoachOpen(true);
     await startCamera();
@@ -288,7 +325,7 @@ export function WorkoutPlayerScreen({
   };
 
   const statusTone =
-    statusLabel === "Pose Tracking Active"
+    statusLabel === "Pose Tracking Active" || statusLabel === "Camera Preview Active"
       ? "border-emerald-400/30 bg-emerald-500/15 text-emerald-200 shadow-[0_0_24px_rgba(16,185,129,0.16)]"
       : statusLabel === "Camera Error"
         ? "border-red-400/30 bg-red-500/15 text-red-200 shadow-[0_0_24px_rgba(239,68,68,0.16)]"
@@ -300,7 +337,7 @@ export function WorkoutPlayerScreen({
     feedbackSeverity === "good"
       ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-200"
       : feedbackSeverity === "warning"
-        ? "border-amber-400/20 bg-amber-500/10 text-amber-200"
+        ? "border-cyan-400/20 bg-cyan-500/10 text-cyan-200"
         : feedbackSeverity === "error"
           ? "border-red-400/20 bg-red-500/10 text-red-200"
           : "border-slate-700/60 bg-slate-900/70 text-slate-200";
@@ -347,19 +384,19 @@ export function WorkoutPlayerScreen({
       : feedbackSeverity === "error"
         ? "shadow-[0_0_60px_rgba(239,68,68,0.45),0_0_100px_rgba(239,68,68,0.12)] bg-gradient-to-br from-red-500/45 via-transparent to-transparent"
         : feedbackSeverity === "warning"
-          ? "shadow-[0_0_50px_rgba(234,179,8,0.38)] bg-gradient-to-br from-amber-500/35 via-transparent to-transparent"
+          ? "shadow-[0_0_50px_rgba(34,211,238,0.38)] bg-gradient-to-br from-cyan-500/35 via-transparent to-transparent"
           : "shadow-[0_0_40px_rgba(99,102,241,0.28)] bg-gradient-to-br from-blue-500/28 via-transparent to-fuchsia-500/18";
 
   const formHUDBadge =
     formAccuracyPct >= 80
       ? "border-emerald-400/40 bg-emerald-950/85 text-emerald-200"
       : formAccuracyPct >= 50
-        ? "border-amber-400/40 bg-amber-950/85 text-amber-200"
+        ? "border-cyan-400/40 bg-cyan-950/85 text-cyan-200"
         : "border-red-400/40 bg-red-950/85 text-red-200";
 
   const formHUDBarGrad =
     formAccuracyPct >= 80 ? "from-emerald-400 to-green-500"
-    : formAccuracyPct >= 50 ? "from-amber-400 to-yellow-500"
+    : formAccuracyPct >= 50 ? "from-cyan-400 to-blue-500"
     : "from-red-500 to-rose-600";
 
   const cameraGuidanceCard = (
@@ -437,7 +474,7 @@ export function WorkoutPlayerScreen({
         selectedAvatarName: getAvatarLabel(selectedAvatar),
         screenContext: "player",
         isVoiceListening: isListening,
-        isCameraActive: isCameraCoachOpen && statusLabel === "Pose Tracking Active",
+        isCameraActive: isCameraCoachOpen && isCameraRunning,
         cameraStatusLabel: statusLabel,
         trackingMode: selectedMode,
         trackingConfidence: trackingReadiness.confidenceScore,
@@ -517,7 +554,7 @@ export function WorkoutPlayerScreen({
     talkativeness: avatarDisplaySettings.talkativeness,
     repCountingEnabled: avatarDisplaySettings.repCountingEnabled,
     isMuted,
-    isCameraActive: isCameraCoachOpen && statusLabel === "Pose Tracking Active",
+    isCameraActive: isCameraCoachOpen && isCameraRunning,
     selectedAvatar,
     onAnimHint: onCoachAnimHint,
   });
@@ -527,7 +564,7 @@ export function WorkoutPlayerScreen({
       ? "border-red-400/20 bg-red-500/10 text-red-100"
       : trackingReadiness.fullBodyVisible
         ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-100"
-        : "border-amber-400/20 bg-amber-500/10 text-amber-100";
+        : "border-cyan-400/20 bg-cyan-500/10 text-cyan-100";
   const trackingLockLabel =
     statusLabel === "Camera Error"
       ? "Camera Error"
@@ -565,19 +602,19 @@ export function WorkoutPlayerScreen({
       ? plankQualityLabel === "stable"
         ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-100"
         : plankQualityLabel === "hips_high" || plankQualityLabel === "hips_low" || plankQualityLabel === "lost_tracking"
-          ? "border-amber-400/20 bg-amber-500/10 text-amber-100"
+          ? "border-cyan-400/20 bg-cyan-500/10 text-cyan-100"
           : "border-slate-700/60 bg-slate-900/70 text-slate-200"
       : latestRepQuality?.label === "clean"
         ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-100"
         : latestRepQuality?.label === "shallow" ||
             latestRepQuality?.label === "unstable" ||
             latestRepQuality?.label === "lost_tracking"
-          ? "border-amber-400/20 bg-amber-500/10 text-amber-100"
+          ? "border-cyan-400/20 bg-cyan-500/10 text-cyan-100"
           : "border-slate-700/60 bg-slate-900/70 text-slate-200";
   const placementTone =
     cameraPlacement.placementScore >= 75
       ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-100"
-      : "border-amber-400/20 bg-amber-500/10 text-amber-100";
+      : "border-cyan-400/20 bg-cyan-500/10 text-cyan-100";
   const placementViewLabel = cameraPlacement.likelySideView
     ? "Side"
     : cameraPlacement.likelyFrontView
@@ -632,18 +669,58 @@ export function WorkoutPlayerScreen({
   const showSidebarAvatar = showAvatarVisual && avatarDisplaySettings.mode === "coach_card";
   const showFloatingWorkoutOverlay =
     showAvatarVisual && avatarDisplaySettings.mode === "floating_overlay";
-  const showCameraAvatar =
-    showAvatarVisual && avatarDisplaySettings.showDuringCamera && isCameraCoachOpen;
-  const showCameraCornerAvatar =
-    showCameraAvatar && avatarDisplaySettings.mode === "camera_corner";
-  const showCameraOverlayAvatar = false;
   const useMinimalCameraHud = avatarDisplaySettings.minimalCameraHud && isCameraCoachOpen;
   const showExerciseDemoCard =
+    ENABLE_EXERCISE_DEMOS &&
     avatarDisplaySettings.showExerciseDemos &&
     avatarCoachState.shouldShowDemoCard &&
     (!useMinimalCameraHud || !isCameraCoachOpen);
-  const showDemoCoach = Boolean(demoClipName);
+  const showDemoCoach = ENABLE_EXERCISE_DEMOS && Boolean(demoClipName);
   const showVoicePanel = !useMinimalCameraHud;
+  const canStartCameraCoach = ENABLE_CAMERA_TRACKING;
+  const activeSetKey = `${activeMovement.id}:${movementIndex}:${workingSet}`;
+  const cameraCoachAvailabilityDetail = !ENABLE_CAMERA_TRACKING
+    ? "Camera tracking is disabled by feature flag."
+    : !ENABLE_MEDIAPIPE
+      ? "Camera preview can run, but MediaPipe is disabled for this test."
+      : "Camera Coach is available for this movement whenever you want live tracking.";
+
+  useEffect(() => {
+    if (!avatarDisplaySettings.countdownAudioEnabled || isMuted) {
+      previousRestCountdownRef.current = restCountdown;
+      return;
+    }
+
+    const previousCountdown = previousRestCountdownRef.current;
+    previousRestCountdownRef.current = restCountdown;
+
+    if (!isRestPhase || previousCountdown === null || restCountdown >= previousCountdown) {
+      return;
+    }
+
+    if (restCountdown === 3 || restCountdown === 2 || restCountdown === 1) {
+      playCountdownCue(restCountdown);
+    }
+  }, [avatarDisplaySettings.countdownAudioEnabled, isMuted, isRestPhase, restCountdown]);
+
+  useEffect(() => {
+    if (isRestPhase) {
+      previousActiveSetKeyRef.current = null;
+      return;
+    }
+
+    if (!avatarDisplaySettings.countdownAudioEnabled || isMuted) {
+      previousActiveSetKeyRef.current = activeSetKey;
+      return;
+    }
+
+    if (previousActiveSetKeyRef.current !== activeSetKey) {
+      previousActiveSetKeyRef.current = activeSetKey;
+      window.setTimeout(() => {
+        playSetStartCue();
+      }, 80);
+    }
+  }, [activeSetKey, avatarDisplaySettings.countdownAudioEnabled, isMuted, isRestPhase]);
 
   const cameraCoachPanel = supportedCameraMode ? (
     <div className="rounded-[1.7rem] border border-white/8 bg-white/6 p-4 backdrop-blur-xl shadow-[0_18px_60px_rgba(15,23,42,0.45)]">
@@ -660,8 +737,8 @@ export function WorkoutPlayerScreen({
       {!isCameraCoachOpen ? (
         <div className="mt-4 space-y-3">
           {cameraGuidanceCard}
-          <button onClick={handleStartCameraCoach} className={primaryButton}>
-            Start Camera Coach
+          <button onClick={handleStartCameraCoach} disabled={!canStartCameraCoach} className={primaryButton}>
+            {canStartCameraCoach ? "Start Camera Coach" : "Camera Disabled"}
           </button>
         </div>
       ) : (
@@ -680,9 +757,9 @@ export function WorkoutPlayerScreen({
               <p className="mt-2 text-sm font-medium leading-relaxed text-white">{trackingReadiness.message}</p>
             </div>
             {trackingLost ? (
-              <div className="col-span-2 rounded-2xl border border-amber-400/20 bg-amber-500/10 px-4 py-3">
+              <div className="col-span-2 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-amber-100">Tracking Paused</p>
+                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-red-100">Tracking Paused</p>
                   <p className="text-sm font-black text-white">{Math.max(1, Math.floor(trackingLostSeconds))}s</p>
                 </div>
                 <p className="mt-2 text-sm font-medium leading-relaxed text-white">{trackingLostReason}</p>
@@ -822,12 +899,47 @@ export function WorkoutPlayerScreen({
             </div>
             <div className="flex items-center gap-2">
               <button onClick={onToggleMute} className="flex h-9 w-9 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-sm transition hover:border-white/20 active:scale-95">{isMuted ? "🔇" : "🔊"}</button>
+              <button
+                onClick={() => setQuickSettingsOpen((o) => !o)}
+                className={`flex h-9 w-9 items-center justify-center rounded-2xl border text-sm transition active:scale-95 ${
+                  quickSettingsOpen
+                    ? "border-blue-400/30 bg-blue-500/15 text-blue-200"
+                    : "border-white/10 bg-white/5 text-slate-300 hover:border-white/20"
+                }`}
+                aria-label="Quick settings"
+              >
+                ⚙
+              </button>
               <button onClick={handleSafetyStop} className="rounded-full border border-red-500/25 bg-red-950/25 px-4 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-red-300 transition hover:border-red-500/40 active:scale-95">Stop</button>
             </div>
           </div>
           <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/5">
             <div className="h-full rounded-full bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 transition-all duration-700" style={{ width: `${progressPercent}%` }} />
           </div>
+          {quickSettingsOpen ? (
+            <div className="mt-3 rounded-[1.4rem] border border-white/8 bg-slate-950/80 px-4 py-3">
+              <p className="mb-2 text-[9px] font-black uppercase tracking-[0.22em] text-slate-600">Active Coach Settings</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="rounded-xl border border-white/8 bg-slate-900/70 px-3 py-2">
+                  <p className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-500">Coach</p>
+                  <p className="mt-0.5 text-xs font-bold text-slate-100">{selectedCoach}</p>
+                </div>
+                <div className="rounded-xl border border-white/8 bg-slate-900/70 px-3 py-2">
+                  <p className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-500">Voice</p>
+                  <p className="mt-0.5 text-xs font-bold capitalize text-slate-100">{avatarDisplaySettings.talkativeness}</p>
+                </div>
+                <div className="rounded-xl border border-white/8 bg-slate-900/70 px-3 py-2">
+                  <p className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-500">Avatar</p>
+                  <p className="mt-0.5 text-xs font-bold capitalize text-slate-100">{avatarDisplaySettings.mode.replaceAll("_", " ")}</p>
+                </div>
+                <div className="rounded-xl border border-white/8 bg-slate-900/70 px-3 py-2">
+                  <p className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-500">Muted</p>
+                  <p className="mt-0.5 text-xs font-bold text-slate-100">{isMuted ? "Yes" : "No"}</p>
+                </div>
+                <p className="text-[9px] text-slate-600">Full options in ← Settings</p>
+              </div>
+            </div>
+          ) : null}
         </div>
       </header>
 
@@ -877,6 +989,16 @@ export function WorkoutPlayerScreen({
                       ref={canvasRef}
                       className="pointer-events-none absolute inset-0 h-full w-full"
                     />
+                    {/* Peripheral neon bleed cues — react to form severity */}
+                    <div className={`pointer-events-none absolute inset-0 transition-all duration-500 ${
+                      feedbackSeverity === "good"
+                        ? "shadow-[inset_0_0_55px_rgba(16,185,129,0.32)] bleed-pulse"
+                        : feedbackSeverity === "error"
+                          ? "shadow-[inset_0_0_55px_rgba(239,68,68,0.35)] bleed-pulse"
+                        : feedbackSeverity === "warning"
+                            ? "shadow-[inset_0_0_55px_rgba(34,211,238,0.30)] bleed-pulse"
+                            : "shadow-[inset_0_0_0px_transparent]"
+                    }`} />
                   </div>
 
                   {/* Bottom bar: phase + status */}
@@ -943,6 +1065,7 @@ export function WorkoutPlayerScreen({
                   compact
                   previewFrame="full_body"
                   lightingMode="neutral"
+                  isFloorMovement={isFloorDemo}
                 />
 
                 {/* Coach label strip at bottom */}
@@ -959,14 +1082,82 @@ export function WorkoutPlayerScreen({
         <div className="mx-auto grid max-w-7xl gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.92fr)]">
           <div className="space-y-6">
             {isRestPhase ? (
+              <>
+                {showDemoCoach ? (
+                  <div className="overflow-hidden rounded-[1.8rem] border border-white/8 bg-slate-950">
+                    <div className="flex items-center justify-between px-5 pt-4">
+                      <p className="text-[10px] font-black uppercase tracking-[0.24em] text-fuchsia-300">
+                        Movement Demo · Rest Period
+                      </p>
+                      <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-emerald-300">
+                        Study Form
+                      </span>
+                    </div>
+                    <div className="coach-float">
+                      <Coach3D
+                        selectedAvatar={selectedAvatar}
+                        animationHint="idle"
+                        demoClipName={demoClipName}
+                        previewFrame="full_body"
+                        lightingMode="neutral"
+                        isFloorMovement={isFloorDemo}
+                      />
+                    </div>
+                    <div className="pointer-events-none -mt-3 flex justify-center pb-4">
+                      <div className="h-3 w-28 rounded-full bg-emerald-500/40 blur-md rim-pulse" />
+                    </div>
+                  </div>
+                ) : null}
+
               <section className="rounded-[2rem] border border-white/8 bg-[linear-gradient(180deg,rgba(15,23,42,0.82),rgba(2,6,23,0.94))] p-6 text-center shadow-[0_30px_80px_rgba(15,23,42,0.5)] lg:p-8">
                 <h2 className="text-2xl font-black uppercase tracking-widest text-slate-300">Rest</h2>
                 <div className="mt-4 text-8xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-blue-400 to-indigo-600 font-mono lg:text-[7rem]">
                   {secondsToClock(restCountdown)}
                 </div>
-                <p className="mt-6 text-sm text-slate-500">
-                  Next: <span className="font-bold text-slate-300">{workingSet < activeMovement.sets ? `${cleanMovementName(activeMovement.name)} — Set ${workingSet + 1}` : activeRoutine[movementIndex + 1] ? cleanMovementName(activeRoutine[movementIndex + 1].name) : "Finish"}</span>
-                </p>
+                {/* ── Next-exercise preview ── */}
+                {workingSet < activeMovement.sets ? (
+                  // Same exercise, next set
+                  <div className="mx-auto mt-6 max-w-lg rounded-[1.5rem] border border-blue-900/40 bg-blue-950/20 px-5 py-4 text-left">
+                    <p className="text-[10px] font-black uppercase tracking-[0.26em] text-blue-400">Coming Up · Set {workingSet + 1} of {activeMovement.sets}</p>
+                    <p className="mt-1.5 text-base font-black text-white">{cleanMovementName(activeMovement.name)}</p>
+                    {personalizedExercise && (
+                      <p className="mt-1.5 text-[11px] leading-relaxed text-slate-400 italic">
+                        &ldquo;{personalizedExercise.coachingCue}&rdquo;
+                      </p>
+                    )}
+                  </div>
+                ) : activeRoutine[movementIndex + 1] ? (
+                  // Next exercise
+                  <div className="mx-auto mt-6 max-w-lg rounded-[1.5rem] border border-white/8 bg-slate-950/60 px-5 py-4 text-left">
+                    <p className="text-[10px] font-black uppercase tracking-[0.26em] text-fuchsia-400">Next Exercise</p>
+                    <p className="mt-1.5 text-base font-black text-white">
+                      {cleanMovementName(activeRoutine[movementIndex + 1].name)}
+                    </p>
+                    {nextPersonalizedExercise ? (
+                      <>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          <span className="rounded-full border border-purple-900/40 bg-purple-950/30 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-purple-300">
+                            {nextPersonalizedExercise.muscleGroup}
+                          </span>
+                          <span className="rounded-full border border-white/8 bg-white/4 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-slate-400">
+                            {nextPersonalizedExercise.equipment}
+                          </span>
+                          <span className="rounded-full border border-white/8 bg-white/4 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-slate-400">
+                            {nextPersonalizedExercise.sets}&thinsp;×&thinsp;
+                            {nextPersonalizedExercise.duration
+                              ? `${nextPersonalizedExercise.duration}s`
+                              : `${nextPersonalizedExercise.reps} reps`}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-[11px] leading-relaxed text-slate-400 italic">
+                          &ldquo;{nextPersonalizedExercise.coachingCue}&rdquo;
+                        </p>
+                      </>
+                    ) : null}
+                  </div>
+                ) : (
+                  <p className="mt-6 text-sm font-bold text-emerald-300">Last movement complete — finish strong.</p>
+                )}
                 {formRecap ? (
                   <div className="mx-auto mt-6 max-w-2xl rounded-[1.6rem] border border-white/8 bg-white/6 p-4 text-left backdrop-blur-xl shadow-[0_18px_60px_rgba(15,23,42,0.35)]">
                     <div className="flex items-center justify-between gap-3">
@@ -1010,15 +1201,26 @@ export function WorkoutPlayerScreen({
                   </div>
                 ) : null}
               </section>
+              </>
             ) : (
               <>
                 <section className="rounded-[2rem] border border-white/8 bg-[linear-gradient(180deg,rgba(15,23,42,0.82),rgba(2,6,23,0.94))] p-6 shadow-[0_30px_80px_rgba(15,23,42,0.5)] lg:p-8">
                   <div className="flex items-start justify-between gap-4">
                     <div className="max-w-2xl">
                       <p className="text-[11px] font-black uppercase tracking-[0.28em] text-blue-300">Active Movement</p>
-                      <h2 className="mt-3 text-3xl font-black leading-tight tracking-tight text-white lg:text-[2.6rem]">
+                      <h2 className="mt-2 text-3xl font-black leading-tight tracking-tight text-white lg:text-[2.6rem]">
                         {cleanMovementName(activeMovement.name)}
                       </h2>
+                      {personalizedExercise && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          <span className="inline-flex items-center rounded-full border border-purple-900/50 bg-purple-950/40 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-purple-300">
+                            {personalizedExercise.muscleGroup}
+                          </span>
+                          <span className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-slate-400">
+                            {personalizedExercise.equipment}
+                          </span>
+                        </div>
+                      )}
                     </div>
                     <div className="shrink-0 rounded-[1.4rem] border border-blue-900/50 bg-blue-950/40 px-4 py-3 text-sm font-black tracking-wide text-blue-300 lg:px-5 lg:py-4 lg:text-lg">
                       {secondsToClock(exerciseCountdown)}
@@ -1031,14 +1233,45 @@ export function WorkoutPlayerScreen({
                       <div className="text-6xl font-black tracking-tight text-purple-400 lg:text-7xl">
                         {currentReps} <span className="text-lg font-normal uppercase tracking-[0.22em] text-slate-500 lg:text-xl">reps</span>
                       </div>
-                      <div className="mt-2 text-xs font-black uppercase tracking-[0.22em] text-slate-500">
-                        Set {workingSet} of {activeMovement.sets}
+                      <div className="mt-3 flex items-center gap-2">
+                        <div className="flex items-center gap-1">
+                          {Array.from({ length: activeMovement.sets }, (_, i) => (
+                            <div
+                              key={i}
+                              className={`h-2 rounded-full transition-all duration-300 ${
+                                i < workingSet - 1
+                                  ? "w-5 bg-purple-400"
+                                  : i === workingSet - 1
+                                    ? "w-5 bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.6)]"
+                                    : "w-3 bg-white/15"
+                              }`}
+                            />
+                          ))}
+                        </div>
+                        <span className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">
+                          Set {workingSet} / {activeMovement.sets}
+                        </span>
                       </div>
                     </div>
 
                     <div className="rounded-[1.8rem] border border-white/8 bg-slate-950/45 p-5 text-left text-sm leading-relaxed shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-                      <p className="text-slate-400"><span className="mr-2 text-xs font-black uppercase tracking-[0.2em] text-blue-400">Form:</span>{activeMovement.formGuide}</p>
-                      <p className="mt-4 text-slate-400"><span className="mr-2 text-xs font-black uppercase tracking-[0.2em] text-purple-400">Breathe:</span>{activeMovement.breathingCue}</p>
+                      {personalizedExercise ? (
+                        <>
+                          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-400">Coach Cue</p>
+                          <p className="mt-1.5 text-slate-200 italic leading-relaxed">
+                            &ldquo;{personalizedExercise.coachingCue}&rdquo;
+                          </p>
+                          <p className="mt-4 text-slate-400">
+                            <span className="mr-2 text-[10px] font-black uppercase tracking-[0.2em] text-purple-400">Breathe:</span>
+                            {activeMovement.breathingCue}
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="text-slate-400"><span className="mr-2 text-xs font-black uppercase tracking-[0.2em] text-blue-400">Form:</span>{activeMovement.formGuide}</p>
+                          <p className="mt-4 text-slate-400"><span className="mr-2 text-xs font-black uppercase tracking-[0.2em] text-purple-400">Breathe:</span>{activeMovement.breathingCue}</p>
+                        </>
+                      )}
                     </div>
                   </div>
                 </section>
@@ -1047,8 +1280,28 @@ export function WorkoutPlayerScreen({
                   <div className="space-y-3">
                     <button onClick={handleCompleteSet} className={primaryButton}>Complete Set</button>
                     <div className="grid grid-cols-2 gap-3">
-                      <button onClick={onChangeDifficultyEasy} className="rounded-2xl border border-slate-800 bg-slate-900 py-4 text-sm font-black text-slate-300 transition-all active:scale-95 hover:border-slate-700">Too Easy +2</button>
-                      <button onClick={onChangeDifficultyHard} className="rounded-2xl border border-slate-800 bg-slate-900 py-4 text-sm font-black text-slate-300 transition-all active:scale-95 hover:border-slate-700">Too Hard -2</button>
+                      <button
+                        onClick={onChangeDifficultyEasy}
+                        className="rounded-2xl border border-slate-800 bg-slate-900 px-3 py-3 text-left transition-all active:scale-95 hover:border-emerald-700/40"
+                      >
+                        <p className="text-xs font-black text-emerald-300">Too Easy +2</p>
+                        {personalizedExercise && (
+                          <p className="mt-0.5 text-[9px] leading-snug text-slate-500">
+                            {personalizedExercise.harderOption}
+                          </p>
+                        )}
+                      </button>
+                      <button
+                        onClick={onChangeDifficultyHard}
+                        className="rounded-2xl border border-slate-800 bg-slate-900 px-3 py-3 text-left transition-all active:scale-95 hover:border-orange-700/40"
+                      >
+                        <p className="text-xs font-black text-orange-300">Too Hard −2</p>
+                        {personalizedExercise && (
+                          <p className="mt-0.5 text-[9px] leading-snug text-slate-500">
+                            {personalizedExercise.easierOption}
+                          </p>
+                        )}
+                      </button>
                     </div>
                     <div className="grid grid-cols-2 gap-3 pt-1 text-xs font-black uppercase tracking-wider">
                       <button onClick={onAdvanceExecutionTrack} className="pl-2 text-left text-slate-600 transition hover:text-slate-400">Skip Movement</button>
@@ -1092,16 +1345,16 @@ export function WorkoutPlayerScreen({
                 </div>
                 <div className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] ${
                   supportedCameraMode
-                    ? "border-blue-400/20 bg-blue-500/10 text-blue-200"
+                    ? canStartCameraCoach
+                      ? "border-blue-400/20 bg-blue-500/10 text-blue-200"
+                      : "border-red-400/20 bg-red-500/10 text-red-200"
                     : "border-white/8 bg-slate-900/70 text-slate-400"
                 }`}>
-                  {supportedCameraMode ? "Camera Coach Ready" : "No Camera Coach"}
+                  {supportedCameraMode ? (canStartCameraCoach ? "Camera Coach Ready" : "Camera Disabled") : "No Camera Coach"}
                 </div>
               </div>
               <p className="mt-3 text-xs leading-relaxed text-slate-400">
-                {supportedCameraMode
-                  ? "Camera Coach is available for this movement whenever you want live tracking."
-                  : "Camera coaching not available for this movement yet."}
+                {supportedCameraMode ? cameraCoachAvailabilityDetail : "Camera coaching not available for this movement yet."}
               </p>
               <div className="mt-3 rounded-[1.25rem] border border-white/8 bg-slate-950/55 px-4 py-3">
                 <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Demo Pipeline</p>
@@ -1112,12 +1365,23 @@ export function WorkoutPlayerScreen({
                   {avatarCoachState.demoDescriptor?.summary ?? exerciseDemoDescriptor.summary}
                 </p>
               </div>
-              <button onClick={onRecallCoachDialogue} className="mt-4 w-full rounded-2xl border border-slate-800 bg-slate-900 py-3 text-xs font-black uppercase tracking-wider text-slate-400 transition hover:bg-slate-800 active:scale-95">
-                Speak Coach Line
+              <button
+                onClick={() => {
+                  onRecallCoachDialogue();
+                  setCoachLinePlaying(true);
+                  window.setTimeout(() => setCoachLinePlaying(false), 3200);
+                }}
+                className={`mt-4 w-full rounded-2xl border py-3 text-xs font-black uppercase tracking-wider transition active:scale-95 ${
+                  coachLinePlaying
+                    ? "border-violet-400/30 bg-violet-500/15 text-violet-200"
+                    : "border-slate-800 bg-slate-900 text-slate-400 hover:bg-slate-800"
+                }`}
+              >
+                {coachLinePlaying ? "Coach Speaking..." : "Speak Coach Line"}
               </button>
             </div>
 
-            {showExerciseDemoCard ? (
+            {showExerciseDemoCard && !isCameraCoachOpen ? (
               <ExerciseDemoCard
                 selectedAvatar={selectedAvatar}
                 exerciseName={cleanMovementName(activeMovement.name)}
@@ -1128,20 +1392,39 @@ export function WorkoutPlayerScreen({
 
             {showVoicePanel ? voicePanel : null}
 
-            {showDemoCoach && isCameraCoachOpen ? null /* Coach shown in camera HUD above */ : showDemoCoach ? (
-              <div className="rounded-[1.7rem] border border-white/8 bg-white/6 backdrop-blur-xl shadow-[0_18px_60px_rgba(15,23,42,0.45)]">
+            {showDemoCoach && isCameraCoachOpen ? null /* Coach shown in camera HUD above */ : showDemoCoach && !showExerciseDemoCard ? (
+              <div className={`overflow-hidden rounded-[1.7rem] border bg-white/6 backdrop-blur-xl transition-all duration-500 ${
+                coachLinePlaying
+                  ? "border-violet-400/40 shadow-[0_0_40px_rgba(139,92,246,0.3)] voice-aura"
+                  : "border-white/8 shadow-[0_18px_60px_rgba(15,23,42,0.45)]"
+              }`}>
                 <div className="px-4 pt-4">
                   <p className="text-[10px] font-black uppercase tracking-[0.24em] text-fuchsia-300">Coach Demo</p>
                   <p className="mt-1 text-sm font-black tracking-tight text-white">{cleanMovementName(activeMovement.name)}</p>
                 </div>
-                <Coach3D
-                  selectedAvatar={selectedAvatar}
-                  animationHint="idle"
-                  demoClipName={demoClipName}
-                  compact
-                  previewFrame="full_body"
-                  lightingMode="neutral"
-                />
+                <div className="coach-float">
+                  <Coach3D
+                    selectedAvatar={selectedAvatar}
+                    animationHint="idle"
+                    demoClipName={demoClipName}
+                    compact
+                    previewFrame="full_body"
+                    lightingMode="neutral"
+                    isFloorMovement={isFloorDemo}
+                  />
+                </div>
+                {/* Neon floor rim light — tracks live form feedback state */}
+                <div className="pointer-events-none -mt-3 flex justify-center pb-4">
+                  <div className={`h-3 w-20 rounded-full blur-md transition-all duration-700 rim-pulse ${
+                    feedbackSeverity === "good"
+                      ? "bg-emerald-500/55"
+                      : feedbackSeverity === "error"
+                        ? "bg-red-500/55"
+                        : feedbackSeverity === "warning"
+                          ? "bg-cyan-500/55"
+                          : "bg-blue-500/30"
+                  }`} />
+                </div>
               </div>
             ) : null}
 

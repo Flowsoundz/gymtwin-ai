@@ -106,6 +106,7 @@ export function RoutinePreviewScreen({
               selectedAvatar={selectedAvatar}
               animationHint="idle"
               previewFrame="bust"
+              freezeAnimation
               compact
               lightingMode="neutral"
             />
@@ -133,6 +134,47 @@ export function RoutinePreviewScreen({
               <p className="mt-4 text-sm leading-relaxed text-slate-400">
                 The preview keeps the routine visible on the left while surfacing the key session summary on desktop.
               </p>
+              <div className="mt-5 rounded-[1.4rem] border border-white/8 bg-slate-950/55 p-3">
+                <p className="mb-3 text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">
+                  Coach Placement During Workout
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { label: "Coach Card", desc: "Sidebar" },
+                    { label: "Floating", desc: "Overlay" },
+                    { label: "Corner", desc: "Compact" },
+                  ].map(({ label, desc }, i) => (
+                    <div key={label} className="flex flex-col items-center gap-1.5">
+                      <div className="relative h-14 w-9 overflow-hidden rounded-lg border border-white/10 bg-slate-950">
+                        {i === 0 && (
+                          <div className="absolute bottom-0 right-0 top-0 w-2/5 border-l border-emerald-400/30 bg-emerald-500/15 flex items-center justify-center">
+                            <div className="h-1.5 w-1.5 rounded-full bg-emerald-400/80" />
+                          </div>
+                        )}
+                        {i === 1 && (
+                          <div className="absolute bottom-1 right-1 flex h-4 w-3.5 items-center justify-center rounded border border-emerald-400/30 bg-emerald-500/15">
+                            <div className="h-1.5 w-1.5 rounded-full bg-emerald-400/80" />
+                          </div>
+                        )}
+                        {i === 2 && (
+                          <div className="absolute bottom-1 left-1 flex h-3 w-2.5 items-center justify-center rounded border border-emerald-400/30 bg-emerald-500/15">
+                            <div className="h-1 w-1 rounded-full bg-emerald-400/80" />
+                          </div>
+                        )}
+                        <div className="absolute inset-0 flex items-center justify-center opacity-30">
+                          <div className="h-3 w-3 rounded-full border border-white/20" />
+                        </div>
+                      </div>
+                      <p className="text-center text-[8px] font-black uppercase tracking-[0.12em] text-slate-300">{label}</p>
+                      <p className="text-center text-[7px] text-slate-600">{desc}</p>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-2.5 text-[9px] leading-relaxed text-slate-600">
+                  Adjust in Settings → Avatar Display Mode
+                </p>
+              </div>
+
               <div className="mt-5 space-y-3">
                 <button onClick={onBeginWorkout} className={primaryButton}>Begin Active Workout</button>
                 <button onClick={onCancel} className={secondaryButton}>Cancel and Return</button>

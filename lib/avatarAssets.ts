@@ -1,5 +1,17 @@
 import type { CoachAvatar } from "@/types";
 
+export const ATLAS_RUNTIME_COACH_MODEL_PATH =
+  "/models/atlas-coach-mobile.pre_male_models_2026-05-31.glb";
+export const NOVA_RUNTIME_COACH_MODEL_PATH =
+  "/models/GT_Female_40k_RiggedApp_v01.glb";
+
+export function isSharedRuntimeHumanoidModel(modelPath: string): boolean {
+  return (
+    modelPath.includes("atlas-coach-mobile") ||
+    modelPath.includes("GT_Female_40k_RiggedApp_v01")
+  );
+}
+
 type AvatarProfile = {
   label: string;
   subtitle: string;
@@ -19,8 +31,7 @@ const avatarProfiles: Record<CoachAvatar, AvatarProfile> = {
     role: "Focused, motivating, form-first.",
     personality: "Precision coach",
     image: "/avatars/GTFMODEL.png",
-    // atlas-coach-mobile.glb is the confirmed humanoid model; nova-coach.glb is a legacy animal rig
-    modelPaths: ["/models/atlas-coach-mobile.glb", "/models/nova-coach.glb"],
+    modelPaths: [NOVA_RUNTIME_COACH_MODEL_PATH],
     accentGradient: "from-fuchsia-500/28 via-blue-500/18 to-slate-950",
     accentText: "text-fuchsia-200",
     readyLabel: "Ready",
@@ -31,7 +42,7 @@ const avatarProfiles: Record<CoachAvatar, AvatarProfile> = {
     role: "Disciplined, strong, performance-first.",
     personality: "Performance coach",
     image: "/avatars/GTMMODEL.png",
-    modelPaths: ["/models/atlas-coach-mobile.glb", "/models/atlas-coach.glb"],
+    modelPaths: [ATLAS_RUNTIME_COACH_MODEL_PATH],
     accentGradient: "from-blue-500/28 via-indigo-500/18 to-slate-950",
     accentText: "text-blue-200",
     readyLabel: "Ready",

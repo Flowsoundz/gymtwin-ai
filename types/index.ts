@@ -7,11 +7,14 @@ export type AppScreen =
   | "camera_sandbox"
   | "setup"
   | "preview"
+  | "workout_plan"
   | "player"
   | "summary"
   | "progress"
   | "workout_detail"
-  | "safety_stop";
+  | "safety_stop"
+  | "nutrition"
+  | "food_camera";
 
 export type CoachName =
   | "Supportive"
@@ -31,6 +34,8 @@ export type WorkoutGoal = "Lose weight" | "Build muscle" | "Tone" | "Mobility" |
 export type WorkoutLevel = "Beginner" | "Intermediate" | "Advanced";
 export type Equipment = "None" | "Dumbbells" | "Resistance Bands" | "Bench";
 export type DifficultyFeedback = "too_easy" | "perfect" | "too_hard" | null;
+export type EnergyRating = "low" | "moderate" | "high";
+export type SorenessRating = "none" | "mild" | "moderate" | "severe";
 
 export interface TraineeStats {
   workoutsCompleted: number;
@@ -58,6 +63,7 @@ export interface AvatarDisplaySettings {
   showDuringCamera: boolean;
   showExerciseDemos: boolean;
   minimalCameraHud: boolean;
+  countdownAudioEnabled: boolean;
   talkativeness: CoachTalkativeness;
   repCountingEnabled: boolean;
 }
@@ -115,6 +121,25 @@ export interface BodyScanEstimate {
   message: string;
 }
 
+export type WeeklyPlanDayType =
+  | "push"
+  | "pull"
+  | "legs"
+  | "full_body"
+  | "conditioning"
+  | "core_mobility"
+  | "recovery"
+  | "rest";
+
+export interface WeeklyPlanDayConfig {
+  goal: WorkoutGoal;
+  level: WorkoutLevel;
+  equipment: Equipment;
+  sessionLength: string;
+  focusLabel: string;
+  muscleGroups: string[];
+}
+
 export interface WeeklyPlanDay {
   id: string;
   dayLabel: string;
@@ -123,6 +148,9 @@ export interface WeeklyPlanDay {
   difficulty: "beginner" | "intermediate" | "advanced";
   recommendedWorkout: string;
   completed: boolean;
+  isRestDay?: boolean;
+  splitType?: WeeklyPlanDayType;
+  workoutConfig?: WeeklyPlanDayConfig;
 }
 
 export interface WeeklyPlan {
@@ -132,6 +160,8 @@ export interface WeeklyPlan {
   level?: string;
   equipment?: string;
   days: WeeklyPlanDay[];
+  splitName?: string;
+  isDeloadWeek?: boolean;
 }
 
 export type AchievementBadgeId =
@@ -181,6 +211,9 @@ export interface WorkoutSummaryData {
   estimatedReps: number;
   coach: CoachName;
   difficultyFeedback: DifficultyFeedback;
+  energyRating?: EnergyRating;
+  sorenessRating?: SorenessRating;
+  sorenessAreas?: string[];
   completedAt: string;
   workoutScore?: number;
   formScore?: number;
@@ -203,6 +236,83 @@ export interface WorkoutMovement {
   formGuide: string;
   breathingCue: string;
   phase: "warmup" | "core" | "cooldown";
+}
+
+export interface MacroTargets {
+  calories: number;
+  protein: number;
+  carbs: number;
+  fats: number;
+}
+
+export interface FoodItem {
+  id: string;
+  name: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fats: number;
+  servingSize: string;
+  timestamp: string;
+}
+
+export interface DailyNutritionLog {
+  date: string;
+  consumed: FoodItem[];
+  burnedCalculated: number;
+}
+
+export interface PostWorkoutFeedback {
+  difficultyFeedback: "too_easy" | "perfect" | "too_hard";
+  energyRating: EnergyRating;
+  sorenessRating: SorenessRating;
+  sorenessAreas: string[];
+}
+
+export interface WorkoutAdjustments {
+  volumeModifier: number;
+  repModifier: number;
+  restModifier: number;
+  excludedMuscleGroups: string[];
+  deprioritizedGroups: string[];
+  intensityNote: string;
+  isRecoverySession: boolean;
+}
+
+export interface AdaptiveProfile {
+  recentDifficultyFeedback: ("too_easy" | "perfect" | "too_hard")[];
+  recentEnergyRatings: EnergyRating[];
+  recentSorenessRatings: SorenessRating[];
+  activeSorenessAreas: string[];
+  lastWorkoutDate: string | null;
+  consecutiveTooHardSessions: number;
+  consecutiveTooEasySessions: number;
+  totalFeedbackSubmissions: number;
+}
+
+export interface PersonalizedExercise {
+  name: string;
+  sets: number;
+  reps?: number;
+  duration?: number;
+  rest: number;
+  equipment: string;
+  muscleGroup: string;
+  coachingCue: string;
+  easierOption: string;
+  harderOption: string;
+}
+
+export interface PersonalizedWorkoutPlan {
+  title: string;
+  estimatedDuration: number;
+  goalFocus: string;
+  difficulty: string;
+  warmup: PersonalizedExercise[];
+  mainBlock: PersonalizedExercise[];
+  cooldown: PersonalizedExercise[];
+  coachNotes: string;
+  progressionIntent: string;
 }
 
 export interface ActiveSessionData {

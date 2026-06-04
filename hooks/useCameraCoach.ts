@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { NormalizedLandmark, PoseLandmarker as PoseLandmarkerType } from "@mediapipe/tasks-vision";
+import { updateTrackingLoopDiagnostics } from "@/lib/debugDiagnostics";
+import { ENABLE_CAMERA_TRACKING, ENABLE_MEDIAPIPE } from "@/lib/featureFlags";
 import type { BodyScanEstimate } from "@/types";
 
 type SquatPhase = "standing" | "descending" | "bottom" | "rising" | "unknown";
@@ -47,6 +49,17 @@ export type RepQualityEntry = {
 
 export type PlankQualityLabel = "stable" | "hips_high" | "hips_low" | "lost_tracking" | "unknown";
 export type LatestIssueLabel = "shallow" | "lost_tracking" | "unstable" | "hips_high" | "hips_low" | null;
+export type DeviationCallout = {
+  id: number;
+  jointKey: "left_knee" | "right_knee" | "left_elbow" | "right_elbow" | "hips";
+  label: string;
+  atlasText: string;
+  message: string;
+  severity: "warning" | "critical";
+  point: { x: number; y: number };
+};
+
+const UI_COMMIT_INTERVAL_MS = 140;
 
 const emptyTrackingReadiness: TrackingReadiness = {
   headVisible: false,
@@ -101,6 +114,9 @@ export function useCameraCoach() {
   const squatBottomAngleRef = useRef<number | null>(null);
   const pushupBottomAngleRef = useRef<number | null>(null);
   const repQualityIdRef = useRef(0);
+  const deviationCalloutIdRef = useRef(0);
+  const deviationDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const analysisEnabledRef = useRef(false);
   const trackingConfidenceTotalRef = useRef(0);
   const trackingConfidenceSampleCountRef = useRef(0);
   const displayUpdateTimeRef = useRef(0);
@@ -140,6 +156,17 @@ export function useCameraCoach() {
   const [plankQualityLabel, setPlankQualityLabel] = useState<PlankQualityLabel>("unknown");
   const [plankQualityMessage, setPlankQualityMessage] = useState("Hold still so I can read your posture.");
   const [trackingConfidenceAverage, setTrackingConfidenceAverage] = useState(0);
+  const [analysisEnabled, setAnalysisEnabled] = useState(false);
+  const [activeDeviationCallout, setActiveDeviationCallout] = useState<DeviationCallout | null>(null);
+
+  const shouldCommitUiFrame = useCallback((timestampMs: number) => {
+    if (timestampMs - displayUpdateTimeRef.current < UI_COMMIT_INTERVAL_MS) {
+      return false;
+    }
+
+    displayUpdateTimeRef.current = timestampMs;
+    return true;
+  }, []);
 
   const resetTrackingState = useCallback((mode: TrackingMode) => {
     const neutralMessage =
@@ -173,10 +200,16 @@ export function useCameraCoach() {
     squatBottomAngleRef.current = null;
     pushupBottomAngleRef.current = null;
     repQualityIdRef.current = 0;
+    deviationCalloutIdRef.current = 0;
     trackingConfidenceTotalRef.current = 0;
     trackingConfidenceSampleCountRef.current = 0;
     displayUpdateTimeRef.current = 0;
+    analysisEnabledRef.current = false;
     feedbackRef.current = { message: neutralMessage, severity: "neutral" };
+    if (deviationDismissTimerRef.current) {
+      clearTimeout(deviationDismissTimerRef.current);
+      deviationDismissTimerRef.current = null;
+    }
 
     setSquatRepCount(0);
     setSquatPhase("unknown");
@@ -214,6 +247,13 @@ export function useCameraCoach() {
     setPlankQualityLabel("unknown");
     setPlankQualityMessage("Hold still so I can read your posture.");
     setTrackingConfidenceAverage(0);
+    setAnalysisEnabled(false);
+    setActiveDeviationCallout(null);
+  }, []);
+
+  const updateAnalysisEnabled = useCallback((enabled: boolean) => {
+    analysisEnabledRef.current = enabled;
+    setAnalysisEnabled(enabled);
   }, []);
 
   const hasReliableLandmark = useCallback((landmark?: NormalizedLandmark | null, minVisibility = 0.45) => {
@@ -697,6 +737,41 @@ export function useCameraCoach() {
     setFeedbackSeverity(severity);
   }, []);
 
+  const triggerDeviationCallout = useCallback(
+    (
+      jointKey: DeviationCallout["jointKey"],
+      label: string,
+      atlasText: string,
+      message: string,
+      point: NormalizedLandmark,
+      severity: DeviationCallout["severity"] = "warning"
+    ) => {
+      const nextCallout: DeviationCallout = {
+        id: deviationCalloutIdRef.current + 1,
+        jointKey,
+        label,
+        atlasText,
+        message,
+        severity,
+        point: { x: point.x, y: point.y },
+      };
+
+      deviationCalloutIdRef.current = nextCallout.id;
+      setActiveDeviationCallout(nextCallout);
+
+      if (deviationDismissTimerRef.current) {
+        clearTimeout(deviationDismissTimerRef.current);
+      }
+
+      deviationDismissTimerRef.current = setTimeout(() => {
+        setActiveDeviationCallout((current) =>
+          current?.id === nextCallout.id ? null : current
+        );
+      }, 900);
+    },
+    []
+  );
+
   const recordRepQuality = useCallback(
     (entryInput: Omit<RepQualityEntry, "id" | "timestamp">) => {
       const entry: RepQualityEntry = {
@@ -841,7 +916,7 @@ export function useCameraCoach() {
     []
   );
 
-  const updateSquatTracking = useCallback((landmarks: NormalizedLandmark[]) => {
+  const updateSquatTracking = useCallback((landmarks: NormalizedLandmark[], shouldCommitUi: boolean) => {
     const standingThreshold = 160;
     const bottomThreshold = 110;
     const measurement = getBestKneeMeasurement(landmarks);
@@ -916,11 +991,53 @@ export function useCameraCoach() {
       nextFeedbackSeverity = "error";
     }
 
+    let deviationCallout: DeviationCallout | null = null;
+    const leftKnee = landmarks[25];
+    const rightKnee = landmarks[26];
+    const leftAnkle = landmarks[27];
+    const rightAnkle = landmarks[28];
+
+    if (
+      cameraPlacementRef.current.likelyFrontView &&
+      leftKnee &&
+      rightKnee &&
+      leftAnkle &&
+      rightAnkle &&
+      [leftKnee, rightKnee, leftAnkle, rightAnkle].every((landmark) => (landmark.visibility ?? 0) >= 0.45)
+    ) {
+      const ankleSpan = Math.abs(leftAnkle.x - rightAnkle.x);
+      const kneeSpan = Math.abs(leftKnee.x - rightKnee.x);
+      const leftCollapse = leftKnee.x - leftAnkle.x;
+      const rightCollapse = rightAnkle.x - rightKnee.x;
+
+      if (kneeSpan < ankleSpan * 0.84 && (leftCollapse > 0.018 || rightCollapse > 0.018)) {
+        const targetPoint = leftCollapse >= rightCollapse ? leftKnee : rightKnee;
+        const jointKey = leftCollapse >= rightCollapse ? "left_knee" : "right_knee";
+        deviationCallout = {
+          id: deviationCalloutIdRef.current + 1,
+          jointKey,
+          label: "FIX KNEE ALIGNMENT",
+          atlasText: "Knees out. Track them over your toes.",
+          message: "Your knees are collapsing inward. Drive them out over your feet.",
+          severity: "critical",
+          point: { x: targetPoint.x, y: targetPoint.y },
+        };
+        triggerDeviationCallout(
+          jointKey,
+          deviationCallout.label,
+          deviationCallout.atlasText,
+          deviationCallout.message,
+          targetPoint,
+          "critical"
+        );
+        nextFeedbackMessage = deviationCallout.message;
+        nextFeedbackSeverity = "error";
+      }
+    }
+
     setFeedbackIfChanged(nextFeedbackMessage, nextFeedbackSeverity);
 
-    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-    if (now - displayUpdateTimeRef.current > 120) {
-      displayUpdateTimeRef.current = now;
+    if (shouldCommitUi) {
       setSquatRepCount(repCountRef.current);
       setSquatPhase(nextPhase);
       setKneeAngleDisplay(`${roundedAngle}°`);
@@ -934,10 +1051,11 @@ export function useCameraCoach() {
       anglePoint: measurement.point,
       feedbackMessage: nextFeedbackMessage,
       feedbackSeverity: nextFeedbackSeverity,
+      deviationCallout,
     };
-  }, [getBestKneeMeasurement, getSquatRepQuality, recordRepQuality, setFeedbackIfChanged]);
+  }, [getBestKneeMeasurement, getSquatRepQuality, recordRepQuality, setFeedbackIfChanged, triggerDeviationCallout]);
 
-  const updatePushupTracking = useCallback((landmarks: NormalizedLandmark[]) => {
+  const updatePushupTracking = useCallback((landmarks: NormalizedLandmark[], shouldCommitUi: boolean) => {
     const upThreshold = 155;
     const bottomThreshold = 95;
     const measurement = getBestElbowMeasurement(landmarks);
@@ -1008,11 +1126,47 @@ export function useCameraCoach() {
       nextFeedbackSeverity = "error";
     }
 
+    let deviationCallout: DeviationCallout | null = null;
+    const leftSide = measurement.point === landmarks[13];
+    const shoulder = landmarks[leftSide ? 11 : 12];
+    const wrist = landmarks[leftSide ? 15 : 16];
+
+    if (
+      measurement.point &&
+      shoulder &&
+      wrist &&
+      [measurement.point, shoulder, wrist].every((landmark) => (landmark.visibility ?? 0) >= 0.45)
+    ) {
+      const elbowOffsetFromWrist = Math.abs(measurement.point.x - wrist.x);
+      const elbowOffsetFromShoulder = Math.abs(measurement.point.x - shoulder.x);
+
+      if (elbowOffsetFromWrist > 0.065 || elbowOffsetFromShoulder > 0.08) {
+        const jointKey = leftSide ? "left_elbow" : "right_elbow";
+        deviationCallout = {
+          id: deviationCalloutIdRef.current + 1,
+          jointKey,
+          label: "STACK WRIST + ELBOW",
+          atlasText: "Tuck the elbow. Stack it over the wrist.",
+          message: "Your elbow is drifting out of line. Stack it over the wrist.",
+          severity: "warning",
+          point: { x: measurement.point.x, y: measurement.point.y },
+        };
+        triggerDeviationCallout(
+          jointKey,
+          deviationCallout.label,
+          deviationCallout.atlasText,
+          deviationCallout.message,
+          measurement.point,
+          "warning"
+        );
+        nextFeedbackMessage = deviationCallout.message;
+        nextFeedbackSeverity = "warning";
+      }
+    }
+
     setFeedbackIfChanged(nextFeedbackMessage, nextFeedbackSeverity);
 
-    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-    if (now - displayUpdateTimeRef.current > 120) {
-      displayUpdateTimeRef.current = now;
+    if (shouldCommitUi) {
       setPushupRepCount(pushupRepCountRef.current);
       setPushupPhase(nextPhase);
       setElbowAngleDisplay(`${roundedAngle}°`);
@@ -1026,17 +1180,24 @@ export function useCameraCoach() {
       anglePoint: measurement.point,
       feedbackMessage: nextFeedbackMessage,
       feedbackSeverity: nextFeedbackSeverity,
+      deviationCallout,
     };
-  }, [getBestElbowMeasurement, getPushupRepQuality, recordRepQuality, setFeedbackIfChanged]);
+  }, [getBestElbowMeasurement, getPushupRepQuality, recordRepQuality, setFeedbackIfChanged, triggerDeviationCallout]);
 
-  const updatePlankTracking = useCallback((landmarks: NormalizedLandmark[], timestampMs: number) => {
+  const updatePlankTracking = useCallback((
+    landmarks: NormalizedLandmark[],
+    timestampMs: number,
+    shouldCommitUi: boolean
+  ) => {
     const measurement = getBestPlankMeasurement(landmarks);
 
     if (!measurement || !measurement.shoulder || !measurement.hip || !measurement.ankle) {
       plankLastTimestampRef.current = null;
       plankPostureRef.current = "unknown";
-      setPlankQualityLabel("lost_tracking");
-      setPlankQualityMessage("Tracking is weak. Keep your full body visible.");
+      if (shouldCommitUi) {
+        setPlankQualityLabel("lost_tracking");
+        setPlankQualityMessage("Tracking is weak. Keep your full body visible.");
+      }
       setFeedbackIfChanged("Step back so your full body is visible.", "warning");
       return {
         angleLabel: "--",
@@ -1054,8 +1215,10 @@ export function useCameraCoach() {
     if (lineLength === 0 || measurement.visibility < 0.45) {
       plankLastTimestampRef.current = null;
       plankPostureRef.current = "unknown";
-      setPlankQualityLabel("lost_tracking");
-      setPlankQualityMessage("Tracking is weak. Keep your full body visible.");
+      if (shouldCommitUi) {
+        setPlankQualityLabel("lost_tracking");
+        setPlankQualityMessage("Tracking is weak. Keep your full body visible.");
+      }
       setFeedbackIfChanged("Step back so your full body is visible.", "warning");
       return {
         angleLabel: "--",
@@ -1114,13 +1277,40 @@ export function useCameraCoach() {
       nextPlankQualityMessage = "Hold still so I can read your posture.";
     }
 
-    setPlankQualityLabel(nextPlankQualityLabel);
-    setPlankQualityMessage(nextPlankQualityMessage);
+    let deviationCallout: DeviationCallout | null = null;
+    if (posture === "hips high" || posture === "hips low") {
+      deviationCallout = {
+        id: deviationCalloutIdRef.current + 1,
+        jointKey: "hips",
+        label: posture === "hips high" ? "LOWER HIPS" : "LIFT HIPS",
+        atlasText:
+          posture === "hips high"
+            ? "Lower your hips. Lock the line."
+            : "Lift your hips. Brace your core.",
+        message:
+          posture === "hips high"
+            ? "Your hips are too high. Bring them down into line."
+            : "Your hips are sagging. Lift them back into line.",
+        severity: "warning",
+        point: { x: measurement.hip.x, y: measurement.hip.y },
+      };
+      triggerDeviationCallout(
+        "hips",
+        deviationCallout.label,
+        deviationCallout.atlasText,
+        deviationCallout.message,
+        measurement.hip,
+        "warning"
+      );
+    }
+
+    if (shouldCommitUi) {
+      setPlankQualityLabel(nextPlankQualityLabel);
+      setPlankQualityMessage(nextPlankQualityMessage);
+    }
     setFeedbackIfChanged(nextFeedbackMessage, nextFeedbackSeverity);
 
-    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-    if (now - displayUpdateTimeRef.current > 120) {
-      displayUpdateTimeRef.current = now;
+    if (shouldCommitUi) {
       setPlankHoldSeconds(plankHoldSecondsRef.current);
       setPlankPostureStatus(posture);
       setPlankAlignmentScore(`${score}`);
@@ -1134,12 +1324,13 @@ export function useCameraCoach() {
       anglePoint: measurement.hip,
       feedbackMessage: nextFeedbackMessage,
       feedbackSeverity: nextFeedbackSeverity,
+      deviationCallout,
       linePoints: {
         start: measurement.shoulder,
         end: measurement.ankle,
       },
     };
-  }, [getBestPlankMeasurement, setFeedbackIfChanged]);
+  }, [getBestPlankMeasurement, setFeedbackIfChanged, triggerDeviationCallout]);
 
   const drawPose = useCallback(
     (
@@ -1151,7 +1342,8 @@ export function useCameraCoach() {
       anglePoint?: NormalizedLandmark | null,
       currentFeedbackMessage?: string,
       currentFeedbackSeverity?: FeedbackSeverity,
-      linePoints?: { start: NormalizedLandmark; end: NormalizedLandmark } | null
+      linePoints?: { start: NormalizedLandmark; end: NormalizedLandmark } | null,
+      deviationCallout?: DeviationCallout | null
     ) => {
       const majorConnections: Array<[number, number]> = [
         [11, 12],
@@ -1214,7 +1406,7 @@ export function useCameraCoach() {
         context.fillStyle = "rgba(15, 23, 42, 0.88)";
         context.fillRect(x - 28, y - 40, 56, 24);
         context.font = "700 13px sans-serif";
-        context.fillStyle = "rgba(250, 204, 21, 1)";
+        context.fillStyle = "rgba(34, 211, 238, 1)";
         context.textAlign = "center";
         context.fillText(angleLabel, x, y - 23);
       }
@@ -1222,7 +1414,7 @@ export function useCameraCoach() {
       if (currentFeedbackMessage) {
         const feedbackColors: Record<FeedbackSeverity, { background: string; text: string }> = {
           good: { background: "rgba(20, 83, 45, 0.92)", text: "rgba(187, 247, 208, 1)" },
-          warning: { background: "rgba(113, 63, 18, 0.92)", text: "rgba(254, 240, 138, 1)" },
+          warning: { background: "rgba(124, 45, 18, 0.92)", text: "rgba(253, 186, 116, 1)" },
           error: { background: "rgba(127, 29, 29, 0.92)", text: "rgba(254, 202, 202, 1)" },
           neutral: { background: "rgba(15, 23, 42, 0.92)", text: "rgba(226, 232, 240, 1)" },
         };
@@ -1237,6 +1429,41 @@ export function useCameraCoach() {
         context.textAlign = "center";
         context.fillText(currentFeedbackMessage, width / 2, boxY + 20);
       }
+
+      if (deviationCallout) {
+        const pulse = (Math.sin(performance.now() / 90) + 1) / 2;
+        const x = deviationCallout.point.x * width;
+        const y = deviationCallout.point.y * height;
+        const ringColor =
+          deviationCallout.severity === "critical"
+            ? `rgba(248, 113, 113, ${0.48 + pulse * 0.32})`
+            : `rgba(251, 146, 60, ${0.44 + pulse * 0.28})`;
+
+        context.beginPath();
+        context.arc(x, y, 18 + pulse * 12, 0, Math.PI * 2);
+        context.strokeStyle = ringColor;
+        context.lineWidth = 4;
+        context.shadowBlur = 24;
+        context.shadowColor =
+          deviationCallout.severity === "critical"
+            ? "rgba(248, 113, 113, 0.3)"
+            : "rgba(251, 146, 60, 0.28)";
+        context.stroke();
+        context.shadowBlur = 0;
+
+        const chipWidth = Math.min(300, width - 40);
+        const chipX = width / 2 - chipWidth / 2;
+        const chipY = height - 76;
+        context.fillStyle =
+          deviationCallout.severity === "critical"
+            ? "rgba(127, 29, 29, 0.94)"
+            : "rgba(124, 45, 18, 0.94)";
+        context.fillRect(chipX, chipY, chipWidth, 36);
+        context.font = "700 13px sans-serif";
+        context.fillStyle = "rgba(255,255,255,0.98)";
+        context.textAlign = "center";
+        context.fillText(`ATLAS: ${deviationCallout.label}`, width / 2, chipY + 23);
+      }
     },
     []
   );
@@ -1250,6 +1477,7 @@ export function useCameraCoach() {
         feedbackMessage?: string;
         feedbackSeverity?: FeedbackSeverity;
         linePoints?: { start: NormalizedLandmark; end: NormalizedLandmark } | null;
+        deviationCallout?: DeviationCallout | null;
       }
     ) => {
       const synced = syncCanvasSize();
@@ -1269,7 +1497,8 @@ export function useCameraCoach() {
           overlay?.anglePoint,
           overlay?.feedbackMessage,
           overlay?.feedbackSeverity,
-          overlay?.linePoints
+          overlay?.linePoints,
+          overlay?.deviationCallout
         );
       }
     },
@@ -1282,6 +1511,11 @@ export function useCameraCoach() {
       animationFrameRef.current = null;
     }
     lastVideoTimeRef.current = -1;
+    updateTrackingLoopDiagnostics({
+      active: false,
+      status: "stopped",
+      lastTickAt: null,
+    });
   }, []);
 
   const stopCamera = useCallback(() => {
@@ -1311,6 +1545,12 @@ export function useCameraCoach() {
     setIsCameraRunning(false);
     setStatusLabel("Camera Off");
     resetTrackingState(selectedMode);
+    updateTrackingLoopDiagnostics({
+      active: false,
+      mode: selectedMode,
+      status: "camera_off",
+      lastTickAt: null,
+    });
   }, [resetTrackingState, selectedMode, stopAnimationLoop]);
 
   const loadPoseLandmarker = useCallback(async () => {
@@ -1332,6 +1572,12 @@ export function useCameraCoach() {
   const startPoseLoop = useCallback(() => {
     if (typeof window === "undefined") return;
     stopAnimationLoop();
+    updateTrackingLoopDiagnostics({
+      active: true,
+      mode: selectedMode,
+      status: "running",
+      lastTickAt: null,
+    });
 
     const step = () => {
       const video = videoRef.current;
@@ -1346,8 +1592,15 @@ export function useCameraCoach() {
         if (video.currentTime !== lastVideoTimeRef.current) {
           lastVideoTimeRef.current = video.currentTime;
           const timestampMs = performance.now();
+          const shouldCommitUi = shouldCommitUiFrame(timestampMs);
+          updateTrackingLoopDiagnostics({
+            active: true,
+            mode: selectedMode,
+            status: "running",
+            lastTickAt: timestampMs,
+          });
           const result = detector.detectForVideo(video, timestampMs);
-          const landmarks = result.landmarks[0];
+          const landmarks = result.landmarks?.[0];
           const readiness = deriveTrackingReadiness(landmarks);
           const placement = deriveCameraPlacement(landmarks, readiness, selectedMode);
           const bodyScan = deriveBodyScanEstimate(landmarks, readiness);
@@ -1356,29 +1609,38 @@ export function useCameraCoach() {
           bodyScanEstimateRef.current = bodyScan;
           trackingConfidenceTotalRef.current += readiness.confidenceScore;
           trackingConfidenceSampleCountRef.current += 1;
-          setTrackingConfidenceAverage(
-            Math.round(trackingConfidenceTotalRef.current / trackingConfidenceSampleCountRef.current)
-          );
-          setTrackingReadiness(readiness);
-          setCameraPlacement(placement);
-          setBodyScanEstimate(bodyScan);
+          if (shouldCommitUi) {
+            setTrackingConfidenceAverage(
+              Math.round(trackingConfidenceTotalRef.current / trackingConfidenceSampleCountRef.current)
+            );
+            setTrackingReadiness(readiness);
+            setCameraPlacement(placement);
+            setBodyScanEstimate(bodyScan);
+          }
           updateTrackingLostState(readiness, placement, timestampMs);
 
           if (landmarks && landmarks.length > 0) {
-            if (selectedMode === "squat") {
-              const overlay = updateSquatTracking(landmarks);
+            if (!analysisEnabledRef.current) {
+              drawOverlay(landmarks, {
+                angleLabel: "",
+                anglePoint: null,
+                feedbackMessage: readiness.fullBodyVisible
+                  ? "Tracking lock secured. Countdown to live reps."
+                  : readiness.message,
+                feedbackSeverity: readiness.fullBodyVisible ? "good" : "warning",
+              });
+            } else if (selectedMode === "squat") {
+              const overlay = updateSquatTracking(landmarks, shouldCommitUi);
               drawOverlay(landmarks, overlay);
             } else if (selectedMode === "pushup") {
-              const overlay = updatePushupTracking(landmarks);
+              const overlay = updatePushupTracking(landmarks, shouldCommitUi);
               drawOverlay(landmarks, overlay);
             } else {
-              const overlay = updatePlankTracking(landmarks, timestampMs);
+              const overlay = updatePlankTracking(landmarks, timestampMs, shouldCommitUi);
               drawOverlay(landmarks, overlay);
             }
           } else {
-            const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-            if (now - displayUpdateTimeRef.current > 120) {
-              displayUpdateTimeRef.current = now;
+            if (shouldCommitUi) {
               setSquatPhase("unknown");
               setKneeAngleDisplay("--");
               setPushupPhase("unknown");
@@ -1406,10 +1668,6 @@ export function useCameraCoach() {
                   : "Step back so your full body is visible.",
               "error"
             );
-            setTrackingReadiness({
-              ...emptyTrackingReadiness,
-              message: "Use brighter lighting and keep your body in frame.",
-            });
             trackingReadinessRef.current = {
               ...emptyTrackingReadiness,
               message: "Use brighter lighting and keep your body in frame.",
@@ -1424,8 +1682,16 @@ export function useCameraCoach() {
             };
             cameraPlacementRef.current = emptyPlacement;
             bodyScanEstimateRef.current = emptyBodyScan;
-            setCameraPlacement(emptyPlacement);
-            setBodyScanEstimate(emptyBodyScan);
+            if (shouldCommitUi) {
+              setTrackingReadiness({
+                ...emptyTrackingReadiness,
+                message: "Use brighter lighting and keep your body in frame.",
+              });
+              setCameraPlacement(emptyPlacement);
+              setBodyScanEstimate(emptyBodyScan);
+              setPlankQualityLabel("lost_tracking");
+              setPlankQualityMessage("Tracking is weak. Keep your full body visible.");
+            }
             updateTrackingLostState(
               {
                 ...emptyTrackingReadiness,
@@ -1434,8 +1700,6 @@ export function useCameraCoach() {
               emptyPlacement,
               timestampMs
             );
-            setPlankQualityLabel("lost_tracking");
-            setPlankQualityMessage("Tracking is weak. Keep your full body visible.");
             drawOverlay();
           }
         } else {
@@ -1459,12 +1723,25 @@ export function useCameraCoach() {
     updatePushupTracking,
     updateSquatTracking,
     updateTrackingLostState,
+    shouldCommitUiFrame,
   ]);
 
   const startCamera = useCallback(async () => {
     if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia) {
       setErrorMessage("Camera access is not available in this browser.");
       setStatusLabel("Camera Error");
+      return;
+    }
+
+    if (!ENABLE_CAMERA_TRACKING) {
+      setErrorMessage("Camera tracking is disabled by feature flag.");
+      setStatusLabel("Camera Disabled");
+      updateTrackingLoopDiagnostics({
+        active: false,
+        mode: selectedMode,
+        status: "camera_disabled",
+        lastTickAt: null,
+      });
       return;
     }
 
@@ -1504,7 +1781,25 @@ export function useCameraCoach() {
       await video.play();
       drawOverlay();
       setIsCameraRunning(true);
+
+      if (!ENABLE_MEDIAPIPE) {
+        setStatusLabel("Camera Preview Active");
+        updateTrackingLoopDiagnostics({
+          active: true,
+          mode: selectedMode,
+          status: "preview_only",
+          lastTickAt: performance.now(),
+        });
+        return;
+      }
+
       setStatusLabel("Pose Model Loading...");
+      updateTrackingLoopDiagnostics({
+        active: true,
+        mode: selectedMode,
+        status: "model_loading",
+        lastTickAt: null,
+      });
 
       const detector = await loadPoseLandmarker();
       if (requestIdRef.current !== currentRequestId) {
@@ -1515,9 +1810,21 @@ export function useCameraCoach() {
       poseLandmarkerRef.current = detector;
       startPoseLoop();
       setStatusLabel("Pose Tracking Active");
+      updateTrackingLoopDiagnostics({
+        active: true,
+        mode: selectedMode,
+        status: "tracking_active",
+        lastTickAt: performance.now(),
+      });
     } catch (error) {
       stopCamera();
       setStatusLabel("Camera Error");
+      updateTrackingLoopDiagnostics({
+        active: false,
+        mode: selectedMode,
+        status: "camera_error",
+        lastTickAt: null,
+      });
       if (error instanceof DOMException && error.name === "NotAllowedError") {
         setErrorMessage("Camera permission was blocked. Enable camera access in your browser settings and try again.");
         return;
@@ -1578,11 +1885,15 @@ export function useCameraCoach() {
 
   useEffect(() => {
     return () => {
+      if (deviationDismissTimerRef.current) {
+        clearTimeout(deviationDismissTimerRef.current);
+      }
       stopCamera();
     };
   }, [stopCamera]);
 
   return {
+    isCameraRunning,
     videoRef,
     canvasRef,
     selectedMode,
@@ -1618,6 +1929,9 @@ export function useCameraCoach() {
     latestIssue,
     bestCue,
     trackingConfidenceAverage,
+    analysisEnabled,
+    setAnalysisEnabled: updateAnalysisEnabled,
+    activeDeviationCallout,
     resetRepQualityLog,
     startCamera,
     stopCamera,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { buildCoachUtterance } from "@/lib/coachSpeech";
 
 export function useCoachSpeech(message: string | null | undefined): { isSpeaking: boolean } {
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -13,22 +14,12 @@ export function useCoachSpeech(message: string | null | undefined): { isSpeaking
     lastMessageRef.current = message;
     window.speechSynthesis.cancel();
 
-    const utter = new SpeechSynthesisUtterance(message);
-    utter.rate = 0.92;
-    utter.pitch = 1.08;
-    utter.volume = 0.9;
+    const utter = buildCoachUtterance(message, "Nova", "distance");
 
     // Best-effort voice selection — runs after voices are populated
     const applyVoice = () => {
-      const voices = window.speechSynthesis.getVoices();
-      const preferred = voices.find(
-        (v) =>
-          v.name.includes("Samantha") ||
-          v.name.includes("Google US English") ||
-          v.name.includes("Karen") ||
-          v.name.includes("Zira")
-      );
-      if (preferred) utter.voice = preferred;
+      const freshUtterance = buildCoachUtterance(message, "Nova", "distance");
+      if (freshUtterance.voice) utter.voice = freshUtterance.voice;
     };
     applyVoice();
     if (!utter.voice && window.speechSynthesis.getVoices().length === 0) {

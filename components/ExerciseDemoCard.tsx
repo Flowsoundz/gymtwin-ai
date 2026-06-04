@@ -2,6 +2,7 @@ import { Coach3D } from "@/components/Coach3D";
 import { getAvatarLabel } from "@/lib/avatarAssets";
 import { getExerciseDemoDescriptor } from "@/lib/exerciseDemoLibrary";
 import { getCameraCoachLabel, getCameraCoachModeForMovementName } from "@/lib/cameraCoachMapping";
+import { isFloorMovementName } from "@/lib/exerciseAnimationMap";
 import type { CoachAvatar } from "@/types";
 
 type ExerciseDemoCardProps = {
@@ -45,6 +46,7 @@ export function ExerciseDemoCard({
   const formTips = getFormTips(exerciseName);
   const avatarLabel = getAvatarLabel(selectedAvatar);
   const demoDescriptor = getExerciseDemoDescriptor(exerciseName, selectedAvatar);
+  const isFloorDemo = isFloorMovementName(exerciseName);
 
   const statusTone =
     demoDescriptor.status === "available"
@@ -83,17 +85,24 @@ export function ExerciseDemoCard({
         ? "border-blue-400/18 text-blue-300"
         : "border-white/8 text-slate-500";
 
+  const cameraSupportLabel = trackingMode ? getCameraCoachLabel(trackingMode) : "Demo Preview";
+  const movementFamilyLabel = demoDescriptor.demoFamily
+    ? (FAMILY_LABEL[demoDescriptor.demoFamily] ?? demoDescriptor.demoFamily)
+    : "General Movement";
+
   return (
     <section
-      className={`rounded-[1.7rem] border border-white/8 bg-white/6 backdrop-blur-xl shadow-[0_18px_60px_rgba(15,23,42,0.45)] ${
+      className={`overflow-hidden rounded-[1.8rem] border border-white/8 bg-[linear-gradient(180deg,rgba(15,23,42,0.9),rgba(2,6,23,0.96))] backdrop-blur-xl shadow-[0_24px_80px_rgba(15,23,42,0.48)] ${
         compact ? "p-4" : "p-5"
       }`}
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-fuchsia-300">Exercise Demo</p>
-          <h3 className="mt-1 text-xl font-black tracking-tight text-white">{avatarLabel}</h3>
-          <p className="mt-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">AI Coach Demo Preview</p>
+          <p className="text-[10px] font-black uppercase tracking-[0.28em] text-fuchsia-300">Movement Showcase</p>
+          <h3 className="mt-1 text-xl font-black tracking-tight text-white">{exerciseName}</h3>
+          <p className="mt-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
+            {avatarLabel} • {movementFamilyLabel}
+          </p>
         </div>
         <div className="flex flex-col items-end gap-1.5">
           <div className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] ${statusTone}`}>
@@ -107,60 +116,112 @@ export function ExerciseDemoCard({
         </div>
       </div>
 
-      {demoClipName ? (
-        <div className="mt-4">
-          <Coach3D
-            selectedAvatar={selectedAvatar}
-            animationHint="idle"
-            demoClipName={demoClipName}
-            compact
-            previewFrame="full_body"
-            lightingMode="neutral"
-          />
-        </div>
-      ) : null}
-
-      <div className="mt-4 rounded-[1.35rem] border border-white/8 bg-slate-950/55 px-4 py-4">
-        <p className="text-sm font-bold text-white">{exerciseName}</p>
-        <p className="mt-2 text-sm leading-relaxed text-slate-300">
-          {demoDescriptor.summary}
-        </p>
-        <p className="mt-2 text-xs leading-relaxed text-slate-400">{demoDescriptor.detail}</p>
-
-        <div className="mt-3 flex flex-wrap gap-2">
-          {demoDescriptor.demoFamily ? (
-            <span className="rounded-full border border-fuchsia-400/20 bg-fuchsia-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-fuchsia-200">
-              {FAMILY_LABEL[demoDescriptor.demoFamily] ?? demoDescriptor.demoFamily}
+      <div className="mt-4 overflow-hidden rounded-[1.45rem] border border-white/8 bg-[radial-gradient(circle_at_top,_rgba(96,165,250,0.2),_transparent_28%),linear-gradient(180deg,rgba(15,23,42,0.28),rgba(2,6,23,0.85))]">
+        <div className="flex items-center justify-between gap-3 border-b border-white/6 px-4 py-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-cyan-100">
+              {cameraSupportLabel}
             </span>
-          ) : null}
-          {trackingMode ? (
-            <span className="rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-blue-200">
-              {getCameraCoachLabel(trackingMode)}
+            <span className={`rounded-full border bg-slate-900/60 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${sourceTone}`}>
+              {sourceLabel}
             </span>
-          ) : null}
-          <span className={`rounded-full border bg-slate-900/60 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${sourceTone}`}>
-            {sourceLabel}
-          </span>
+          </div>
+          <div className="rounded-full border border-white/8 bg-white/5 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-300">
+            {isFloorDemo ? "Side Profile" : "Full Body"}
+          </div>
         </div>
-
-        {demoDescriptor.targetPath ? (
-          <p className="mt-3 font-mono text-[11px] leading-relaxed text-slate-500">
-            Target: {demoDescriptor.targetPath.replace("{avatar}", selectedAvatar.toLowerCase())}
-          </p>
-        ) : null}
+        {demoClipName ? (
+          <div className="relative">
+            <div className="absolute inset-x-3 top-3 z-[2] flex flex-wrap items-start justify-between gap-2">
+              <div className="rounded-2xl border border-white/10 bg-slate-950/74 px-3 py-2 backdrop-blur-xl">
+                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300">Demo Stage</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-slate-300">
+                  {isFloorDemo ? "Profile view for line, brace, and depth checks." : "Hero framing for setup, tempo, and posture."}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-slate-950/74 px-3 py-2 backdrop-blur-xl">
+                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-fuchsia-300">Atlas Focus</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-slate-300">
+                  {formTips[0]} • {formTips[1]}
+                </p>
+              </div>
+            </div>
+            <Coach3D
+              selectedAvatar={selectedAvatar}
+              animationHint="idle"
+              demoClipName={demoClipName}
+              compact={false}
+              previewFrame="full_body"
+              lightingMode="neutral"
+              isFloorMovement={isFloorDemo}
+            />
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950 via-slate-950/75 to-transparent px-4 pb-4 pt-12">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-fuchsia-300">Live Demo</p>
+                  <p className="mt-1 text-sm font-black text-white">{exerciseName}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {formTips.slice(0, 2).map((tip) => (
+                    <span
+                      key={tip}
+                      className="rounded-full border border-white/10 bg-slate-900/80 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-slate-200"
+                    >
+                      {tip}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="px-4 py-8 text-center">
+            <p className="text-sm font-bold text-white">No motion clip is mapped for this movement yet.</p>
+            <p className="mt-2 text-xs leading-relaxed text-slate-400">
+              The coaching layer is ready, but this exercise still needs a dedicated playable clip in the runtime pack.
+            </p>
+          </div>
+        )}
       </div>
 
-      <div className="mt-4">
-        <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">Form Tips</p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {formTips.map((tip) => (
-            <span
-              key={tip}
-              className="rounded-full border border-white/10 bg-slate-900/75 px-3 py-1.5 text-xs font-bold text-slate-200"
-            >
-              {tip}
-            </span>
-          ))}
+      <div className={`mt-4 grid gap-4 ${compact ? "grid-cols-1" : "lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]"}`}>
+        <div className="rounded-[1.35rem] border border-white/8 bg-slate-950/55 px-4 py-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">Demo Pipeline</p>
+          <p className="mt-2 text-sm leading-relaxed text-slate-300">{demoDescriptor.summary}</p>
+          <p className="mt-2 text-xs leading-relaxed text-slate-400">{demoDescriptor.detail}</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {demoDescriptor.demoFamily ? (
+              <span className="rounded-full border border-fuchsia-400/20 bg-fuchsia-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-fuchsia-200">
+                {movementFamilyLabel}
+              </span>
+            ) : null}
+            {trackingMode ? (
+              <span className="rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-blue-200">
+                {cameraSupportLabel}
+              </span>
+            ) : null}
+          </div>
+          {demoDescriptor.targetPath ? (
+            <p className="mt-4 font-mono text-[11px] leading-relaxed text-slate-500">
+              Target: {demoDescriptor.targetPath.replace("{avatar}", selectedAvatar.toLowerCase())}
+            </p>
+          ) : null}
+        </div>
+        <div className="rounded-[1.35rem] border border-white/8 bg-slate-950/55 px-4 py-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">Form Priorities</p>
+          <div className="mt-3 grid gap-2">
+            {formTips.map((tip, index) => (
+              <div
+                key={tip}
+                className="flex items-center gap-3 rounded-[1rem] border border-white/8 bg-slate-900/75 px-3 py-3"
+              >
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-cyan-400/20 bg-cyan-500/10 text-[11px] font-black text-cyan-100">
+                  {index + 1}
+                </span>
+                <span className="text-sm font-bold text-slate-200">{tip}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </section>

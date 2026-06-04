@@ -22,6 +22,7 @@ export type AvatarCoachLayerState = {
   role: AvatarCoachRole;
   mood: CoachBrainMood;
   animationHint: CoachAnimationHint;
+  demoClipName: string | null;
   title: string;
   message: string;
   shouldShowDemoCard: boolean;
@@ -106,6 +107,7 @@ export function getAvatarCoachLayerState(
     role,
     mood,
     animationHint,
+    demoClipName: demoDescriptor?.embeddedClipName ?? null,
     title,
     message,
     shouldShowDemoCard:

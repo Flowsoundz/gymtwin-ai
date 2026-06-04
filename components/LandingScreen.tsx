@@ -1,12 +1,13 @@
 "use client";
 
-import { Coach3D } from "@/components/Coach3D";
+import Image from "next/image";
 import { getAvatarLabel, getAvatarRole } from "@/lib/avatarAssets";
+import { getAvatarAsset } from "@/lib/avatarAssets";
 import { getCoachAdaptationRecommendation } from "@/lib/coachAdaptationEngine";
 import { deriveProgressTrends } from "@/lib/progressTrends";
 import { todayString, yesterdayString } from "@/lib/time";
 import { getTodayWeeklyPlanLabel } from "@/lib/weeklyPlanEngine";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { BodyProfile, CoachAvatar, TraineeStats, WeeklyPlan, WorkoutSummaryData } from "@/types";
 
 type LandingScreenProps = {
@@ -26,6 +27,10 @@ type LandingScreenProps = {
   onStartTodaysWorkout: () => void;
   selectedAvatar: CoachAvatar;
   cameraTried?: boolean;
+  showSyncBanner?: boolean;
+  onOpenAuth?: () => void;
+  onDismissSyncBanner?: () => void;
+  onViewNutrition: () => void;
   primaryButton: string;
   secondaryButton: string;
 };
@@ -106,27 +111,40 @@ function QuickActionCard({
   title,
   subtitle,
   accentClass,
+  accentGlowClass,
+  iconShellClass,
+  showRadar = false,
   onClick,
 }: {
   icon: string;
   title: string;
   subtitle: string;
   accentClass: string;
+  accentGlowClass: string;
+  iconShellClass: string;
+  showRadar?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       onClick={onClick}
-      className="bento-card group flex flex-col items-start gap-3 rounded-2xl border border-white/8 bg-slate-950/70 p-4 text-left backdrop-blur-md transition hover:border-white/16"
+      className="bento-card group relative flex flex-col items-start gap-3 overflow-hidden rounded-[1.7rem] border border-white/10 bg-slate-900/40 p-4 text-left backdrop-blur-md transition hover:border-white/20 hover:bg-slate-900/55"
     >
-      <div className={`flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-xl ${accentClass}`}>
+      <div className={`pointer-events-none absolute inset-0 opacity-0 transition duration-300 group-hover:opacity-100 ${accentGlowClass}`} />
+      {showRadar ? (
+        <div className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full border border-cyan-400/16 bg-cyan-500/6">
+          <span className="absolute inset-[18%] rounded-full border border-cyan-400/18 radar-ping" />
+          <span className="absolute inset-[36%] rounded-full border border-cyan-400/14 radar-ping-delayed" />
+        </div>
+      ) : null}
+      <div className={`relative flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 text-xl shadow-[0_10px_24px_rgba(2,6,23,0.35)] ${iconShellClass} ${accentClass}`}>
         {icon}
       </div>
-      <div>
+      <div className="relative">
         <p className="text-sm font-black text-white">{title}</p>
         <p className="mt-0.5 text-[11px] leading-relaxed text-slate-400">{subtitle}</p>
       </div>
-      <div className="ml-auto text-slate-600 transition group-hover:text-slate-300">→</div>
+      <div className="relative ml-auto text-slate-600 transition group-hover:text-slate-200">→</div>
     </button>
   );
 }
@@ -150,7 +168,7 @@ function NeonStatPill({
   );
 }
 
-type NavTab = "home" | "workouts" | "progress" | "settings";
+type NavTab = "home" | "workouts" | "progress" | "nutrition" | "settings";
 
 export function LandingScreen({
   userStats,
@@ -169,13 +187,49 @@ export function LandingScreen({
   onStartTodaysWorkout,
   selectedAvatar,
   cameraTried = false,
+  showSyncBanner = false,
+  onOpenAuth,
+  onDismissSyncBanner,
+  onViewNutrition,
 }: LandingScreenProps) {
   const [activeTab, setActiveTab] = useState<NavTab>("home");
+  const [heroInteractive, setHeroInteractive] = useState(false);
+  const [heroPostureIndex, setHeroPostureIndex] = useState(0);
 
   const coachName = getAvatarLabel(selectedAvatar);
   const coachRole = getAvatarRole(selectedAvatar);
   const todayPlan = weeklyPlan?.days.find((d) => d.dayLabel === getTodayWeeklyPlanLabel()) ?? weeklyPlan?.days[0] ?? null;
   const completedWeeklyDays = weeklyPlan?.days.filter((d) => d.completed).length ?? 0;
+  const weeklyCompletionRatio = weeklyPlan ? completedWeeklyDays / Math.max(weeklyPlan.days.length, 1) : 0;
+  const planCircumference = 2 * Math.PI * 22;
+  const planRingOffset = planCircumference * (1 - weeklyCompletionRatio);
+  const streakAuraClass =
+    userStats.streak >= 7
+      ? "from-emerald-400/28 via-cyan-400/12 to-emerald-300/22"
+      : userStats.streak >= 3
+        ? "from-cyan-400/24 via-blue-400/10 to-emerald-400/16"
+        : "from-blue-500/24 via-cyan-400/10 to-indigo-400/18";
+  const heroAuraDuration = userStats.streak >= 7 ? "2.4s" : userStats.streak >= 3 ? "3.1s" : "4.6s";
+  const focusLines = [
+    `Ready when you are${bodyProfile?.lastUpdated ? "." : ", Adony."} Let's smash today's block.`,
+    `${coachName} focus: ${todayPlan ? todayPlan.focus : "Build your next adaptive plan"}.`,
+    weeklyPlan
+      ? `${completedWeeklyDays}/7 days complete. Lock in the next session.`
+      : "No weekly plan loaded. Generate one and I'll shape the pace.",
+  ];
+
+  useEffect(() => {
+    if (!heroInteractive) {
+      setHeroPostureIndex(0);
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setHeroPostureIndex((current) => (current + 1) % 3);
+    }, 2200);
+
+    return () => window.clearInterval(intervalId);
+  }, [heroInteractive]);
 
   const progressTrends = useMemo(
     () => deriveProgressTrends({ workoutHistory, weeklyPlan, bodyProfile, userStats }),
@@ -194,9 +248,10 @@ export function LandingScreen({
 
   const handleNavTab = (tab: NavTab) => {
     setActiveTab(tab);
-    if (tab === "progress") onViewProgress();
-    if (tab === "settings") onOpenSettings();
-    if (tab === "workouts") onStartWorkout();
+    if (tab === "progress")  onViewProgress();
+    if (tab === "settings")  onOpenSettings();
+    if (tab === "workouts")  onStartWorkout();
+    if (tab === "nutrition") onViewNutrition();
   };
 
   const navItems: { id: NavTab; label: string; icon: React.ReactNode }[] = [
@@ -234,6 +289,17 @@ export function LandingScreen({
       ),
     },
     {
+      id: "nutrition",
+      label: "Fuel",
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <circle cx="10" cy="10" r="7.5" stroke="currentColor" strokeWidth="1.5" fill="none" />
+          <path d="M7 7v6M7 7C7 5.5 9 5.5 9 7v3H7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          <path d="M12.5 5.5v9M12.5 5.5v4l1.5-2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ),
+    },
+    {
       id: "settings",
       label: "Settings",
       icon: (
@@ -255,8 +321,7 @@ export function LandingScreen({
       </div>
 
       <main className="relative pb-28 pt-6">
-        <div className="mx-auto w-full max-w-md px-4 lg:max-w-6xl lg:px-6">
-
+        <div className="mx-auto w-full max-w-6xl px-4 lg:px-6">
           {/* ── Header ── */}
           <header className="mb-6 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -268,23 +333,93 @@ export function LandingScreen({
                 <h1 className="text-base font-black italic tracking-tight text-white">GymTwin AI</h1>
               </div>
             </div>
-            <ChromeProBadge />
+            <div className="flex items-center gap-3">
+              <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-slate-950/72 px-3 py-2 backdrop-blur-xl shadow-[0_12px_32px_rgba(2,6,23,0.28)]">
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-blue-500/8 via-transparent to-fuchsia-500/8" />
+                <div className="relative flex items-center gap-3">
+                  <button
+                    onClick={showSyncBanner ? onOpenAuth : onOpenSettings}
+                    className="group flex items-center gap-3 rounded-xl border border-white/8 bg-white/[0.03] px-2.5 py-1.5 text-left transition hover:border-white/14 hover:bg-white/[0.05]"
+                  >
+                    <div className={`flex h-9 w-9 items-center justify-center rounded-full border text-xs font-black ${
+                      showSyncBanner
+                        ? "border-blue-400/20 bg-blue-500/10 text-blue-200"
+                        : "border-emerald-400/18 bg-emerald-500/10 text-emerald-200"
+                    }`}>
+                      {showSyncBanner ? "☁" : "✓"}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                        {showSyncBanner ? "Guest Mode" : "Account Ready"}
+                      </p>
+                      <p className="truncate text-xs text-slate-300">
+                        {showSyncBanner ? "Sign in to sync progress and settings." : "Profile, settings, and sync are available."}
+                      </p>
+                    </div>
+                  </button>
+                  {showSyncBanner ? (
+                    <>
+                      <button
+                        onClick={onOpenAuth}
+                        className="shrink-0 rounded-full border border-blue-400/26 bg-blue-500/12 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-blue-100 transition hover:bg-blue-500/18"
+                      >
+                        Sign In
+                      </button>
+                      <button
+                        onClick={onDismissSyncBanner}
+                        className="shrink-0 text-sm leading-none text-slate-500 transition hover:text-white"
+                        aria-label="Dismiss sync prompt"
+                      >
+                        ×
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              </div>
+              <ChromeProBadge />
+            </div>
           </header>
 
-          {/* ── Bento Grid ── */}
-          <div className="grid gap-4 lg:grid-cols-[1fr_1.45fr] lg:grid-rows-[auto_auto]">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
 
-            {/* Box A: 3D Coach Avatar — spans both rows on desktop */}
-            <div className="bento-card relative overflow-hidden rounded-3xl border border-white/10 bg-slate-950/60 p-1 shadow-[0_0_60px_rgba(99,102,241,0.12)] backdrop-blur-xl lg:row-span-2">
+            <div
+              className="bento-card group relative overflow-hidden rounded-3xl border border-white/10 bg-slate-950/60 p-1 shadow-[0_0_60px_rgba(99,102,241,0.12)] backdrop-blur-xl md:max-h-[720px]"
+              onMouseEnter={() => setHeroInteractive(true)}
+              onMouseLeave={() => setHeroInteractive(false)}
+              onTouchStart={() => setHeroInteractive((current) => !current)}
+            >
               {/* Neon glow ring */}
               <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-blue-500/8 via-violet-500/5 to-fuchsia-500/8" />
               <div className="relative">
-                <Coach3D
-                  selectedAvatar={selectedAvatar}
-                  animationHint="idle"
-                  previewFrame="full_body"
-                  lightingMode="neutral"
-                />
+                <div className="relative h-[380px] overflow-hidden rounded-[1.5rem] bg-gradient-to-br from-slate-800 via-slate-900 to-[#0f172a] md:h-[min(70vh,640px)]">
+                  <div
+                    className={`pointer-events-none absolute inset-[8%] z-[1] rounded-[2rem] bg-gradient-to-br blur-3xl hero-aura ${streakAuraClass}`}
+                    style={{ animationDuration: heroAuraDuration }}
+                  />
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.12),_transparent_28%),linear-gradient(180deg,rgba(30,41,59,0.08),rgba(15,23,42,0.34)_100%)]" />
+                  <Image
+                    src={getAvatarAsset(selectedAvatar)}
+                    alt={`${coachName} hero`}
+                    fill
+                    priority
+                    sizes="(min-width: 1024px) 40vw, 100vw"
+                    className={`object-cover transition duration-700 ease-out ${
+                      heroPostureIndex === 0
+                        ? "scale-[1.02] object-[center_16%]"
+                        : heroPostureIndex === 1
+                          ? "scale-[1.05] object-[center_12%]"
+                          : "scale-[1.04] object-[center_20%]"
+                    }`}
+                  />
+                  <div className="pointer-events-none absolute inset-x-5 top-5 z-[2] max-w-[18rem] rounded-2xl border border-white/10 bg-slate-950/42 px-4 py-3 backdrop-blur-xl">
+                    <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-300">
+                      {userStats.streak >= 7 ? "Streak Surge" : "Atlas Hero View"}
+                    </p>
+                    <p className="mt-2 text-sm font-bold leading-relaxed text-white ticker-fade">
+                      {heroInteractive ? focusLines[heroPostureIndex] : focusLines[0]}
+                    </p>
+                  </div>
+                </div>
                 {/* Coach identity overlay */}
                 <div className="absolute bottom-0 left-0 right-0 rounded-b-[1.4rem] bg-gradient-to-t from-slate-950/90 via-slate-950/40 to-transparent px-4 pb-4 pt-8">
                   <p className="text-lg font-black italic text-white">{coachName}</p>
@@ -294,23 +429,50 @@ export function LandingScreen({
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" style={{ animation: "coachPulse 2s ease-in-out infinite" }} />
                     <span className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-300">AI Coach Ready</span>
                   </div>
+                  <div className="mt-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+                    <span className="rounded-full border border-cyan-400/18 bg-cyan-500/10 px-2 py-1 text-cyan-200">
+                      Aura {userStats.streak >= 7 ? "Emerald Surge" : "Neon Blue"}
+                    </span>
+                    <span>{heroInteractive ? "Engaged" : "Idle"}</span>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Box B: Today's Plan + Mega CTA */}
-            <div className="bento-card rounded-3xl border border-white/8 bg-slate-950/65 p-5 backdrop-blur-md">
-              {/* Greeting */}
-              <div className="mb-4">
-                <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-500">Dashboard</p>
-                <h2 className="mt-1 text-2xl font-black italic leading-tight tracking-tight text-white lg:text-3xl">
-                  {greeting.headline}
-                </h2>
-                <p className="mt-1 text-sm leading-relaxed text-slate-400">{greeting.sub}</p>
+            <div className="flex flex-col gap-6">
+              <div className="bento-card rounded-3xl border border-white/8 bg-slate-950/65 p-5 backdrop-blur-md">
+                <div className="mb-5">
+                  <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-500">Dashboard</p>
+                  <h2 className="mt-1 text-2xl font-black italic leading-tight tracking-tight text-white lg:text-3xl">
+                    {greeting.headline}
+                  </h2>
+                  <p className="mt-1 text-sm leading-relaxed text-slate-400">{greeting.sub}</p>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <NeonStatPill value={userStats.workoutsCompleted} label="Sessions" colorClass="text-blue-400" />
+                  <NeonStatPill value={userStats.streak} label="Streak 🔥" colorClass="text-fuchsia-400" />
+                  <NeonStatPill value={userStats.totalMinutes} label="Minutes" colorClass="text-violet-400" />
+                </div>
               </div>
 
-              {/* Today's Plan card */}
-              <div className="mb-4 rounded-2xl border border-blue-400/14 bg-blue-500/8 p-4">
+              <div className="relative overflow-hidden rounded-3xl border border-blue-400/14 bg-blue-500/8 p-5 backdrop-blur-md">
+                {weeklyPlan && completedWeeklyDays >= 7 ? (
+                  <div className="pointer-events-none absolute inset-0">
+                    {Array.from({ length: 14 }).map((_, index) => (
+                      <span
+                        key={index}
+                        className="plan-particle absolute left-1/2 top-1/2 h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_14px_rgba(103,232,249,0.8)]"
+                        style={
+                          {
+                            "--px": `${Math.cos((index / 14) * Math.PI * 2) * (60 + (index % 3) * 18)}px`,
+                            "--py": `${Math.sin((index / 14) * Math.PI * 2) * (46 + (index % 4) * 16)}px`,
+                            animationDelay: `${index * 40}ms`,
+                          } as React.CSSProperties
+                        }
+                      />
+                    ))}
+                  </div>
+                ) : null}
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-[10px] font-black uppercase tracking-[0.28em] text-blue-400">Today&apos;s Plan</p>
@@ -322,85 +484,129 @@ export function LandingScreen({
                         {todayPlan.dayLabel} · {todayPlan.recommendedWorkout} · {todayPlan.durationMinutes} min
                       </p>
                     ) : (
-                      <p className="mt-0.5 text-xs text-slate-400">Generate a 7-day plan for your week.</p>
+                      <div className="mt-2 space-y-2">
+                        <div className="flex flex-wrap gap-1.5">
+                          {[
+                            { label: "🔥 30-min Strength" },
+                            { label: "🧘 20-min Mobility" },
+                            { label: "⚡ Quick Burn" },
+                          ].map(({ label }) => (
+                            <button
+                              key={label}
+                              onClick={onStartWorkout}
+                              className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300 transition hover:border-white/20 hover:text-white"
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                        <button
+                          onClick={onGenerateWeeklyPlan}
+                          className="mt-1 text-xs bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 px-3 py-1.5 rounded-md transition-all"
+                        >
+                          Generate a 7-day plan for your week
+                        </button>
+                      </div>
                     )}
                   </div>
-                  <div className="shrink-0 rounded-full border border-blue-400/14 bg-blue-500/10 px-2.5 py-1 text-[10px] font-black text-blue-300">
-                    {weeklyPlan ? `${completedWeeklyDays}/7` : "—"}
+                  <div className="relative shrink-0">
+                    <svg width="66" height="66" viewBox="0 0 66 66" className="drop-shadow-[0_0_18px_rgba(34,211,238,0.24)]">
+                      <circle cx="33" cy="33" r="22" stroke="rgba(148,163,184,0.18)" strokeWidth="6" fill="none" />
+                      <circle
+                        cx="33"
+                        cy="33"
+                        r="22"
+                        stroke={completedWeeklyDays >= 7 ? "rgba(16,185,129,0.95)" : "rgba(34,211,238,0.95)"}
+                        strokeWidth="6"
+                        fill="none"
+                        strokeLinecap="round"
+                        strokeDasharray={planCircumference}
+                        strokeDashoffset={planRingOffset}
+                        transform="rotate(-90 33 33)"
+                        className="hud-ring"
+                        style={{ ["--ring-offset" as string]: `${planRingOffset}` }}
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className="text-sm font-black text-white">{weeklyPlan ? `${completedWeeklyDays}/7` : "—"}</span>
+                      <span className="text-[8px] font-black uppercase tracking-[0.18em] text-cyan-300">
+                        {completedWeeklyDays >= 7 ? "Complete" : "Sets"}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Resume session if active */}
-              {hasResumeSession && (
-                <button
-                  onClick={onResumeWorkout}
-                  className="mb-3 flex w-full items-center gap-3 rounded-2xl border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-left transition hover:bg-amber-500/16 active:scale-[0.99]"
-                >
-                  <span className="text-base">▶</span>
-                  <div>
-                    <p className="text-sm font-black text-amber-200">Resume Session</p>
-                    <p className="text-[11px] text-amber-300/70">Jump back into your active workout</p>
-                  </div>
-                  <span className="ml-auto text-amber-400/60">→</span>
-                </button>
-              )}
+              <div className="bento-card rounded-3xl border border-white/8 bg-slate-950/65 p-5 backdrop-blur-md">
+                {hasResumeSession && (
+                  <button
+                    onClick={onResumeWorkout}
+                    className="mb-3 flex w-full items-center gap-3 rounded-2xl border border-cyan-400/20 bg-cyan-500/10 px-4 py-3 text-left transition hover:bg-cyan-500/16 active:scale-[0.99]"
+                  >
+                    <span className="text-base">▶</span>
+                    <div>
+                      <p className="text-sm font-black text-cyan-200">Resume Session</p>
+                      <p className="text-[11px] text-cyan-300/70">Jump back into your active workout</p>
+                    </div>
+                    <span className="ml-auto text-cyan-400/60">→</span>
+                  </button>
+                )}
 
-              {/* Mega CTA */}
-              <MegaCTA
-                label={hasResumeSession ? "Start New Workout" : weeklyPlan ? "Start Today's Workout" : "Start Workout"}
-                onClick={weeklyPlan && !hasResumeSession ? onStartTodaysWorkout : onStartWorkout}
-              />
+                <MegaCTA
+                  label={hasResumeSession ? "Start New Workout" : weeklyPlan ? "Start Today's Workout" : "Start Workout"}
+                  onClick={weeklyPlan && !hasResumeSession ? onStartTodaysWorkout : onStartWorkout}
+                />
 
-              {/* Quick Start */}
-              {onQuickStart && !hasResumeSession && (
-                <button
-                  onClick={onQuickStart}
-                  className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-400/16 bg-emerald-500/8 py-2.5 text-xs font-black uppercase tracking-[0.18em] text-emerald-300 transition hover:bg-emerald-500/14 active:scale-[0.98]"
-                >
-                  ⚡ Quick Start — Use Saved Settings
-                </button>
-              )}
+                {onQuickStart && !hasResumeSession && (
+                  <button
+                    onClick={onQuickStart}
+                    className="mt-2 flex w-full items-center justify-center gap-1.5 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-slate-500 transition hover:text-slate-300"
+                  >
+                    ⚡ Quick Start — Use Saved Settings
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <QuickActionCard
+                  icon="📷"
+                  title="Camera Coach"
+                  subtitle="Live form tracking"
+                  accentClass="text-cyan-400"
+                  accentGlowClass="bg-[radial-gradient(circle_at_top_right,_rgba(34,211,238,0.16),_transparent_48%)]"
+                  iconShellClass="bg-cyan-500/12"
+                  showRadar
+                  onClick={onOpenCameraSandbox}
+                />
+                <QuickActionCard
+                  icon="📈"
+                  title="Progress"
+                  subtitle="Charts & badges"
+                  accentClass="text-violet-400"
+                  accentGlowClass="bg-[radial-gradient(circle_at_top_right,_rgba(167,139,250,0.16),_transparent_52%)]"
+                  iconShellClass="bg-violet-500/12"
+                  onClick={onViewProgress}
+                />
+                <QuickActionCard
+                  icon="📋"
+                  title="Weekly Plan"
+                  subtitle={weeklyPlan ? `${completedWeeklyDays}/7 complete` : "Generate plan"}
+                  accentClass="text-emerald-400"
+                  accentGlowClass="bg-[radial-gradient(circle_at_top_right,_rgba(52,211,153,0.14),_transparent_52%)]"
+                  iconShellClass="bg-emerald-500/12"
+                  onClick={weeklyPlan ? onStartTodaysWorkout : onGenerateWeeklyPlan}
+                />
+                <QuickActionCard
+                  icon="⚙️"
+                  title="Settings"
+                  subtitle="Coach & display"
+                  accentClass="text-slate-400"
+                  accentGlowClass="bg-[radial-gradient(circle_at_top_right,_rgba(148,163,184,0.14),_transparent_54%)]"
+                  iconShellClass="bg-slate-500/12"
+                  onClick={onOpenSettings}
+                />
+              </div>
             </div>
-
-            {/* Box C: Quick Actions */}
-            <div className="grid grid-cols-2 gap-3">
-              <QuickActionCard
-                icon="📷"
-                title="Camera Coach"
-                subtitle="Live form tracking"
-                accentClass="text-cyan-400"
-                onClick={onOpenCameraSandbox}
-              />
-              <QuickActionCard
-                icon="📈"
-                title="Progress"
-                subtitle="Charts & badges"
-                accentClass="text-violet-400"
-                onClick={onViewProgress}
-              />
-              <QuickActionCard
-                icon="📋"
-                title="Weekly Plan"
-                subtitle={weeklyPlan ? `${completedWeeklyDays}/7 complete` : "Generate plan"}
-                accentClass="text-emerald-400"
-                onClick={weeklyPlan ? onStartTodaysWorkout : onGenerateWeeklyPlan}
-              />
-              <QuickActionCard
-                icon="⚙️"
-                title="Settings"
-                subtitle="Coach & display"
-                accentClass="text-slate-400"
-                onClick={onOpenSettings}
-              />
-            </div>
-          </div>
-
-          {/* ── Stats Row ── */}
-          <div className="mt-4 grid grid-cols-3 gap-3">
-            <NeonStatPill value={userStats.workoutsCompleted} label="Sessions" colorClass="text-blue-400" />
-            <NeonStatPill value={userStats.streak} label="Streak 🔥" colorClass="text-fuchsia-400" />
-            <NeonStatPill value={userStats.totalMinutes} label="Minutes" colorClass="text-violet-400" />
           </div>
 
           {/* ── Camera Unlock Banner ── */}
@@ -428,13 +634,13 @@ export function LandingScreen({
           <div className="mt-4 rounded-2xl border border-violet-400/12 bg-gradient-to-r from-violet-500/8 via-slate-950/40 to-fuchsia-500/8 px-5 py-4">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-violet-400">Coach Insight</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-violet-400">{coachName}&apos;s Insight</p>
                 <p className="mt-1 text-sm font-black text-white">{coachRecommendation.title}</p>
                 <p className="mt-1 text-xs leading-relaxed text-slate-400">{coachRecommendation.message}</p>
               </div>
               <div className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${
                 coachRecommendation.priority === "high"
-                  ? "border-amber-400/18 bg-amber-500/10 text-amber-300"
+                  ? "border-red-400/18 bg-red-500/10 text-red-300"
                   : coachRecommendation.priority === "medium"
                     ? "border-blue-400/18 bg-blue-500/10 text-blue-300"
                     : "border-emerald-400/18 bg-emerald-500/10 text-emerald-300"
@@ -472,7 +678,7 @@ export function LandingScreen({
               <button
                 key={item.id}
                 onClick={() => handleNavTab(item.id)}
-                className={`flex flex-col items-center gap-1 rounded-2xl px-5 py-2.5 transition-all duration-300 ${
+                className={`relative flex flex-col items-center gap-1 rounded-2xl px-3.5 py-2.5 transition-all duration-300 ${
                   isActive
                     ? "bg-gradient-to-b from-blue-500/22 to-violet-500/16 text-white shadow-[0_0_16px_rgba(99,102,241,0.3)]"
                     : "text-slate-500 hover:text-slate-300"
@@ -484,6 +690,9 @@ export function LandingScreen({
                 <span className={`text-[10px] font-black uppercase tracking-[0.16em] transition-all duration-300 ${isActive ? "text-white" : "text-slate-500"}`}>
                   {item.label}
                 </span>
+                {isActive ? (
+                  <span className="absolute bottom-1 h-1 w-4 rounded-full bg-blue-400 shadow-[0_0_8px_rgba(96,165,250,0.8)]" />
+                ) : null}
               </button>
             );
           })}

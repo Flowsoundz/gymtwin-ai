@@ -8,6 +8,7 @@ export const defaultAvatarDisplaySettings: AvatarDisplaySettings = {
   showDuringCamera: true,
   showExerciseDemos: true,
   minimalCameraHud: true,
+  countdownAudioEnabled: true,
   talkativeness: "normal",
   repCountingEnabled: true,
 };
@@ -50,6 +51,10 @@ export function sanitizeAvatarDisplaySettings(
       typeof value?.minimalCameraHud === "boolean"
         ? value.minimalCameraHud
         : defaultAvatarDisplaySettings.minimalCameraHud,
+    countdownAudioEnabled:
+      typeof value?.countdownAudioEnabled === "boolean"
+        ? value.countdownAudioEnabled
+        : defaultAvatarDisplaySettings.countdownAudioEnabled,
     talkativeness: isCoachTalkativeness(value?.talkativeness)
       ? value.talkativeness
       : defaultAvatarDisplaySettings.talkativeness,

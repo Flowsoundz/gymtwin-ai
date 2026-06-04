@@ -91,6 +91,20 @@ export function getExerciseClipName(movement: WorkoutMovement): string | null {
   return CATEGORY_CLIP[movement.category] ?? null;
 }
 
+// Movements performed on the floor (hands/knees/back/stomach) where the camera
+// should orbit to a side profile and the spine path overlay is most useful.
+const FLOOR_MOVEMENT_KEYWORDS = [
+  "plank", "push-up", "push up", "pushup", "sit-up", "situp", "crunch",
+  "bicycle", "dead bug", "deadbug", "glute bridge", "bridge", "glute",
+  "cat", "cow", "child", "hamstring", "pike", "knee tuck", "cobra",
+  "bird dog", "pallof", "dead lift floor",
+];
+
+export function isFloorMovementName(name: string): boolean {
+  const lower = name.toLowerCase();
+  return FLOOR_MOVEMENT_KEYWORDS.some((keyword) => lower.includes(keyword));
+}
+
 export function getEmbeddedClipNameForExerciseName(exerciseName: string): string | null {
   const lower = exerciseName.toLowerCase();
   for (const [keyword, clip] of NAME_CLIP) {

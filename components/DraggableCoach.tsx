@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Coach3D } from "@/components/Coach3D";
 import type { CoachAnimationHint } from "@/lib/coachBrain";
@@ -32,38 +32,32 @@ function writeSaved(data: SavedState) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch { /* noop */ }
 }
 
+function getInitialCoachState(): SavedState {
+  const saved = readSaved();
+  if (saved) return saved;
+
+  return {
+    x: typeof window !== "undefined" ? window.innerWidth - 200 : 20,
+    y: typeof window !== "undefined" ? window.innerHeight - 360 : 80,
+    minimized: false,
+  };
+}
+
 export function DraggableCoach({
   selectedAvatar,
   animationHint = "idle",
   demoClipName,
   message,
 }: Props) {
-  const [mounted, setMounted] = useState(false);
-  const [pos, setPos] = useState({ x: 20, y: 80 });
-  const [minimized, setMinimized] = useState(false);
+  const initialState = getInitialCoachState();
+  const [pos, setPos] = useState({ x: initialState.x, y: initialState.y });
+  const [minimized, setMinimized] = useState(initialState.minimized);
   const posRef = useRef(pos);
   const minimizedRef = useRef(minimized);
   const dragging = useRef(false);
   const origin = useRef({ mx: 0, my: 0, px: 0, py: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    setMounted(true);
-    const saved = readSaved();
-    if (saved) {
-      const p = { x: saved.x, y: saved.y };
-      setPos(p);
-      posRef.current = p;
-      setMinimized(saved.minimized);
-      minimizedRef.current = saved.minimized;
-    } else {
-      const initX = typeof window !== "undefined" ? window.innerWidth - 200 : 20;
-      const initY = typeof window !== "undefined" ? window.innerHeight - 360 : 80;
-      const p = { x: initX, y: initY };
-      setPos(p);
-      posRef.current = p;
-    }
-  }, []);
+  const mounted = typeof document !== "undefined";
 
   const persist = useCallback(() => {
     writeSaved({ ...posRef.current, minimized: minimizedRef.current });
@@ -147,6 +141,7 @@ export function DraggableCoach({
             animationHint={animationHint}
             demoClipName={demoClipName}
             previewFrame={previewFrame}
+            animate={isExercising}
             compact
             message={message}
             lightingMode="neutral"

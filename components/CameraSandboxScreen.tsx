@@ -1,14 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Coach3D } from "@/components/Coach3D";
 import { Coach3DPlaceholder } from "@/components/Coach3DPlaceholder";
 import { FloatingCoachAvatar } from "@/components/FloatingCoachAvatar";
 import { useCameraCoach } from "@/hooks/useCameraCoach";
+import { playCountdownCue, playCountdownLaunchCue } from "@/lib/audioCues";
 import { useVoiceCommands } from "@/hooks/useVoiceCommands";
 import { getAvatarLabel } from "@/lib/avatarAssets";
 import { getAvatarCoachLayerState } from "@/lib/avatarCoachLayer";
 import { getCoachBrainResponse } from "@/lib/coachBrain";
+import {
+  ENABLE_CAMERA_TRACKING,
+  ENABLE_EXERCISE_DEMOS,
+  ENABLE_MEDIAPIPE,
+} from "@/lib/featureFlags";
 import {
   getConversationResponse,
   parseConversationIntent,
@@ -67,6 +73,8 @@ export function CameraSandboxScreen({
   avatarDisplaySettings,
 }: CameraSandboxScreenProps) {
   const [isCameraFocusMode, setIsCameraFocusMode] = useState(false);
+  const [calibrationCountdown, setCalibrationCountdown] = useState<number | null>(null);
+  const [lockInCountdown, setLockInCountdown] = useState<number | null>(null);
   const [trackingDetailsOpen, setTrackingDetailsOpen] = useState(false);
   const [bodyScanOpen, setBodyScanOpen] = useState(false);
   const [coachPreviewOpen, setCoachPreviewOpen] = useState(false);
@@ -78,6 +86,7 @@ export function CameraSandboxScreen({
   } | null>(null);
 
   const {
+    isCameraRunning,
     videoRef,
     canvasRef,
     selectedMode,
@@ -112,18 +121,29 @@ export function CameraSandboxScreen({
     latestIssue,
     bestCue,
     trackingConfidenceAverage,
+    analysisEnabled,
+    setAnalysisEnabled,
+    activeDeviationCallout,
     startCamera,
     stopCamera,
   } = useCameraCoach();
 
-  async function handleStartCamera() {
+  function handleStartCamera() {
+    if (!ENABLE_CAMERA_TRACKING) {
+      return;
+    }
+    setAnalysisEnabled(false);
+    setCalibrationCountdown(5);
+    setLockInCountdown(null);
     setIsCameraFocusMode(true);
-    await startCamera();
+    void startCamera();
   }
 
   function handleStopCamera() {
     stopCamera();
     setIsCameraFocusMode(false);
+    setCalibrationCountdown(null);
+    setLockInCountdown(null);
   }
 
   const {
@@ -174,13 +194,138 @@ export function CameraSandboxScreen({
     },
   });
 
-  const isCameraRunning =
-    statusLabel === "Camera Starting..." ||
-    statusLabel === "Pose Model Loading..." ||
-    statusLabel === "Pose Tracking Active";
+  useEffect(() => {
+    if (!isCameraRunning) {
+      const timerId = window.setTimeout(() => {
+        setCalibrationCountdown(null);
+      }, 0);
+      return () => window.clearTimeout(timerId);
+    }
+
+    if (calibrationCountdown === null) {
+      return;
+    }
+
+    if (calibrationCountdown === 0) {
+      const timerId = window.setTimeout(() => {
+        setCalibrationCountdown(null);
+      }, 0);
+      return () => window.clearTimeout(timerId);
+    }
+
+    const timerId = window.setTimeout(() => {
+      setCalibrationCountdown((current) => {
+        if (current === null) return null;
+        return current - 1;
+      });
+    }, 1000);
+
+    return () => window.clearTimeout(timerId);
+  }, [calibrationCountdown, isCameraRunning]);
+
+  useEffect(() => {
+    if (!isCameraRunning) {
+      const timerId = window.setTimeout(() => {
+        setLockInCountdown(null);
+        setAnalysisEnabled(false);
+      }, 0);
+      return () => window.clearTimeout(timerId);
+    }
+
+    if (analysisEnabled) {
+      return;
+    }
+
+    if (calibrationCountdown !== null) {
+      return;
+    }
+
+    const fullyLocked = trackingReadiness.fullBodyVisible && trackingReadiness.confidenceScore === 100;
+    if (!fullyLocked) {
+      const timerId = window.setTimeout(() => {
+        setLockInCountdown(null);
+      }, 0);
+      return () => window.clearTimeout(timerId);
+    }
+
+    if (lockInCountdown !== null) {
+      return;
+    }
+
+    const timerId = window.setTimeout(() => {
+      setLockInCountdown(3);
+      playCountdownCue(3);
+    }, 0);
+    return () => window.clearTimeout(timerId);
+  }, [
+    analysisEnabled,
+    calibrationCountdown,
+    isCameraRunning,
+    lockInCountdown,
+    setAnalysisEnabled,
+    trackingReadiness.confidenceScore,
+    trackingReadiness.fullBodyVisible,
+  ]);
+
+  useEffect(() => {
+    if (lockInCountdown === null) return;
+
+    if (calibrationCountdown !== null) {
+      return;
+    }
+
+    if (!trackingReadiness.fullBodyVisible || trackingReadiness.confidenceScore < 100) {
+      const timerId = window.setTimeout(() => {
+        setLockInCountdown(null);
+      }, 0);
+      return () => window.clearTimeout(timerId);
+    }
+
+    if (lockInCountdown === 0) {
+      const timerId = window.setTimeout(() => {
+        setLockInCountdown(null);
+        setAnalysisEnabled(true);
+        playCountdownLaunchCue();
+      }, 0);
+      return () => window.clearTimeout(timerId);
+    }
+
+    const timerId = window.setTimeout(() => {
+      setLockInCountdown((current) => {
+        if (current === null) return null;
+        const nextValue = current - 1;
+        if (nextValue > 0) {
+          playCountdownCue(nextValue as 3 | 2 | 1);
+        }
+        return nextValue;
+      });
+    }, 850);
+
+    return () => window.clearTimeout(timerId);
+  }, [
+    calibrationCountdown,
+    lockInCountdown,
+    setAnalysisEnabled,
+    trackingReadiness.confidenceScore,
+    trackingReadiness.fullBodyVisible,
+  ]);
+
+  useEffect(() => {
+    if (!isCameraRunning || !analysisEnabled) return;
+    if (trackingLost || !trackingReadiness.fullBodyVisible || trackingReadiness.confidenceScore < 100) {
+      setAnalysisEnabled(false);
+    }
+  }, [
+    analysisEnabled,
+    isCameraRunning,
+    setAnalysisEnabled,
+    trackingLost,
+    trackingReadiness.confidenceScore,
+    trackingReadiness.fullBodyVisible,
+  ]);
 
   const statusTone =
-    statusLabel === "Pose Tracking Active"
+    statusLabel === "Pose Tracking Active" || statusLabel === "Camera Preview Active"
       ? "border-emerald-400/35 bg-emerald-500/15 text-emerald-200 shadow-[0_0_30px_rgba(16,185,129,0.16)]"
       : statusLabel === "Camera Error"
         ? "border-red-400/35 bg-red-500/15 text-red-200 shadow-[0_0_30px_rgba(239,68,68,0.12)]"
@@ -192,7 +337,7 @@ export function CameraSandboxScreen({
     feedbackSeverity === "good"
       ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-200"
       : feedbackSeverity === "warning"
-        ? "border-amber-400/20 bg-amber-500/10 text-amber-200"
+        ? "border-cyan-400/20 bg-cyan-500/10 text-cyan-200"
         : feedbackSeverity === "error"
           ? "border-red-400/20 bg-red-500/10 text-red-200"
           : "border-slate-700/60 bg-slate-900/70 text-slate-200";
@@ -253,6 +398,8 @@ export function CameraSandboxScreen({
   const primaryControlClass = isCameraRunning ? controlButtonClass : primaryButton;
   const stopControlClass =
     !isCameraRunning && statusLabel !== "Camera Error" ? controlButtonClass : secondaryButton;
+  const launchButtonClass =
+    "flex-1 rounded-2xl border border-cyan-300/25 bg-gradient-to-r from-cyan-500 via-blue-500 to-emerald-500 px-4 py-3 text-sm font-black tracking-[0.18em] text-slate-950 shadow-[0_18px_45px_rgba(34,211,238,0.28)] transition hover:scale-[1.01] hover:shadow-[0_22px_55px_rgba(34,211,238,0.34)] disabled:cursor-not-allowed disabled:opacity-50";
   const coachBrain = getCoachBrainResponse({
     selectedAvatarName: getAvatarLabel(selectedAvatar),
     screenContext: "camera_sandbox",
@@ -317,13 +464,19 @@ export function CameraSandboxScreen({
     showCameraAvatar && avatarDisplaySettings.mode === "camera_corner";
   const useMinimalCameraHud = avatarDisplaySettings.minimalCameraHud && isCameraRunning;
   const MODE_DEMO_CLIP: Record<string, string> = { squat: "Squat", pushup: "PushUp", plank: "Plank" };
-  const modeDemoClipName = selectedMode ? (MODE_DEMO_CLIP[selectedMode] ?? null) : null;
+  const modeDemoClipName = ENABLE_EXERCISE_DEMOS && selectedMode ? (MODE_DEMO_CLIP[selectedMode] ?? null) : null;
+  const canStartCamera = ENABLE_CAMERA_TRACKING;
+  const cameraAvailabilityDetail = !ENABLE_CAMERA_TRACKING
+    ? "Camera tracking is disabled by feature flag."
+    : !ENABLE_MEDIAPIPE
+      ? "Camera preview can run, but MediaPipe is disabled for this test."
+      : "Camera tracking and MediaPipe are enabled.";
   const trackingLockTone =
     statusLabel === "Camera Error"
       ? "border-red-400/20 bg-red-500/10 text-red-100"
       : trackingReadiness.fullBodyVisible
         ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-100"
-        : "border-amber-400/20 bg-amber-500/10 text-amber-100";
+        : "border-cyan-400/20 bg-cyan-500/10 text-cyan-100";
   const trackingLockLabel =
     statusLabel === "Camera Error"
       ? "Camera Error"
@@ -361,19 +514,19 @@ export function CameraSandboxScreen({
       ? plankQualityLabel === "stable"
         ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-100"
         : plankQualityLabel === "hips_high" || plankQualityLabel === "hips_low" || plankQualityLabel === "lost_tracking"
-          ? "border-amber-400/20 bg-amber-500/10 text-amber-100"
+          ? "border-cyan-400/20 bg-cyan-500/10 text-cyan-100"
           : "border-slate-700/60 bg-slate-900/70 text-slate-200"
       : latestRepQuality?.label === "clean"
         ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-100"
         : latestRepQuality?.label === "shallow" ||
             latestRepQuality?.label === "unstable" ||
             latestRepQuality?.label === "lost_tracking"
-          ? "border-amber-400/20 bg-amber-500/10 text-amber-100"
+          ? "border-cyan-400/20 bg-cyan-500/10 text-cyan-100"
           : "border-slate-700/60 bg-slate-900/70 text-slate-200";
   const placementTone =
     cameraPlacement.placementScore >= 75
       ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-100"
-      : "border-amber-400/20 bg-amber-500/10 text-amber-100";
+      : "border-cyan-400/20 bg-cyan-500/10 text-cyan-100";
   const placementLabel = cameraPlacement.placementScore >= 75 ? "Good Placement" : "Adjust Phone";
   const placementViewLabel = cameraPlacement.likelySideView
     ? "Side"
@@ -385,7 +538,7 @@ export function CameraSandboxScreen({
       ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-100"
       : (bodyScanEstimate.scanConfidence ?? 0) >= 45
         ? "border-blue-400/20 bg-blue-500/10 text-blue-100"
-        : "border-amber-400/20 bg-amber-500/10 text-amber-100";
+        : "border-red-400/20 bg-red-500/10 text-red-100";
   const trackingChecklist = [
     { label: "Head / Upper Body", ready: trackingReadiness.headVisible },
     { label: "Shoulders", ready: trackingReadiness.shouldersVisible },
@@ -406,7 +559,7 @@ export function CameraSandboxScreen({
         }
       : trackingLost
         ? {
-            tone: "border-amber-400/20 bg-amber-500/10 text-amber-100",
+            tone: "border-red-400/20 bg-red-500/10 text-red-100",
             eyebrow: "Tracking Paused",
             title: "Step back so your full body is visible",
             message: trackingLostReason,
@@ -488,6 +641,35 @@ export function CameraSandboxScreen({
     </button>
   ) : null;
 
+  const lowConfidenceAlert =
+    isCameraRunning &&
+    (trackingLost || trackingReadiness.confidenceScore < 55 || cameraPlacement.placementScore < 60);
+  const readinessLabel = analysisEnabled
+    ? "LIVE"
+    : calibrationCountdown !== null
+      ? "CALIBRATING"
+    : lockInCountdown !== null
+      ? "COUNTDOWN"
+      : trackingReadiness.fullBodyVisible && trackingReadiness.confidenceScore === 100
+        ? "100% READY"
+        : "SEEKING LOCK";
+  const readinessTone = analysisEnabled
+    ? "border-emerald-400/35 bg-emerald-500/18 text-emerald-100"
+    : calibrationCountdown !== null
+      ? "border-cyan-400/35 bg-cyan-500/18 text-cyan-100"
+    : lockInCountdown !== null
+      ? "border-blue-400/35 bg-blue-500/18 text-blue-100"
+      : trackingReadiness.fullBodyVisible && trackingReadiness.confidenceScore === 100
+        ? "border-emerald-400/35 bg-emerald-500/14 text-emerald-100"
+        : "border-cyan-400/35 bg-cyan-500/12 text-cyan-100";
+  const liveStageMessage = analysisEnabled
+    ? "Vision engine calculating reps."
+    : calibrationCountdown !== null
+      ? "Step into frame. Tracking will arm after calibration."
+    : lockInCountdown !== null
+      ? "Lock held. Launching live rep analysis."
+      : "Secure a full-body lock to arm rep analysis.";
+
   const cameraStage = (isFocusMode: boolean) => (
     <div className="rounded-[2rem] bg-gradient-to-br from-blue-500/18 via-transparent to-fuchsia-500/14 p-[1px] shadow-[0_0_70px_rgba(99,102,241,0.2)]">
       <div className="relative overflow-hidden rounded-[1.95rem] border border-white/8 bg-slate-950">
@@ -519,14 +701,18 @@ export function CameraSandboxScreen({
             className="pointer-events-none absolute inset-0 z-[2] h-full w-full"
           />
 
+          {lowConfidenceAlert ? (
+            <div className="pointer-events-none absolute inset-0 z-[3] rounded-[1.95rem] border border-red-400/35 shadow-[inset_0_0_140px_rgba(239,68,68,0.24),inset_0_0_40px_rgba(248,113,113,0.18),0_0_45px_rgba(248,113,113,0.08)] animate-pulse" />
+          ) : null}
+
           {isCameraRunning && !trackingReadiness.fullBodyVisible ? (
             <div className="pointer-events-none absolute inset-0 z-[3] flex items-center justify-center">
-              <div className="absolute inset-[10%] rounded-[2rem] border border-dashed border-amber-300/20" />
-              <div className="absolute left-[12%] top-[12%] h-12 w-12 rounded-tl-2xl border-l-2 border-t-2 border-amber-300/26" />
-              <div className="absolute right-[12%] top-[12%] h-12 w-12 rounded-tr-2xl border-r-2 border-t-2 border-amber-300/26" />
-              <div className="absolute bottom-[12%] left-[12%] h-12 w-12 rounded-bl-2xl border-b-2 border-l-2 border-amber-300/26" />
-              <div className="absolute bottom-[12%] right-[12%] h-12 w-12 rounded-br-2xl border-b-2 border-r-2 border-amber-300/26" />
-              <div className="rounded-full border border-amber-300/18 bg-slate-950/62 px-4 py-2 text-center text-[11px] font-black uppercase tracking-[0.22em] text-amber-100 backdrop-blur-md">
+              <div className="absolute inset-[10%] rounded-[2rem] border border-dashed border-cyan-300/20" />
+              <div className="absolute left-[12%] top-[12%] h-12 w-12 rounded-tl-2xl border-l-2 border-t-2 border-cyan-300/26" />
+              <div className="absolute right-[12%] top-[12%] h-12 w-12 rounded-tr-2xl border-r-2 border-t-2 border-cyan-300/26" />
+              <div className="absolute bottom-[12%] left-[12%] h-12 w-12 rounded-bl-2xl border-b-2 border-l-2 border-cyan-300/26" />
+              <div className="absolute bottom-[12%] right-[12%] h-12 w-12 rounded-br-2xl border-b-2 border-r-2 border-cyan-300/26" />
+              <div className="rounded-full border border-cyan-300/18 bg-slate-950/62 px-4 py-2 text-center text-[11px] font-black uppercase tracking-[0.22em] text-cyan-100 backdrop-blur-md">
                 Step back until your full body fits inside the frame.
               </div>
             </div>
@@ -538,9 +724,9 @@ export function CameraSandboxScreen({
 
           {trackingLost ? (
             <div className="pointer-events-none absolute inset-x-4 top-[30%] z-[4] sm:inset-x-8">
-              <div className="mx-auto max-w-md rounded-[1.6rem] border border-amber-400/22 bg-slate-950/78 px-4 py-4 text-left backdrop-blur-xl shadow-[0_18px_50px_rgba(15,23,42,0.42)]">
+              <div className="mx-auto max-w-md rounded-[1.6rem] border border-red-400/22 bg-slate-950/78 px-4 py-4 text-left backdrop-blur-xl shadow-[0_18px_50px_rgba(15,23,42,0.42)]">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-[11px] font-black uppercase tracking-[0.24em] text-amber-200">Tracking Paused</p>
+                  <p className="text-[11px] font-black uppercase tracking-[0.24em] text-red-200">Tracking Paused</p>
                   <p className="text-xs font-black text-white">{Math.max(1, Math.floor(trackingLostSeconds))}s</p>
                 </div>
                 <p className="mt-2 text-sm font-medium leading-relaxed text-white">{trackingLostReason}</p>
@@ -573,19 +759,93 @@ export function CameraSandboxScreen({
                 <p className="mt-2 text-sm leading-relaxed text-slate-400">
                   Nothing is recorded or uploaded. Everything stays on this device.
                 </p>
-                <button onClick={() => void handleStartCamera()} className={`mt-6 min-w-[12rem] ${primaryButton}`}>
+                <button onClick={() => void handleStartCamera()} className={`mt-6 min-w-[12rem] ${launchButtonClass}`}>
                   Start Camera
                 </button>
               </div>
             </div>
           ) : null}
 
+          {calibrationCountdown !== null ? (
+            <div className="pointer-events-none absolute inset-0 z-[11] flex flex-col items-center justify-center bg-[radial-gradient(circle_at_center,_rgba(8,47,73,0.3),_rgba(2,6,23,0.94))] backdrop-blur-sm">
+              <div className="mx-auto max-w-lg px-6 text-center">
+                <p className="text-[11px] font-black uppercase tracking-[0.3em] text-cyan-300">
+                  Calibration
+                </p>
+                <div className="mx-auto mt-5 flex h-40 w-40 items-center justify-center rounded-full border border-cyan-400/30 bg-cyan-500/10 shadow-[0_0_60px_rgba(34,211,238,0.18)]">
+                  <span className="text-8xl font-black tabular-nums text-white">{calibrationCountdown}</span>
+                </div>
+                <p className="mt-5 text-sm font-bold text-white">Step into frame and hold your start position.</p>
+                <p className="mt-2 text-[11px] font-black uppercase tracking-[0.22em] text-slate-300">
+                  Head, hips, knees, and feet visible
+                </p>
+              </div>
+            </div>
+          ) : null}
+
+          {lockInCountdown !== null ? (
+            <div className="pointer-events-none absolute inset-0 z-[11] flex flex-col items-center justify-center bg-[radial-gradient(circle_at_center,_rgba(8,47,73,0.38),_rgba(2,6,23,0.96))] backdrop-blur-sm">
+              <div className="text-center">
+                <p className="text-[11px] font-black uppercase tracking-[0.3em] text-cyan-300">
+                  100% READY
+                </p>
+                <div className="mx-auto mt-5 flex h-36 w-36 items-center justify-center rounded-full border border-cyan-400/35 bg-cyan-500/10 shadow-[0_0_60px_rgba(34,211,238,0.22)]">
+                  <span className="text-8xl font-black tabular-nums text-white">{lockInCountdown}</span>
+                </div>
+                <p className="mt-5 text-[11px] font-black uppercase tracking-[0.26em] text-slate-300">
+                  Vision engine starting...
+                </p>
+              </div>
+            </div>
+          ) : null}
+
+          {activeDeviationCallout ? (
+            <div className="pointer-events-none absolute inset-x-3 bottom-5 z-[10] sm:inset-x-auto sm:left-1/2 sm:bottom-6 sm:w-[28rem] sm:-translate-x-1/2">
+              <div className={`rounded-[1.4rem] border px-4 py-3 text-left backdrop-blur-xl shadow-[0_18px_45px_rgba(2,6,23,0.5)] ${
+                activeDeviationCallout.severity === "critical"
+                  ? "border-red-400/35 bg-red-500/14"
+                  : "border-cyan-400/35 bg-cyan-500/14"
+              }`}>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.24em] text-white/75">Atlas Correction</p>
+                  <span className={`rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-[0.18em] ${
+                    activeDeviationCallout.severity === "critical"
+                      ? "bg-red-500/30 text-red-100"
+                      : "bg-cyan-500/30 text-cyan-100"
+                  }`}>
+                    {activeDeviationCallout.label}
+                  </span>
+                </div>
+                <p className="mt-2 text-sm font-bold leading-relaxed text-white">
+                  {activeDeviationCallout.atlasText}
+                </p>
+              </div>
+            </div>
+          ) : null}
+
           <div className="pointer-events-none absolute left-3 top-3 z-[4] sm:left-5 sm:top-5">
-            <div className="rounded-2xl border border-white/10 bg-slate-950/64 px-4 py-2 backdrop-blur-md shadow-[0_10px_30px_rgba(15,23,42,0.35)]">
-              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">Tracking</p>
+            <div className="max-w-[min(58vw,16rem)] rounded-2xl border border-cyan-400/16 bg-slate-950/68 px-4 py-3 backdrop-blur-md shadow-[0_10px_30px_rgba(15,23,42,0.35)]">
+              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">Tracking Core</p>
               <p className="mt-1 text-xs font-bold text-slate-100">
-                {trackingWarning ? "Low Confidence" : `${modeMeta.label} Ready`}
+                {trackingWarning ? "Low Confidence" : `${modeMeta.label} ${readinessLabel}`}
               </p>
+              {isCameraRunning ? (
+                <div className="mt-2 flex flex-col gap-1">
+                  <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] ${readinessTone}`}>
+                    {readinessLabel}
+                  </span>
+                  <span className={`rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] ${
+                    trackingReadiness.fullBodyVisible
+                      ? "bg-emerald-500/25 text-emerald-300"
+                      : "bg-cyan-500/25 text-cyan-200"
+                  }`}>
+                    {trackingReadiness.fullBodyVisible ? "Full Body ✓" : "Not Visible ⚠"}
+                  </span>
+                  <span className="rounded-full bg-slate-900/85 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] text-slate-200">
+                    {trackingReadiness.confidenceScore}% confidence
+                  </span>
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -600,18 +860,20 @@ export function CameraSandboxScreen({
                 </button>
               ) : null}
 
-              <div className="pointer-events-none absolute right-3 top-20 z-[4] grid w-[min(46vw,17rem)] grid-cols-2 gap-2 sm:right-5 sm:top-24 sm:w-[min(28rem,30vw)]">
+              <div className="pointer-events-none absolute inset-x-3 top-20 z-[4] sm:inset-x-auto sm:right-5 sm:top-24">
+                <div className="ml-auto grid w-full max-w-[min(92vw,21rem)] grid-cols-1 gap-2 sm:w-[min(28rem,30vw)] sm:grid-cols-2">
                 <div className={`col-span-2 rounded-2xl border px-3 py-3 text-left backdrop-blur-md ${trackingLockTone}`}>
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-[10px] font-black uppercase tracking-[0.24em] opacity-80">{trackingLockLabel}</p>
                     <p className="text-sm font-black text-white">{trackingReadiness.confidenceScore}%</p>
                   </div>
                   <p className="mt-1 text-xs font-medium leading-relaxed text-white">{trackingReadiness.message}</p>
+                  <p className="mt-2 text-[10px] font-black uppercase tracking-[0.22em] text-white/60">{liveStageMessage}</p>
                 </div>
                 {trackingLost ? (
-                  <div className="col-span-2 rounded-2xl border border-amber-400/20 bg-amber-500/10 px-3 py-3 text-left backdrop-blur-md">
+                  <div className="col-span-2 rounded-2xl border border-red-400/20 bg-red-500/10 px-3 py-3 text-left backdrop-blur-md">
                     <div className="flex items-center justify-between gap-3">
-                      <p className="text-[10px] font-black uppercase tracking-[0.24em] text-amber-100">Tracking Paused</p>
+                      <p className="text-[10px] font-black uppercase tracking-[0.24em] text-red-100">Tracking Paused</p>
                       <p className="text-sm font-black text-white">{Math.max(1, Math.floor(trackingLostSeconds))}s</p>
                     </div>
                     <p className="mt-1 text-xs font-medium leading-relaxed text-white">{trackingLostReason}</p>
@@ -664,6 +926,7 @@ export function CameraSandboxScreen({
                     <p className="mt-1 text-xs font-medium leading-relaxed text-white">{bodyScanEstimate.message}</p>
                   </div>
                 ) : null}
+                </div>
               </div>
 
               {showStageCornerAvatar ? (
@@ -757,11 +1020,24 @@ export function CameraSandboxScreen({
             </div>
             {modeSwitcher}
             <div className={`rounded-2xl border px-3 py-3 text-left ${feedbackTone}`}>
-              <p className="text-[10px] font-black uppercase tracking-[0.24em] opacity-80">Live Form Feedback</p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[10px] font-black uppercase tracking-[0.24em] opacity-80">Live Form Feedback</p>
+                <span className={`rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.14em] ${
+                  feedbackSeverity === "good"
+                    ? "border-emerald-300/40 bg-emerald-500/20 text-emerald-100"
+                    : feedbackSeverity === "warning"
+                      ? "border-cyan-300/40 bg-cyan-500/20 text-cyan-100"
+                      : feedbackSeverity === "error"
+                        ? "border-red-400/40 bg-red-500/20 text-red-100"
+                        : "border-slate-600/40 bg-slate-900/50 text-slate-400"
+                }`}>
+                  {feedbackSeverity === "good" ? "CORRECT ✓" : feedbackSeverity === "warning" ? "DEVIATION ⚠" : feedbackSeverity === "error" ? "FIX FORM ✗" : "MONITORING"}
+                </span>
+              </div>
               <p className="mt-1 text-sm font-bold leading-relaxed text-white">{feedbackMessage}</p>
             </div>
             {trackingWarning ? (
-              <p className="text-center text-xs leading-relaxed text-amber-200">{trackingWarning}</p>
+              <p className="text-center text-xs leading-relaxed text-cyan-200">{trackingWarning}</p>
             ) : null}
             {voiceErrorMessage ? (
               <p className="text-center text-xs leading-relaxed text-red-200">{voiceErrorMessage}</p>
@@ -814,9 +1090,9 @@ export function CameraSandboxScreen({
                   selectedAvatar={selectedAvatar}
                   animationHint="idle"
                   demoClipName={modeDemoClipName}
-                  compact
                   previewFrame="full_body"
                   lightingMode="neutral"
+                  isFloorMovement={selectedMode === "pushup" || selectedMode === "plank"}
                 />
               </div>
             ) : null}
@@ -827,8 +1103,8 @@ export function CameraSandboxScreen({
                   <p className="text-[11px] font-black uppercase tracking-[0.28em] text-slate-500">Tracking Mode</p>
                   <h2 className="mt-2 text-2xl font-black tracking-tight text-white">{modeMeta.label}</h2>
                 </div>
-                <div className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] ${statusTone}`}>
-                  {trackingReadiness.confidenceScore}% Ready
+                <div className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] ${readinessTone}`}>
+                  {readinessLabel} · {trackingReadiness.confidenceScore}%
                 </div>
               </div>
               {modeSwitcher}
@@ -869,8 +1145,8 @@ export function CameraSandboxScreen({
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <button onClick={() => void handleStartCamera()} disabled={isCameraRunning} className={primaryControlClass}>
-                  {isCameraRunning ? "Camera Active" : "Start Camera"}
+                <button onClick={() => void handleStartCamera()} disabled={!canStartCamera || isCameraRunning} className={isCameraRunning ? primaryControlClass : launchButtonClass}>
+                  {!canStartCamera ? "Camera Disabled" : isCameraRunning ? "Camera Active" : "Start Camera"}
                 </button>
                 <button onClick={handleStopCamera} disabled={!isCameraRunning && statusLabel !== "Camera Error"} className={stopControlClass}>
                   Stop Camera
@@ -880,7 +1156,8 @@ export function CameraSandboxScreen({
                 </button>
                 <button onClick={onBack} className={secondaryButton}>Back</button>
               </div>
-              {trackingWarning ? <p className="mt-3 text-xs leading-relaxed text-amber-200">{trackingWarning}</p> : null}
+              {trackingWarning ? <p className="mt-3 text-xs leading-relaxed text-cyan-200">{trackingWarning}</p> : null}
+              <p className="mt-2 text-xs leading-relaxed text-slate-400">{cameraAvailabilityDetail}</p>
               {errorMessage ? <p className="mt-2 text-xs leading-relaxed text-red-200">{errorMessage}</p> : null}
             </section>
 
@@ -1019,7 +1296,7 @@ export function CameraSandboxScreen({
                 onToggle={() => setCoachPreviewOpen((value) => !value)}
               >
                 {showSidebarCoachCard ? (
-                  avatarDisplaySettings.show3DCoach ? (
+                  avatarDisplaySettings.show3DCoach && !modeDemoClipName ? (
                     <Coach3DPlaceholder
                       selectedAvatar={selectedAvatar}
                       mood={avatarCoachState.mood}

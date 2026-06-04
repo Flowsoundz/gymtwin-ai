@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import {
   Coach3D,
   getCoachModelTransformPreset,
@@ -8,6 +8,11 @@ import {
   type PreviewTransform,
 } from "@/components/Coach3D";
 import { saveTransformPreset, loadTransformPreset, clearTransformPreset } from "@/lib/coachTransformStorage";
+import {
+  ATLAS_RUNTIME_COACH_MODEL_PATH,
+  NOVA_RUNTIME_COACH_MODEL_PATH,
+  isSharedRuntimeHumanoidModel,
+} from "@/lib/avatarAssets";
 import {
   getAnimationForHint,
   getAvatarAnimationLibrary,
@@ -23,7 +28,7 @@ type ModelLabScreenProps = {
 };
 
 type ModelOption = {
-  id: "nova" | "atlas_full" | "atlas_mobile";
+  id: "atlas_runtime" | "nova_runtime";
   label: string;
   avatar: CoachAvatar;
   path: string;
@@ -32,10 +37,61 @@ type ModelOption = {
 type ModelStatusState = "checking" | "found" | "missing" | "error";
 type PreviewFrameMode = "full_body" | "in_frame";
 
+// ── Animation clip categorization ────────────────────────────────────────────
+// Raw GLB clip strings (78+ on full asset packs) get sorted by execution context
+// into three searchable buckets so the library is navigable instead of a flat dump.
+type ClipCategoryId = "baseline" | "movement" | "emote";
+
+type ClipCategoryMeta = {
+  id: ClipCategoryId;
+  label: string;
+  accent: string;       // hex for inline neon styling
+  pill: string;         // tailwind classes for the section header pill
+  chip: string;         // tailwind classes for each clip chip
+};
+
+const CLIP_CATEGORY_META: Record<ClipCategoryId, ClipCategoryMeta> = {
+  baseline: {
+    id: "baseline",
+    label: "Baselines / Idles",
+    accent: "#38bdf8",
+    pill: "border-blue-400/25 bg-blue-500/10 text-blue-200",
+    chip: "border-blue-400/20 bg-blue-500/[0.06] text-blue-100",
+  },
+  movement: {
+    id: "movement",
+    label: "Movements / Workouts",
+    accent: "#34d399",
+    pill: "border-emerald-400/25 bg-emerald-500/10 text-emerald-200",
+    chip: "border-emerald-400/20 bg-emerald-500/[0.06] text-emerald-100",
+  },
+  emote: {
+    id: "emote",
+    label: "Emotes / Celebrations",
+    accent: "#e879f9",
+    pill: "border-fuchsia-400/25 bg-fuchsia-500/10 text-fuchsia-200",
+    chip: "border-fuchsia-400/20 bg-fuchsia-500/[0.06] text-fuchsia-100",
+  },
+};
+
+const CLIP_CATEGORY_ORDER: ClipCategoryId[] = ["baseline", "movement", "emote"];
+
+// Substring keyword tables — checked emote → movement → baseline (most → least specific).
+const EMOTE_KEYWORDS = ["emote", "victory", "celebrate", "dance", "hype", "defeated", "wave", "clap", "taunt", "surprise", "combat", "cheer", "flex", "salute"];
+const MOVEMENT_KEYWORDS = ["squat", "pushup", "push", "plank", "fitness", "burpee", "lunge", "crunch", "situp", "sit", "kettlebell", "snatch", "jumpingjack", "jump", "pike", "bicep", "deadlift", "row", "press", "raise", "swing", "demo", "loop", "hold", "workout", "bridge", "pistol", "overhead"];
+const BASELINE_KEYWORDS = ["idle", "default", "breathing", "stand", "locomotion", "transition", "listen", "talk", "conversation", "rest", "neutral"];
+
+function categorizeClip(name: string): ClipCategoryId {
+  const lower = name.toLowerCase();
+  if (EMOTE_KEYWORDS.some((k) => lower.includes(k))) return "emote";
+  if (MOVEMENT_KEYWORDS.some((k) => lower.includes(k))) return "movement";
+  if (BASELINE_KEYWORDS.some((k) => lower.includes(k))) return "baseline";
+  return "baseline"; // safe neutral default for unmatched strings
+}
+
 const modelOptions: ModelOption[] = [
-  { id: "nova", label: "Nova", avatar: "Nova", path: "/models/nova-coach.glb" },
-  { id: "atlas_full", label: "Atlas Full", avatar: "Atlas", path: "/models/atlas-coach.glb" },
-  { id: "atlas_mobile", label: "Atlas Mobile", avatar: "Atlas", path: "/models/atlas-coach-mobile.glb" },
+  { id: "atlas_runtime", label: "Atlas Runtime", avatar: "Atlas", path: ATLAS_RUNTIME_COACH_MODEL_PATH },
+  { id: "nova_runtime", label: "Nova Runtime", avatar: "Nova", path: NOVA_RUNTIME_COACH_MODEL_PATH },
 ];
 
 const moods: Coach3DMood[] = [
@@ -68,17 +124,135 @@ type TransformControl = {
   onChange: (value: number) => void;
 };
 
+type PlaybackSpeedOption = 0.25 | 0.5 | 1 | 1.5;
+
+type ModelLabPreviewControlsValue = {
+  isPaused: boolean;
+  playbackSpeed: PlaybackSpeedOption;
+  showSkeleton: boolean;
+  setIsPaused: (value: boolean) => void;
+  setPlaybackSpeed: (value: PlaybackSpeedOption) => void;
+  setShowSkeleton: (value: boolean) => void;
+};
+
+const MODEL_LAB_FRAMING_PRESETS = {
+  FULL_BODY: {
+    transform: {
+      position: [0, 0.12, 0] as [number, number, number],
+      scale: 0.56,
+      rotation: [0, 0, 0] as [number, number, number],
+      cameraPosition: [0, 1.22, 1.95] as [number, number, number],
+    },
+    target: [0, 1.08, 0] as [number, number, number],
+    fov: 38,
+  },
+  IN_FRAME: {
+    transform: {
+      position: [0, 0.26, 0] as [number, number, number],
+      scale: 0.72,
+      rotation: [0, 0, 0] as [number, number, number],
+      cameraPosition: [0, 1.48, 1.58] as [number, number, number],
+    },
+    target: [0, 1.4, 0] as [number, number, number],
+    fov: 36,
+  },
+} as const;
+
+const ModelLabPreviewControlsContext = createContext<ModelLabPreviewControlsValue | null>(null);
+
+function useModelLabPreviewControls() {
+  const value = useContext(ModelLabPreviewControlsContext);
+  if (!value) {
+    throw new Error("useModelLabPreviewControls must be used within ModelLabPreviewControlsContext");
+  }
+  return value;
+}
+
+function ModelLabPreviewToolbar() {
+  const {
+    isPaused,
+    playbackSpeed,
+    showSkeleton,
+    setIsPaused,
+    setPlaybackSpeed,
+    setShowSkeleton,
+  } = useModelLabPreviewControls();
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 border-t border-white/8 px-5 py-4">
+      <button
+        type="button"
+        onClick={() => setIsPaused(!isPaused)}
+        className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[11px] font-black uppercase tracking-[0.22em] text-slate-100 transition hover:border-white/20 hover:text-white"
+      >
+        {isPaused ? "Play" : "Pause"}
+      </button>
+      <label className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-slate-300">
+        <span>Speed</span>
+        <select
+          value={playbackSpeed}
+          onChange={(event) => setPlaybackSpeed(Number(event.target.value) as PlaybackSpeedOption)}
+          className="bg-transparent text-slate-100 outline-none"
+        >
+          <option value={0.25}>0.25x</option>
+          <option value={0.5}>0.5x</option>
+          <option value={1}>1.0x</option>
+          <option value={1.5}>1.5x</option>
+        </select>
+      </label>
+      <button
+        type="button"
+        onClick={() => setShowSkeleton(!showSkeleton)}
+        className={`rounded-full border px-4 py-2 text-[11px] font-black uppercase tracking-[0.22em] transition ${
+          showSkeleton
+            ? "border-cyan-400/35 bg-cyan-500/12 text-cyan-100"
+            : "border-white/10 bg-white/5 text-slate-300 hover:border-white/20 hover:text-white"
+        }`}
+      >
+        Show Skeleton Rig
+      </button>
+    </div>
+  );
+}
+
 function formatTransformNumber(value: number) {
   return Number(value.toFixed(2)).toString();
 }
 
-function createPreviewTransformFromPreset(modelPath: string): Required<PreviewTransform> {
-  const preset = getCoachModelTransformPreset(modelPath);
+function createPreviewTransformFromPreset(
+  modelPath: string,
+  previewFrame: PreviewFrameMode
+): Required<PreviewTransform> {
+  if (isSharedRuntimeHumanoidModel(modelPath)) {
+    const framingPreset =
+      previewFrame === "full_body"
+        ? MODEL_LAB_FRAMING_PRESETS.FULL_BODY
+        : MODEL_LAB_FRAMING_PRESETS.IN_FRAME;
+    const saved = loadTransformPreset(modelPath, previewFrame);
+    return {
+      position: saved?.position ?? [...framingPreset.transform.position],
+      scale: saved?.scale ?? framingPreset.transform.scale,
+      rotation: saved?.rotation ?? [...framingPreset.transform.rotation],
+      cameraPosition: saved?.cameraPosition ?? [...framingPreset.transform.cameraPosition],
+    };
+  }
+
+  const preset = getCoachModelTransformPreset(modelPath, previewFrame);
+  const saved = loadTransformPreset(modelPath, previewFrame);
+  const active = saved
+    ? {
+        position: saved.position ?? preset.position,
+        scale: saved.scale ?? preset.scale,
+        rotation: saved.rotation ?? preset.rotation,
+        cameraPosition: saved.cameraPosition ?? preset.cameraPosition,
+      }
+    : preset;
+
   return {
-    position: [...preset.position] as [number, number, number],
-    scale: preset.scale,
-    rotation: [...preset.rotation] as [number, number, number],
-    cameraPosition: [...preset.cameraPosition] as [number, number, number],
+    position: [...active.position] as [number, number, number],
+    scale: active.scale,
+    rotation: [...active.rotation] as [number, number, number],
+    cameraPosition: [...active.cameraPosition] as [number, number, number],
   };
 }
 
@@ -93,7 +267,7 @@ function StatusCard({
     status === "found"
       ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-100"
       : status === "missing"
-        ? "border-amber-400/20 bg-amber-500/10 text-amber-100"
+        ? "border-red-400/20 bg-red-500/10 text-red-100"
         : status === "error"
           ? "border-red-400/20 bg-red-500/10 text-red-100"
           : "border-blue-400/20 bg-blue-500/10 text-blue-100";
@@ -127,19 +301,23 @@ export function ModelLabScreen({
   primaryButton,
   secondaryButton,
 }: ModelLabScreenProps) {
-  const [selectedModelId, setSelectedModelId] = useState<ModelOption["id"]>("atlas_mobile");
+  const [selectedModelId, setSelectedModelId] = useState<ModelOption["id"]>("atlas_runtime");
   const [selectedMood, setSelectedMood] = useState<Coach3DMood>("idle");
   const [previewFrame, setPreviewFrame] = useState<PreviewFrameMode>("full_body");
   const [selectedLibraryClipId, setSelectedLibraryClipId] = useState<string | null>(null);
   const [detectedClips, setDetectedClips] = useState<string[]>([]);
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
+  const [hasSavedPreset, setHasSavedPreset] = useState<boolean>(() =>
+    Boolean(loadTransformPreset(ATLAS_RUNTIME_COACH_MODEL_PATH, "full_body"))
+  );
   const [savePresetState, setSavePresetState] = useState<"idle" | "saved" | "cleared">("idle");
-  const [hasSavedPreset, setHasSavedPreset] = useState(false);
   const [modelStatuses, setModelStatuses] = useState<Record<string, ModelStatusState>>({
-    "/models/nova-coach.glb": "checking",
-    "/models/atlas-coach.glb": "checking",
-    "/models/atlas-coach-mobile.glb": "checking",
+    [ATLAS_RUNTIME_COACH_MODEL_PATH]: "checking",
+    [NOVA_RUNTIME_COACH_MODEL_PATH]: "checking",
   });
+  const [viewResetKey, setViewResetKey] = useState(0);
+  const [clipSearch, setClipSearch] = useState("");
+  const [clipCategoryFilter, setClipCategoryFilter] = useState<ClipCategoryId | "all">("all");
 
   const selectedModel = useMemo(
     () => modelOptions.find((option) => option.id === selectedModelId) ?? modelOptions[0],
@@ -163,12 +341,21 @@ export function ModelLabScreen({
   );
   const previewAnimationHint = selectedLibraryClip?.animationHint ?? selectedAnimationHint;
   const presetTransform = useMemo(
-    () => createPreviewTransformFromPreset(selectedModel.path),
-    [selectedModel.path]
+    () => createPreviewTransformFromPreset(selectedModel.path, previewFrame),
+    [previewFrame, selectedModel.path]
   );
   const [previewTransform, setPreviewTransform] = useState<Required<PreviewTransform>>(() =>
-    createPreviewTransformFromPreset("/models/atlas-coach-mobile.glb")
+    createPreviewTransformFromPreset(ATLAS_RUNTIME_COACH_MODEL_PATH, "in_frame")
   );
+
+  useEffect(() => {
+    setPreviewTransform(createPreviewTransformFromPreset(selectedModel.path, previewFrame));
+  }, [previewFrame, selectedModel.path]);
+
+  useEffect(() => {
+    setHasSavedPreset(Boolean(loadTransformPreset(selectedModel.path, previewFrame)));
+    setSavePresetState("idle");
+  }, [previewFrame, selectedModel.path]);
 
   const updatePreviewTransform = (
     field: keyof Required<PreviewTransform>,
@@ -273,11 +460,6 @@ export function ModelLabScreen({
   };
 
   useEffect(() => {
-    setHasSavedPreset(Boolean(loadTransformPreset(selectedModel.path)));
-    setSavePresetState("idle");
-  }, [selectedModel.path]);
-
-  useEffect(() => {
     let cancelled = false;
 
     async function checkModels() {
@@ -306,6 +488,26 @@ export function ModelLabScreen({
     };
   }, []);
 
+  // Sort + filter raw detected clip strings into the three execution-context buckets.
+  const groupedClips = useMemo(() => {
+    const query = clipSearch.trim().toLowerCase();
+    const buckets: Record<ClipCategoryId, string[]> = { baseline: [], movement: [], emote: [] };
+    for (const clip of detectedClips) {
+      if (query && !clip.toLowerCase().includes(query)) continue;
+      buckets[categorizeClip(clip)].push(clip);
+    }
+    for (const id of CLIP_CATEGORY_ORDER) buckets[id].sort((a, b) => a.localeCompare(b));
+    return buckets;
+  }, [detectedClips, clipSearch]);
+
+  const totalCategoryCounts = useMemo(() => {
+    const counts: Record<ClipCategoryId, number> = { baseline: 0, movement: 0, emote: 0 };
+    for (const clip of detectedClips) counts[categorizeClip(clip)] += 1;
+    return counts;
+  }, [detectedClips]);
+
+  const visibleClipCount = groupedClips.baseline.length + groupedClips.movement.length + groupedClips.emote.length;
+
   return (
     <main className="min-h-screen overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.2),_transparent_24%),radial-gradient(circle_at_bottom,_rgba(59,130,246,0.12),_transparent_24%),linear-gradient(180deg,_#020617_0%,_#020617_48%,_#030712_100%)] px-4 pb-10 pt-8 text-white antialiased sm:px-6 lg:px-8 lg:py-12">
       <div className="mx-auto w-full max-w-md lg:max-w-6xl xl:max-w-7xl">
@@ -318,7 +520,7 @@ export function ModelLabScreen({
                   3D Model Lab
                 </h2>
                 <p className="mt-3 max-w-2xl text-sm leading-relaxed text-slate-400">
-                  Test Nova and Atlas model files before using them in workouts.
+                  Test the shared runtime coach model before using it in workouts.
                 </p>
               </div>
               <button onClick={onBackHome} className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-black uppercase tracking-[0.22em] text-slate-300 hover:border-white/20 hover:text-white">
@@ -338,9 +540,11 @@ export function ModelLabScreen({
                       type="button"
                       onClick={() => {
                         setSelectedModelId(option.id);
-                        setPreviewTransform(createPreviewTransformFromPreset(option.path));
+                        setPreviewTransform(createPreviewTransformFromPreset(option.path, previewFrame));
                         setSelectedLibraryClipId(null);
                         setDetectedClips([]);
+                        setHasSavedPreset(Boolean(loadTransformPreset(option.path, previewFrame)));
+                        setSavePresetState("idle");
                       }}
                       className={`rounded-[1.3rem] border px-4 py-4 text-left transition ${
                         selectedModel.id === option.id
@@ -393,7 +597,10 @@ export function ModelLabScreen({
                     <button
                       key={option.id}
                       type="button"
-                      onClick={() => setPreviewFrame(option.id)}
+                      onClick={() => {
+                        setPreviewFrame(option.id);
+                        setViewResetKey((value) => value + 1);
+                      }}
                       className={`rounded-[1.3rem] border px-4 py-4 text-left transition ${
                         previewFrame === option.id
                           ? "border-cyan-400/35 bg-gradient-to-r from-cyan-500/14 to-blue-500/14 text-white shadow-[0_0_24px_rgba(34,211,238,0.16)]"
@@ -411,7 +618,7 @@ export function ModelLabScreen({
                 <p className="text-[11px] font-black uppercase tracking-[0.26em] text-emerald-300">Current Model</p>
                 <p className="mt-3 text-sm font-semibold text-slate-100">{selectedModel.path}</p>
                 <p className="mt-2 text-xs leading-relaxed text-slate-400">
-                  Coach3D uses `modelPathOverride` here, so you can test each file directly without changing workout screens.
+                  Coach3D uses `modelPathOverride` here, so you can tune the shared runtime model without changing workout screens.
                 </p>
               </div>
 
@@ -451,7 +658,7 @@ export function ModelLabScreen({
                     const isSelected = selectedLibraryClipId === clip.id;
                     const statusTone = clip.isAvailable
                       ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-100"
-                      : "border-amber-400/20 bg-amber-500/10 text-amber-100";
+                      : "border-red-400/20 bg-red-500/10 text-red-100";
 
                     return (
                       <div
@@ -522,11 +729,18 @@ export function ModelLabScreen({
                     <h3 className="mt-1 text-xl font-black text-white">{selectedModel.label}</h3>
                   </div>
                   <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setViewResetKey((k) => k + 1)}
+                      className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-slate-300 transition hover:border-white/20 hover:text-white"
+                    >
+                      Reset View
+                    </button>
                     <span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] ${
                       modelStatuses[selectedModel.path] === "found"
                         ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-200"
                         : modelStatuses[selectedModel.path] === "missing"
-                          ? "border-amber-400/25 bg-amber-500/10 text-amber-200"
+                          ? "border-red-400/25 bg-red-500/10 text-red-200"
                           : "border-white/10 bg-white/5 text-slate-300"
                     }`}>
                       {modelStatuses[selectedModel.path] === "found" ? "Model Found" : modelStatuses[selectedModel.path] === "missing" ? "Missing" : "Checking"}
@@ -536,17 +750,46 @@ export function ModelLabScreen({
                     </span>
                   </div>
                 </div>
-                <Coach3D
-                  selectedAvatar={selectedModel.avatar}
-                  mood={selectedMood}
-                  modelPathOverride={selectedModel.path}
-                  animationHint={previewAnimationHint}
-                  animationClipId={selectedLibraryClipId}
-                  previewTransform={previewTransform}
-                  previewFrame={previewFrame}
-                  lightingMode="neutral"
-                  onClipsDetected={setDetectedClips}
-                />
+                <div className="relative">
+                  {modelStatuses[selectedModel.path] === "checking" ? (
+                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-slate-950/85 backdrop-blur-sm">
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="h-2 w-40 animate-pulse rounded-full bg-blue-500/25" />
+                        <div className="h-2 w-32 animate-pulse rounded-full bg-fuchsia-500/20" />
+                        <div className="h-2 w-36 animate-pulse rounded-full bg-blue-500/20" />
+                      </div>
+                      <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-500">
+                        Loading 3D Assets...
+                      </p>
+                    </div>
+                  ) : null}
+                  <div key={viewResetKey}>
+                    <Coach3D
+                      selectedAvatar={selectedModel.avatar}
+                      mood={selectedMood}
+                      modelPathOverride={selectedModel.path}
+                      animationHint={previewAnimationHint}
+                      animationClipId={selectedLibraryClipId}
+                      previewTransform={previewTransform}
+                      previewFrame={previewFrame}
+                      lightingMode="neutral"
+                      manualTuning
+                      fovOverride={previewFrame === "full_body" ? MODEL_LAB_FRAMING_PRESETS.FULL_BODY.fov : MODEL_LAB_FRAMING_PRESETS.IN_FRAME.fov}
+                      onClipsDetected={setDetectedClips}
+                    />
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center justify-center gap-2 border-t border-white/8 px-5 py-3">
+                  <span className="rounded-full border border-white/8 bg-slate-900/70 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                    ↻ Drag to orbit
+                  </span>
+                  <span className="rounded-full border border-white/8 bg-slate-900/70 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                    ⊕ Scroll to zoom
+                  </span>
+                  <span className="rounded-full border border-white/8 bg-slate-900/70 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                    ⊞ Right-drag to pan
+                  </span>
+                </div>
                 <div className="flex flex-wrap items-center gap-3 px-5 py-4">
                   <span className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500">Hint</span>
                   <span className="rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-blue-200">
@@ -559,13 +802,12 @@ export function ModelLabScreen({
                 </div>
               </div>
 
-              {/* Transform Tuner — placed directly below preview so both are visible together */}
-              <div className="rounded-[1.7rem] border border-amber-400/15 bg-slate-950/58 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+              <div className="rounded-[1.7rem] border border-cyan-400/15 bg-slate-950/58 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-[11px] font-black uppercase tracking-[0.26em] text-amber-300">Transform Tuner</p>
+                    <p className="text-[11px] font-black uppercase tracking-[0.26em] text-cyan-300">Transform Tuner</p>
                     <p className="mt-1 text-xs leading-relaxed text-slate-400">
-                      Adjust position, scale &amp; camera — then Save Preset to apply across all screens.
+                      Adjust position, scale, and camera for the current viewer mode, then save it as that mode's default.
                     </p>
                     {hasSavedPreset && savePresetState === "idle" && (
                       <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-400">✓ Saved preset active</p>
@@ -575,7 +817,7 @@ export function ModelLabScreen({
                     <button
                       type="button"
                       onClick={() => {
-                        saveTransformPreset(selectedModel.path, previewTransform);
+                        saveTransformPreset(selectedModel.path, previewFrame, previewTransform);
                         setHasSavedPreset(true);
                         setSavePresetState("saved");
                         window.setTimeout(() => setSavePresetState("idle"), 2000);
@@ -583,7 +825,7 @@ export function ModelLabScreen({
                       className={`rounded-full border px-3 py-2 text-[10px] font-black uppercase tracking-[0.22em] transition ${
                         savePresetState === "saved"
                           ? "border-emerald-400/30 bg-emerald-500/14 text-emerald-100"
-                          : "border-amber-400/28 bg-amber-500/14 text-amber-100 hover:border-amber-400/50"
+                          : "border-cyan-400/28 bg-cyan-500/14 text-cyan-100 hover:border-cyan-400/50"
                       }`}
                     >
                       {savePresetState === "saved" ? "Saved!" : "Save Preset"}
@@ -599,10 +841,10 @@ export function ModelLabScreen({
                       <button
                         type="button"
                         onClick={() => {
-                          clearTransformPreset(selectedModel.path);
+                          clearTransformPreset(selectedModel.path, previewFrame);
                           setHasSavedPreset(false);
                           setSavePresetState("cleared");
-                          setPreviewTransform(createPreviewTransformFromPreset(selectedModel.path));
+                          setPreviewTransform(createPreviewTransformFromPreset(selectedModel.path, previewFrame));
                           window.setTimeout(() => setSavePresetState("idle"), 2000);
                         }}
                         className={`rounded-full border px-3 py-2 text-[10px] font-black uppercase tracking-[0.22em] transition ${
@@ -660,7 +902,7 @@ export function ModelLabScreen({
                 </div>
               </div>
 
-              {/* Detected GLB Clips */}
+              {/* Detected GLB Clips — categorized & searchable */}
               <div className="rounded-[1.7rem] border border-white/8 bg-slate-950/58 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-[11px] font-black uppercase tracking-[0.26em] text-violet-300">Detected GLB Clips</p>
@@ -672,17 +914,87 @@ export function ModelLabScreen({
                     {detectedClips.length} clip{detectedClips.length !== 1 ? "s" : ""}
                   </span>
                 </div>
+
                 {detectedClips.length > 0 ? (
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {detectedClips.map((clip) => (
-                      <span
-                        key={clip}
-                        className="rounded-full border border-white/10 bg-slate-900/80 px-3 py-1.5 font-mono text-[10px] text-slate-200"
-                      >
-                        {clip}
-                      </span>
-                    ))}
-                  </div>
+                  <>
+                    {/* Search + category filter row */}
+                    <div className="mt-4 flex flex-wrap items-center gap-2">
+                      <input
+                        type="text"
+                        value={clipSearch}
+                        onChange={(e) => setClipSearch(e.target.value)}
+                        placeholder="Search clips…"
+                        className="min-w-[8rem] flex-1 rounded-xl border border-white/10 bg-slate-900/80 px-3 py-2 text-xs font-semibold text-slate-100 outline-none transition placeholder:text-slate-600 focus:border-blue-400/40"
+                      />
+                      <div className="flex gap-1.5">
+                        {(["all", ...CLIP_CATEGORY_ORDER] as const).map((id) => {
+                          const active = clipCategoryFilter === id;
+                          const accent = id === "all" ? "#94a3b8" : CLIP_CATEGORY_META[id].accent;
+                          return (
+                            <button
+                              key={id}
+                              type="button"
+                              onClick={() => setClipCategoryFilter(id)}
+                              className="rounded-lg border px-2.5 py-2 text-[10px] font-black uppercase tracking-[0.14em] transition"
+                              style={{
+                                borderColor: active ? `${accent}66` : "rgba(255,255,255,0.08)",
+                                backgroundColor: active ? `${accent}1f` : "transparent",
+                                color: active ? accent : "#94a3b8",
+                              }}
+                            >
+                              {id === "all" ? "All" : CLIP_CATEGORY_META[id].label.split(" / ")[0]}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Category groups */}
+                    <div className="mt-4 space-y-4">
+                      {CLIP_CATEGORY_ORDER.filter(
+                        (id) => clipCategoryFilter === "all" || clipCategoryFilter === id
+                      ).map((id) => {
+                        const meta = CLIP_CATEGORY_META[id];
+                        const clips = groupedClips[id];
+                        return (
+                          <div key={id}>
+                            <div className="flex items-center gap-2">
+                              <span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${meta.pill}`}>
+                                {meta.label}
+                              </span>
+                              <span className="text-[10px] font-black tracking-[0.16em] text-slate-500">
+                                {clips.length}
+                                {clipSearch.trim() ? ` / ${totalCategoryCounts[id]}` : ""}
+                              </span>
+                              <div className="ml-1 h-px flex-1" style={{ backgroundColor: `${meta.accent}22` }} />
+                            </div>
+                            {clips.length > 0 ? (
+                              <div className="mt-2.5 flex flex-wrap gap-2">
+                                {clips.map((clip) => (
+                                  <span
+                                    key={clip}
+                                    className={`rounded-full border px-3 py-1.5 font-mono text-[10px] ${meta.chip}`}
+                                  >
+                                    {clip}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="mt-2 text-[11px] text-slate-600">
+                                {clipSearch.trim() ? "No matches in this group." : "No clips in this category."}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {clipSearch.trim() && visibleClipCount === 0 ? (
+                      <p className="mt-3 text-xs leading-relaxed text-slate-500">
+                        No clips match “{clipSearch.trim()}”.
+                      </p>
+                    ) : null}
+                  </>
                 ) : (
                   <p className="mt-3 text-xs leading-relaxed text-slate-500">
                     {modelStatuses[selectedModel.path] === "found"

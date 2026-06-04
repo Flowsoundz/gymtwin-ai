@@ -10,4 +10,6 @@ export const QUICK_START_KEY = "gymtwin_quick_start";
 export const SAFETY_ACCEPTED_KEY = "gymtwin_safety_accepted";
 export const CAMERA_TRIED_KEY = "gymtwin_camera_tried";
 export const FIRST_HINTS_SHOWN_KEY = "gymtwin_first_hints_shown";
-export const COACH_TRANSFORM_PRESETS_KEY = "gymtwin_coach_transform_presets_v2";
+export const COACH_TRANSFORM_PRESETS_KEY = "gymtwin_coach_transform_presets_v4";
+export const NUTRITION_LOG_KEY = "gymtwin_nutrition_log";
+export const ADAPTIVE_PROFILE_KEY = "gymtwin_adaptive_profile";

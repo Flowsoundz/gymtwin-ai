@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { buildCoachUtterance } from "@/lib/coachSpeech";
 import type { CoachAnimationHint } from "@/lib/coachBrain";
 import type { CoachAvatar, CoachTalkativeness } from "@/types";
 
@@ -57,42 +58,17 @@ const FORM_CUE_HYPE: typeof FORM_CUE_QUIET = {
   unknown:       null,
 };
 
-function pickVoice(avatar: CoachAvatar): SpeechSynthesisVoice | null {
-  const voices = window.speechSynthesis.getVoices().filter((v) => v.lang.startsWith("en"));
-  if (!voices.length) return null;
-  if (avatar === "Nova") {
-    return (
-      voices.find((v) => v.name === "Samantha") ??
-      voices.find((v) => v.name === "Karen") ??
-      voices.find((v) => /female|woman/i.test(v.name)) ??
-      voices[0]
-    );
-  }
-  return (
-    voices.find((v) => v.name === "Alex") ??
-    voices.find((v) => v.name === "Daniel") ??
-    voices.find((v) => /male|man/i.test(v.name)) ??
-    voices[0]
-  );
-}
-
 function speakLine(text: string, avatar: CoachAvatar = "Nova") {
   if (typeof window === "undefined") return;
   const synth = window.speechSynthesis;
   if (!synth) return;
-  const utt = new SpeechSynthesisUtterance(text);
-  const voice = pickVoice(avatar);
-  if (voice) utt.voice = voice;
-  utt.rate = avatar === "Atlas" ? 1.02 : 0.96;
-  utt.pitch = avatar === "Atlas" ? 0.88 : 1.05;
-  utt.volume = 0.92;
+  const utt = buildCoachUtterance(text, avatar, "distance");
   synth.speak(utt);
 }
 
 export function useRepSpeech({
   repCount,
   repQualityLabel,
-  exerciseName: _exerciseName,
   talkativeness,
   repCountingEnabled,
   isMuted,
@@ -131,7 +107,7 @@ export function useRepSpeech({
       if (animHintTimer.current) clearTimeout(animHintTimer.current);
       animHintTimer.current = setTimeout(() => onAnimHint?.("idle"), 2500);
     }
-  }, [repCount, repCountingEnabled, isMuted, isCameraActive, talkativeness, onAnimHint]);
+  }, [repCount, repCountingEnabled, isMuted, isCameraActive, talkativeness, selectedAvatar, onAnimHint]);
 
   useEffect(() => {
     if (!repCountingEnabled || isMuted || !isCameraActive) return;
@@ -160,7 +136,7 @@ export function useRepSpeech({
       if (animHintTimer.current) clearTimeout(animHintTimer.current);
       animHintTimer.current = setTimeout(() => onAnimHint?.("idle"), 3000);
     }
-  }, [repQualityLabel, repCountingEnabled, isMuted, isCameraActive, talkativeness, onAnimHint]);
+  }, [repQualityLabel, repCountingEnabled, isMuted, isCameraActive, talkativeness, selectedAvatar, onAnimHint]);
 
   useEffect(() => {
     return () => {

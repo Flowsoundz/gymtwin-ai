@@ -17,6 +17,7 @@ export async function pushSettingsToSupabase(
     show_during_camera: settings.showDuringCamera,
     show_exercise_demos: settings.showExerciseDemos,
     minimal_camera_hud: settings.minimalCameraHud,
+    countdown_audio_enabled: settings.countdownAudioEnabled,
     talkativeness: settings.talkativeness,
     rep_counting_enabled: settings.repCountingEnabled,
     updated_at: new Date().toISOString(),
@@ -39,6 +40,7 @@ export async function pullSettingsFromSupabase(
     showDuringCamera: data.show_during_camera ?? true,
     showExerciseDemos: data.show_exercise_demos ?? true,
     minimalCameraHud: data.minimal_camera_hud ?? false,
+    countdownAudioEnabled: data.countdown_audio_enabled ?? true,
     talkativeness: data.talkativeness ?? "normal",
     repCountingEnabled: data.rep_counting_enabled ?? true,
   };

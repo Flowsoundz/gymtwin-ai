@@ -1,14 +1,26 @@
+"use client";
+
 import { Coach3D } from "@/components/Coach3D";
 import { MetricRow } from "@/components/ui/MetricRow";
 import { StatCard } from "@/components/ui/StatCard";
+import { buildFeedbackPreview } from "@/lib/adaptiveProfileEngine";
 import { getAvatarLabel } from "@/lib/avatarAssets";
 import { getAvatarCoachLayerState } from "@/lib/avatarCoachLayer";
 import { getCoachAdaptationRecommendation } from "@/lib/coachAdaptationEngine";
 import { getCoachBrainResponse } from "@/lib/coachBrain";
 import { getDifficultyAdjustmentRecommendation } from "@/lib/difficultyAdjustmentEngine";
 import { deriveProgressTrends } from "@/lib/progressTrends";
-import { useMemo } from "react";
-import type { BodyProfile, CoachAvatar, TraineeStats, WeeklyPlan, WorkoutSummaryData } from "@/types";
+import { useMemo, useState } from "react";
+import type {
+  BodyProfile,
+  CoachAvatar,
+  EnergyRating,
+  PostWorkoutFeedback,
+  SorenessRating,
+  TraineeStats,
+  WeeklyPlan,
+  WorkoutSummaryData,
+} from "@/types";
 
 type WorkoutSummaryScreenProps = {
   lastWorkoutSummary: WorkoutSummaryData;
@@ -18,7 +30,7 @@ type WorkoutSummaryScreenProps = {
   weeklyPlan?: WeeklyPlan | null;
   workoutHistory: WorkoutSummaryData[];
   userStats: TraineeStats;
-  onSubmitDifficultyFeedback: (feedback: "too_easy" | "perfect" | "too_hard") => void;
+  onSubmitAdaptiveFeedback: (feedback: PostWorkoutFeedback) => void;
   onRepeatWorkout: () => void;
   onStartNewWorkout: () => void;
   onViewProgress: () => void;
@@ -34,13 +46,42 @@ export function WorkoutSummaryScreen({
   weeklyPlan,
   workoutHistory,
   userStats,
-  onSubmitDifficultyFeedback,
+  onSubmitAdaptiveFeedback,
   onRepeatWorkout,
   onStartNewWorkout,
   onViewProgress,
   primaryButton,
   secondaryButton,
 }: WorkoutSummaryScreenProps) {
+  // ── Adaptive feedback local state ─────────────────────────────────────────
+  const [feedbackStep, setFeedbackStep] = useState<0 | 1 | 2 | 3>(0);
+  const [difficultyPick, setDifficultyPick] = useState<"too_easy" | "perfect" | "too_hard" | null>(null);
+  const [energyPick, setEnergyPick] = useState<EnergyRating | null>(null);
+  const [sorenessPick, setSorenessPick] = useState<SorenessRating>("none");
+  const [sorenessAreas, setSorenessAreas] = useState<string[]>([]);
+  const [submittedFeedback, setSubmittedFeedback] = useState<PostWorkoutFeedback | null>(null);
+
+  const SORENESS_AREAS = ["Quads", "Glutes", "Hamstrings", "Chest", "Back", "Shoulders", "Arms", "Core"];
+
+  function toggleSorenessArea(area: string) {
+    setSorenessAreas((prev) =>
+      prev.includes(area) ? prev.filter((a) => a !== area) : [...prev, area]
+    );
+  }
+
+  function handleSubmitFeedback() {
+    if (!difficultyPick || !energyPick) return;
+    const feedback: PostWorkoutFeedback = {
+      difficultyFeedback: difficultyPick,
+      energyRating: energyPick,
+      sorenessRating: sorenessPick,
+      sorenessAreas: sorenessPick === "none" ? [] : sorenessAreas,
+    };
+    setSubmittedFeedback(feedback);
+    setFeedbackStep(3);
+    onSubmitAdaptiveFeedback(feedback);
+  }
+
   const showBigSessionCelebration =
     (lastWorkoutSummary.workoutScore ?? 0) >= 90 || (lastWorkoutSummary.xpEarned ?? 0) >= 100;
   const coachBrain = getCoachBrainResponse({
@@ -86,7 +127,7 @@ export function WorkoutSummaryScreen({
   );
   const recommendationTone =
     nextBestMove.priority === "high"
-      ? "border-amber-400/18 bg-amber-500/10 text-amber-200"
+      ? "border-red-400/18 bg-red-500/10 text-red-200"
       : nextBestMove.priority === "medium"
         ? "border-blue-400/18 bg-blue-500/10 text-blue-200"
         : "border-emerald-400/18 bg-emerald-500/10 text-emerald-200";
@@ -94,7 +135,7 @@ export function WorkoutSummaryScreen({
     smartAdjustment.direction === "increase"
       ? "border-emerald-400/18 bg-emerald-500/10 text-emerald-200"
       : smartAdjustment.direction === "decrease"
-        ? "border-amber-400/18 bg-amber-500/10 text-amber-200"
+        ? "border-red-400/18 bg-red-500/10 text-red-200"
         : smartAdjustment.direction === "form_focus"
           ? "border-cyan-400/18 bg-cyan-500/10 text-cyan-200"
           : smartAdjustment.direction === "recovery"
@@ -130,8 +171,9 @@ export function WorkoutSummaryScreen({
           <section className="mb-6">
             <Coach3D
               selectedAvatar={selectedAvatar}
-              animationHint={coachBrain.animationHint}
+              animationHint="idle"
               previewFrame="bust"
+              freezeAnimation
               compact
               lightingMode="neutral"
             />
@@ -177,7 +219,7 @@ export function WorkoutSummaryScreen({
                   {[
                     { label: "Forward Lean", value: "14°", color: "text-red-400", bar: 72 },
                     { label: "Hip Symmetry", value: "91%", color: "text-emerald-400", bar: 91 },
-                    { label: "Knee Track", value: "—3°", color: "text-amber-400", bar: 55 },
+                    { label: "Knee Track", value: "—3°", color: "text-cyan-400", bar: 55 },
                   ].map((metric) => (
                     <div key={metric.label} className="rounded-2xl border border-white/8 bg-slate-900/60 p-3 text-center">
                       <p className={`text-2xl font-black italic ${metric.color}`}>{metric.value}</p>
@@ -206,7 +248,7 @@ export function WorkoutSummaryScreen({
                 <div className="text-center">
                   <p className="text-base font-black text-white">Unlock GymTwin Pro</p>
                   <p className="mt-2 max-w-xs text-sm leading-relaxed text-slate-400">
-                    View your <span className="font-black text-amber-300">14° forward-lean analysis</span> and AI-detected knee strain risk from this session.
+                    View your <span className="font-black text-cyan-300">14° forward-lean analysis</span> and AI-detected knee strain risk from this session.
                   </p>
                 </div>
                 <button className="group relative overflow-hidden rounded-2xl bg-gradient-to-r from-violet-600 to-fuchsia-600 px-6 py-3 text-sm font-black text-white shadow-[0_0_30px_rgba(168,85,247,0.35)] transition-all hover:scale-105 hover:shadow-[0_0_40px_rgba(168,85,247,0.5)] active:scale-95">
@@ -229,7 +271,7 @@ export function WorkoutSummaryScreen({
               <StatCard value={lastWorkoutSummary.xpEarned ?? "--"} label="XP Earned" colorClass="text-blue-300" />
             </div>
             <div className="rounded-[1.5rem] border border-white/8 bg-slate-950/58 p-4 text-center">
-              <StatCard value={lastWorkoutSummary.cleanRepEstimate ?? "--"} label="Clean Reps" colorClass="text-amber-300" />
+              <StatCard value={lastWorkoutSummary.cleanRepEstimate ?? "--"} label="Clean Reps" colorClass="text-emerald-300" />
             </div>
           </section>
 
@@ -242,19 +284,20 @@ export function WorkoutSummaryScreen({
           </section>
 
           {showBigSessionCelebration ? (
-            <section className="mb-6 rounded-[1.8rem] border border-amber-300/20 bg-[linear-gradient(135deg,rgba(251,191,36,0.16),rgba(15,23,42,0.76))] p-5 shadow-[0_18px_48px_rgba(245,158,11,0.12)]">
-              <div className="inline-flex rounded-full border border-amber-300/20 bg-amber-400/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.24em] text-amber-100">
+            <section className="mb-6 rounded-[1.8rem] border border-fuchsia-300/20 bg-[linear-gradient(135deg,rgba(217,70,239,0.16),rgba(15,23,42,0.76))] p-5 shadow-[0_18px_48px_rgba(217,70,239,0.12)]">
+              <div className="inline-flex rounded-full border border-fuchsia-300/20 bg-fuchsia-400/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.24em] text-fuchsia-100">
                 Achievement Progress
               </div>
               <h3 className="mt-3 text-xl font-black text-white">Big Session</h3>
-              <p className="mt-2 text-sm leading-relaxed text-amber-50/85">
+              <p className="mt-2 text-sm leading-relaxed text-fuchsia-50/85">
                 Strong output this round. Sessions with elite score or major XP gains can push badge progress forward.
               </p>
               <div className="mt-4">
                 <Coach3D
                   selectedAvatar={selectedAvatar}
-                  animationHint={coachBrain.animationHint}
-                  previewFrame="full_body"
+                  animationHint="idle"
+                  previewFrame="bust"
+                  freezeAnimation
                   compact
                   lightingMode="neutral"
                 />
@@ -315,30 +358,185 @@ export function WorkoutSummaryScreen({
             </div>
           </section>
 
-          <section className="mb-8 rounded-[1.8rem] border border-white/8 bg-slate-950/60 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-            <div className="text-center">
-              <p className="text-[11px] font-black uppercase tracking-[0.26em] text-fuchsia-300">Adaptive Difficulty</p>
-              <h3 className="mt-2 text-xl font-black text-white">How did this workout feel?</h3>
+          {/* ── Adaptive Feedback Panel ──────────────────────────────────── */}
+          <section className="mb-8 overflow-hidden rounded-[1.8rem] border border-white/8 bg-slate-950/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+
+            {/* Header */}
+            <div className="border-b border-white/6 px-5 py-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.26em] text-fuchsia-300">
+                    Adaptive Training
+                  </p>
+                  <h3 className="mt-1 text-lg font-black text-white">
+                    {feedbackStep === 3 ? "Your Next Workout Is Calibrated" : "Tell Your Coach How It Went"}
+                  </h3>
+                </div>
+                {feedbackStep < 3 && (
+                  <div className="flex gap-1.5">
+                    {[0, 1, 2].map((s) => (
+                      <div
+                        key={s}
+                        className={`h-1.5 w-5 rounded-full transition-colors ${
+                          feedbackStep > s
+                            ? "bg-fuchsia-500"
+                            : feedbackStep === s
+                              ? "bg-fuchsia-400"
+                              : "bg-white/10"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="mt-5 grid grid-cols-3 gap-2">
-              <button
-                onClick={() => onSubmitDifficultyFeedback("too_easy")}
-                className="rounded-2xl border border-blue-400/14 bg-slate-950 px-3 py-3 text-xs font-black text-slate-200 transition hover:border-blue-500/40 active:scale-95"
-              >
-                Too Easy
-              </button>
-              <button
-                onClick={() => onSubmitDifficultyFeedback("perfect")}
-                className="rounded-2xl border border-fuchsia-400/20 bg-gradient-to-r from-blue-600/90 to-fuchsia-600/90 px-3 py-3 text-xs font-black text-white shadow-[0_16px_32px_rgba(99,102,241,0.22)] transition hover:brightness-105 active:scale-95"
-              >
-                Perfect
-              </button>
-              <button
-                onClick={() => onSubmitDifficultyFeedback("too_hard")}
-                className="rounded-2xl border border-red-400/14 bg-slate-950 px-3 py-3 text-xs font-black text-slate-200 transition hover:border-red-500/40 active:scale-95"
-              >
-                Too Hard
-              </button>
+
+            <div className="p-5">
+              {/* Step 0: Difficulty */}
+              {feedbackStep === 0 && (
+                <div>
+                  <p className="mb-4 text-sm text-slate-400">How did the intensity feel overall?</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(
+                      [
+                        { value: "too_easy", label: "Too Easy", sub: "Could do more", color: "border-blue-500/40 hover:border-blue-400/60 text-blue-200" },
+                        { value: "perfect", label: "Just Right", sub: "Felt balanced", color: "border-fuchsia-500/40 hover:border-fuchsia-400/60 text-fuchsia-100" },
+                        { value: "too_hard", label: "Too Hard", sub: "Pushed limit", color: "border-red-500/40 hover:border-red-400/60 text-red-200" },
+                      ] as { value: "too_easy" | "perfect" | "too_hard"; label: string; sub: string; color: string }[]
+                    ).map(({ value, label, sub, color }) => (
+                      <button
+                        key={value}
+                        onClick={() => { setDifficultyPick(value); setFeedbackStep(1); }}
+                        className={`rounded-2xl border bg-slate-900/70 px-3 py-4 text-center transition active:scale-95 ${color}`}
+                      >
+                        <p className="text-sm font-black">{label}</p>
+                        <p className="mt-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-500">{sub}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Step 1: Energy */}
+              {feedbackStep === 1 && (
+                <div>
+                  <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                    Intensity: <span className="text-fuchsia-300">{difficultyPick?.replace("_", " ")}</span>
+                  </p>
+                  <p className="mb-4 text-sm text-slate-400">How&apos;s your energy level right now?</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(
+                      [
+                        { value: "low", label: "Drained", icon: "↓", sub: "Need rest", color: "border-red-500/30 hover:border-red-400/50 text-red-200" },
+                        { value: "moderate", label: "Moderate", icon: "→", sub: "Felt normal", color: "border-slate-500/40 hover:border-slate-400/60 text-slate-200" },
+                        { value: "high", label: "Energized", icon: "↑", sub: "Still going", color: "border-emerald-500/40 hover:border-emerald-400/60 text-emerald-200" },
+                      ] as { value: EnergyRating; label: string; icon: string; sub: string; color: string }[]
+                    ).map(({ value, label, icon, sub, color }) => (
+                      <button
+                        key={value}
+                        onClick={() => { setEnergyPick(value); setFeedbackStep(2); }}
+                        className={`rounded-2xl border bg-slate-900/70 px-3 py-4 text-center transition active:scale-95 ${color}`}
+                      >
+                        <p className="text-lg font-black">{icon}</p>
+                        <p className="text-sm font-black">{label}</p>
+                        <p className="mt-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-500">{sub}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Step 2: Soreness */}
+              {feedbackStep === 2 && (
+                <div>
+                  <p className="mb-1 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                    Energy: <span className="text-emerald-300">{energyPick}</span>
+                  </p>
+                  <p className="mb-4 text-sm text-slate-400">Any muscle groups feeling sore?</p>
+
+                  {/* Soreness level */}
+                  <div className="mb-4 grid grid-cols-4 gap-2">
+                    {(["none", "mild", "moderate", "severe"] as SorenessRating[]).map((level) => (
+                      <button
+                        key={level}
+                        onClick={() => {
+                          setSorenessPick(level);
+                          if (level === "none") setSorenessAreas([]);
+                        }}
+                        className={`rounded-xl border px-2 py-2 text-[10px] font-black uppercase tracking-wider transition active:scale-95 ${
+                          sorenessPick === level
+                            ? "border-fuchsia-500/60 bg-fuchsia-950/50 text-fuchsia-200"
+                            : "border-white/8 bg-slate-900/60 text-slate-400 hover:border-white/20"
+                        }`}
+                      >
+                        {level}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Soreness area chips */}
+                  {sorenessPick !== "none" && (
+                    <div className="mb-5 flex flex-wrap gap-2">
+                      {SORENESS_AREAS.map((area) => (
+                        <button
+                          key={area}
+                          onClick={() => toggleSorenessArea(area)}
+                          className={`rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-wider transition active:scale-95 ${
+                            sorenessAreas.includes(area)
+                              ? "border-orange-500/60 bg-orange-950/50 text-orange-200"
+                              : "border-white/10 bg-slate-900/60 text-slate-400 hover:border-white/25"
+                          }`}
+                        >
+                          {area}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleSubmitFeedback}
+                    className="w-full rounded-2xl bg-gradient-to-r from-blue-600 to-fuchsia-600 py-3.5 text-sm font-black text-white shadow-[0_0_22px_rgba(139,92,246,0.38)] transition hover:brightness-110 active:scale-95"
+                  >
+                    Submit Feedback →
+                  </button>
+                </div>
+              )}
+
+              {/* Step 3: Calibration confirmation */}
+              {feedbackStep === 3 && submittedFeedback && (
+                <div>
+                  <div className="mb-4 flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-fuchsia-600 to-blue-600 text-sm font-black text-white shadow-[0_0_16px_rgba(139,92,246,0.5)]">
+                      ✓
+                    </div>
+                    <p className="text-sm font-bold text-slate-300">Feedback saved — your next plan adapts to this.</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    {buildFeedbackPreview(submittedFeedback).map((line, i) => (
+                      <div key={i} className="flex items-start gap-2.5 rounded-xl border border-white/8 bg-slate-900/60 px-3.5 py-2.5">
+                        <span className="mt-0.5 text-fuchsia-400 text-xs">◈</span>
+                        <p className="text-[11px] leading-relaxed text-slate-300">{line}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-3 gap-2 text-center text-[9px] font-black uppercase tracking-wider text-slate-500">
+                    <div className="rounded-xl border border-white/8 bg-slate-900/60 py-2.5 px-2">
+                      <p className="text-fuchsia-300 text-xs mb-0.5">{submittedFeedback.difficultyFeedback.replace("_", " ")}</p>
+                      <p>Difficulty</p>
+                    </div>
+                    <div className="rounded-xl border border-white/8 bg-slate-900/60 py-2.5 px-2">
+                      <p className="text-emerald-300 text-xs mb-0.5">{submittedFeedback.energyRating}</p>
+                      <p>Energy</p>
+                    </div>
+                    <div className="rounded-xl border border-white/8 bg-slate-900/60 py-2.5 px-2">
+                      <p className="text-orange-300 text-xs mb-0.5">{submittedFeedback.sorenessRating}</p>
+                      <p>Soreness</p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </section>
 

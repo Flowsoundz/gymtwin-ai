@@ -2,34 +2,8 @@
 
 import { useState } from "react";
 import { getCoachQuote } from "@/lib/coachEngine";
+import { buildCoachUtterance } from "@/lib/coachSpeech";
 import type { CoachAvatar, CoachName } from "@/types";
-
-function pickVoice(avatar: CoachAvatar): SpeechSynthesisVoice | null {
-  if (typeof window === "undefined" || !window.speechSynthesis) return null;
-  const voices = window.speechSynthesis.getVoices().filter((v) => v.lang.startsWith("en"));
-  if (!voices.length) return null;
-
-  if (avatar === "Nova") {
-    // Calm, clear female voice
-    return (
-      voices.find((v) => v.name === "Samantha") ??
-      voices.find((v) => v.name === "Karen") ??
-      voices.find((v) => v.name === "Moira") ??
-      voices.find((v) => /female|woman/i.test(v.name)) ??
-      voices.find((v) => v.name.includes("Google") && v.name.includes("Female")) ??
-      voices[0]
-    );
-  }
-  // Atlas — firm male voice
-  return (
-    voices.find((v) => v.name === "Alex") ??
-    voices.find((v) => v.name === "Daniel") ??
-    voices.find((v) => v.name === "Fred") ??
-    voices.find((v) => /male|man/i.test(v.name)) ??
-    voices.find((v) => v.name.includes("Google") && v.name.includes("Male")) ??
-    voices[0]
-  );
-}
 
 export function useSpeechCoach(selectedCoach: CoachName, selectedAvatar: CoachAvatar = "Nova") {
   const [isMuted, setIsMuted] = useState(false);
@@ -40,11 +14,7 @@ export function useSpeechCoach(selectedCoach: CoachName, selectedAvatar: CoachAv
   function speak(phrase: string) {
     if (isMuted || typeof window === "undefined" || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(phrase);
-    const voice = pickVoice(selectedAvatar);
-    if (voice) utterance.voice = voice;
-    utterance.rate = selectedAvatar === "Atlas" ? 1.0 : 0.93;
-    utterance.pitch = selectedAvatar === "Atlas" ? 0.88 : 1.05;
+    const utterance = buildCoachUtterance(phrase, selectedAvatar, "distance");
     window.speechSynthesis.speak(utterance);
   }
 

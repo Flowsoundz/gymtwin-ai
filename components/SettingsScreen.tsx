@@ -3,7 +3,8 @@
 import { useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { Coach3D } from "@/components/Coach3D";
-import { getAvatarLabel } from "@/lib/avatarAssets";
+import Image from "next/image";
+import { getAvatarAsset, getAvatarLabel, getAvatarPersonality, getAvatarRole, getAvatarSubtitle } from "@/lib/avatarAssets";
 import { clearBodyProfile, saveBodyProfile } from "@/lib/bodyProfileStorage";
 import type {
   AvatarDisplayMode,
@@ -21,6 +22,7 @@ type SettingsScreenProps = {
   onSignOut?: () => void;
   supabaseUser?: User | null;
   selectedAvatar?: CoachAvatar;
+  onSelectedAvatarChange?: (avatar: CoachAvatar) => void;
   bodyProfile?: BodyProfile | null;
   onBodyProfileChange?: (profile: BodyProfile | null) => void;
   avatarDisplaySettings: AvatarDisplaySettings;
@@ -42,6 +44,91 @@ function SettingsCard({
   );
 }
 
+function DisplayModePreview({
+  mode,
+  compact,
+  presenceLabel,
+  show3DCoach,
+  minimalHud,
+}: {
+  mode: AvatarDisplayMode;
+  compact: boolean;
+  presenceLabel: string;
+  show3DCoach: boolean;
+  minimalHud: boolean;
+}) {
+  const coachCardClass =
+    mode === "hidden"
+      ? "opacity-0 scale-90"
+      : mode === "floating_overlay"
+        ? "left-[56%] top-[18%] w-[34%]"
+        : mode === "camera_corner"
+          ? "right-[6%] top-[10%] w-[24%]"
+          : "left-[6%] bottom-[8%] w-[34%]";
+
+  const coachHeightClass = compact ? "h-14" : "h-20";
+
+  return (
+    <div className="rounded-[1.45rem] border border-white/8 bg-slate-900/72 p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Live Mock Preview</p>
+          <p className="mt-1 text-xs text-slate-400">See where the coach lands before starting a workout.</p>
+        </div>
+        <div className="rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-blue-200">
+          {mode.replace("_", " ")}
+        </div>
+      </div>
+
+      <div className="relative overflow-hidden rounded-[1.35rem] border border-white/10 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.16),_transparent_32%),linear-gradient(180deg,_rgba(2,6,23,0.96),_rgba(15,23,42,0.92))] p-3">
+        <div className="relative aspect-[16/10] rounded-[1.1rem] border border-white/8 bg-slate-950/88">
+          <div className="absolute inset-3 rounded-[0.95rem] border border-cyan-400/12 bg-[linear-gradient(180deg,rgba(15,23,42,0.84),rgba(2,6,23,0.96))]" />
+          <div className="absolute left-6 top-5 h-20 w-10 rounded-full border border-blue-400/14 bg-blue-500/8 blur-xl" />
+          <div className="absolute bottom-5 right-6 h-16 w-16 rounded-full border border-fuchsia-400/14 bg-fuchsia-500/8 blur-xl" />
+          <div className="absolute inset-x-6 bottom-4 h-[1px] bg-gradient-to-r from-transparent via-blue-400/30 to-transparent" />
+
+          {!minimalHud ? (
+            <>
+              <div className="absolute left-4 top-4 h-10 w-[34%] rounded-xl border border-white/8 bg-slate-900/76" />
+              <div className="absolute right-4 top-4 h-8 w-[20%] rounded-full border border-emerald-400/14 bg-emerald-500/10" />
+              <div className="absolute right-4 bottom-4 h-16 w-[28%] rounded-2xl border border-white/8 bg-slate-900/72" />
+            </>
+          ) : (
+            <div className="absolute left-4 top-4 h-8 w-[26%] rounded-full border border-blue-400/16 bg-blue-500/10" />
+          )}
+
+          {show3DCoach ? (
+            <div
+              className={`absolute rounded-[1rem] border border-blue-400/24 bg-[linear-gradient(135deg,rgba(59,130,246,0.16),rgba(217,70,239,0.14))] backdrop-blur-md shadow-[0_0_24px_rgba(59,130,246,0.16)] transition-all duration-200 ${coachCardClass} ${coachHeightClass}`}
+            >
+              <div className="flex h-full items-end gap-2 p-2">
+                <div className="h-9 w-7 rounded-full bg-gradient-to-b from-blue-300/80 to-fuchsia-400/70" />
+                <div className="min-w-0 flex-1">
+                  <div className="h-2 w-3/4 rounded-full bg-white/80" />
+                  <div className="mt-2 h-2 w-full rounded-full bg-white/20" />
+                  <div className="mt-1 h-2 w-2/3 rounded-full bg-white/10" />
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="mt-3 grid grid-cols-3 gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+          <div className="rounded-full border border-white/8 bg-slate-950/70 px-2 py-1 text-center">
+            {presenceLabel}
+          </div>
+          <div className="rounded-full border border-white/8 bg-slate-950/70 px-2 py-1 text-center">
+            {minimalHud ? "Minimal HUD" : "Full HUD"}
+          </div>
+          <div className="rounded-full border border-white/8 bg-slate-950/70 px-2 py-1 text-center">
+            {show3DCoach ? "3D On" : "Text Only"}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function SettingsScreen({
   onBackHome,
   onOpenCameraSandbox,
@@ -50,6 +137,7 @@ export function SettingsScreen({
   onSignOut,
   supabaseUser,
   selectedAvatar = "Nova",
+  onSelectedAvatarChange,
   bodyProfile,
   onBodyProfileChange,
   avatarDisplaySettings,
@@ -91,6 +179,11 @@ export function SettingsScreen({
       icon: "🚫",
     },
   ];
+  const avatarPresenceMode = avatarDisplaySettings.compactInWorkout
+    ? "compact"
+    : avatarDisplaySettings.minimalCameraHud
+      ? "balanced"
+      : "immersive";
 
   function updateField<K extends keyof BodyProfile>(field: K, value: BodyProfile[K]) {
     setDraftProfile((current) => ({
@@ -133,6 +226,32 @@ export function SettingsScreen({
     });
   }
 
+  function applyAvatarPresenceMode(mode: "compact" | "balanced" | "immersive") {
+    if (mode === "compact") {
+      updateAvatarDisplaySettings({
+        show3DCoach: true,
+        compactInWorkout: true,
+        minimalCameraHud: true,
+      });
+      return;
+    }
+
+    if (mode === "balanced") {
+      updateAvatarDisplaySettings({
+        show3DCoach: true,
+        compactInWorkout: false,
+        minimalCameraHud: true,
+      });
+      return;
+    }
+
+    updateAvatarDisplaySettings({
+      show3DCoach: true,
+      compactInWorkout: false,
+      minimalCameraHud: false,
+    });
+  }
+
   return (
     <main className="min-h-screen overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.2),_transparent_24%),radial-gradient(circle_at_bottom,_rgba(59,130,246,0.12),_transparent_24%),linear-gradient(180deg,_#020617_0%,_#020617_48%,_#030712_100%)] px-4 pb-10 pt-8 text-white antialiased sm:px-6 lg:px-8 lg:py-12">
       <div className="mx-auto w-full max-w-md lg:max-w-5xl xl:max-w-6xl">
@@ -162,12 +281,61 @@ export function SettingsScreen({
                 <Coach3D
                   selectedAvatar={selectedAvatar}
                   animationHint="idle"
-                  previewFrame="bust"
+                  previewFrame="full_body"
+                  freezeAnimation
                   compact
                   lightingMode="neutral"
                 />
                 <p className="text-xs text-slate-400">Current coach: {getAvatarLabel(selectedAvatar)}. 3D preview loads when model files are available.</p>
                 <p className="text-slate-400">Nova and Atlas stay visually consistent across workouts, camera coaching, summaries, and progress screens.</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {(["Nova", "Atlas"] as CoachAvatar[]).map((avatar) => {
+                    const active = selectedAvatar === avatar;
+                    return (
+                      <button
+                        key={avatar}
+                        type="button"
+                        onClick={() => onSelectedAvatarChange?.(avatar)}
+                        className={`group relative overflow-hidden rounded-[1.45rem] border p-4 text-left transition ${
+                          active
+                            ? "border-fuchsia-400/35 bg-gradient-to-br from-blue-500/16 via-slate-950/78 to-fuchsia-500/14 text-white shadow-[0_0_28px_rgba(99,102,241,0.18)]"
+                            : "border-white/8 bg-slate-900/72 text-slate-300 hover:border-white/15 hover:text-white"
+                        }`}
+                      >
+                        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-blue-400/35 to-fuchsia-400/35" />
+                        <div className="flex items-start gap-3">
+                          <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-[1.2rem] border border-white/10 bg-gradient-to-br from-slate-800 via-slate-900 to-[#0f172a]">
+                            <Image
+                              src={getAvatarAsset(avatar)}
+                              alt={`${getAvatarLabel(avatar)} avatar`}
+                              fill
+                              sizes="80px"
+                              className="object-cover object-[center_20%]"
+                            />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-base font-black text-white">{getAvatarLabel(avatar)}</p>
+                            <p className="mt-1 text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">
+                              {getAvatarSubtitle(avatar)}
+                            </p>
+                            <p className="mt-2 text-xs font-semibold text-slate-200">{getAvatarPersonality(avatar)}</p>
+                            <p className="mt-1 text-xs leading-relaxed text-slate-400">{getAvatarRole(avatar)}</p>
+                          </div>
+                        </div>
+                        <div className="mt-4 flex items-center justify-between">
+                          <span className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Coach Avatar</span>
+                          <span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] ${
+                            active
+                              ? "border-fuchsia-400/30 bg-fuchsia-500/12 text-fuchsia-100"
+                              : "border-white/10 bg-slate-950/70 text-slate-400"
+                          }`}>
+                            {active ? "Selected" : "Switch"}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
                 <button
                   onClick={onOpenModelLab}
                   className="w-full rounded-2xl border border-blue-400/20 bg-gradient-to-r from-blue-600 to-fuchsia-600 px-4 py-4 text-sm font-black text-white shadow-[0_18px_40px_rgba(99,102,241,0.26)] transition hover:brightness-105 active:scale-95"
@@ -185,6 +353,66 @@ export function SettingsScreen({
                   <p className="mt-2 text-slate-400">
                     Avatar selection is still managed from the session builder so the coaching style stays consistent.
                   </p>
+                </div>
+
+                <DisplayModePreview
+                  mode={avatarDisplaySettings.mode}
+                  compact={avatarDisplaySettings.compactInWorkout}
+                  presenceLabel={
+                    avatarPresenceMode === "compact"
+                      ? "Compact"
+                      : avatarPresenceMode === "balanced"
+                        ? "Balanced"
+                        : "Immersive"
+                  }
+                  show3DCoach={avatarDisplaySettings.show3DCoach}
+                  minimalHud={avatarDisplaySettings.minimalCameraHud}
+                />
+
+                <div className="rounded-[1.35rem] border border-white/8 bg-slate-900/72 px-4 py-4">
+                  <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Avatar Presence</p>
+                  <p className="mt-2 text-xs leading-relaxed text-slate-400">
+                    Choose how large and prominent the coach should feel during workouts.
+                  </p>
+                  <div className="mt-4 grid gap-2 sm:grid-cols-3">
+                    {[
+                      {
+                        key: "compact" as const,
+                        title: "Compact",
+                        description: "Smallest footprint. Keeps more space for controls and tracking.",
+                      },
+                      {
+                        key: "balanced" as const,
+                        title: "Balanced",
+                        description: "Default MVP feel. Clear presence without taking over the screen.",
+                      },
+                      {
+                        key: "immersive" as const,
+                        title: "Immersive",
+                        description: "Largest, most present coach view with a fuller HUD stage.",
+                      },
+                    ].map((option) => {
+                      const isActive = avatarPresenceMode === option.key;
+                      return (
+                        <button
+                          key={option.key}
+                          type="button"
+                          onClick={() => applyAvatarPresenceMode(option.key)}
+                          className={`rounded-[1.15rem] border px-4 py-4 text-left transition active:scale-95 ${
+                            isActive
+                              ? "border-cyan-400/28 bg-gradient-to-br from-cyan-500/16 via-slate-950/74 to-blue-500/14 text-white shadow-[0_0_20px_rgba(34,211,238,0.12)]"
+                              : "border-white/8 bg-slate-950/55 text-slate-300 hover:border-white/15 hover:text-white"
+                          }`}
+                        >
+                          <p className="text-sm font-black">{option.title}</p>
+                          <p className="mt-2 text-xs leading-relaxed text-slate-400">{option.description}</p>
+                          {isActive ? (
+                            <p className="mt-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">Current View</p>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -229,11 +457,6 @@ export function SettingsScreen({
                       description: "Prefer the full 3D coach card where supported.",
                     },
                     {
-                      key: "compactInWorkout" as const,
-                      label: "Compact in Workout",
-                      description: "Keep the avatar tighter so main controls stay clear.",
-                    },
-                    {
                       key: "showDuringCamera" as const,
                       label: "Show During Camera",
                       description: "Allow avatar overlays while camera coaching is active.",
@@ -247,6 +470,11 @@ export function SettingsScreen({
                       key: "minimalCameraHud" as const,
                       label: "Minimal Camera HUD",
                       description: "Reduce lower-priority camera panels during active tracking and focus mode.",
+                    },
+                    {
+                      key: "countdownAudioEnabled" as const,
+                      label: "Countdown Audio",
+                      description: "Play clean set-start countdown cues during workout transitions and rest finishes.",
                     },
                   ].map((toggle) => (
                     <label

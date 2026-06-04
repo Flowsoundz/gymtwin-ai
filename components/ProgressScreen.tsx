@@ -1,16 +1,19 @@
+"use client";
+
 import { FloatingCoachAvatar } from "@/components/FloatingCoachAvatar";
 import { FeedbackBadge } from "@/components/ui/FeedbackBadge";
 import { StatCard } from "@/components/ui/StatCard";
 import { getCoachAdaptationRecommendation } from "@/lib/coachAdaptationEngine";
 import { getAvatarCoachLayerState } from "@/lib/avatarCoachLayer";
 import { getAvatarLabel } from "@/lib/avatarAssets";
+import { readBodyProfileHistory, type BodyProfileHistoryEntry } from "@/lib/bodyProfileStorage";
 import { calculateBMI, getBMICategory, getBodyProfileSummary } from "@/lib/bodyMetrics";
 import { getCoachBrainResponse } from "@/lib/coachBrain";
 import { getDifficultyAdjustmentRecommendation } from "@/lib/difficultyAdjustmentEngine";
 import { deriveProgressTrends, type TrendPoint, type TrendSeries } from "@/lib/progressTrends";
 import { getTodayWeeklyPlanLabel } from "@/lib/weeklyPlanEngine";
-import { useMemo, type ReactNode } from "react";
-import type { AchievementBadge, BodyProfile, CoachAvatar, TraineeStats, WeeklyPlan, WorkoutSummaryData } from "@/types";
+import { useMemo, useState, type ReactNode } from "react";
+import type { AchievementBadge, BodyProfile, CoachAvatar, TraineeStats, WeeklyPlan, WeeklyPlanDayConfig, WorkoutSummaryData } from "@/types";
 
 type ProgressScreenProps = {
   selectedAvatar?: CoachAvatar;
@@ -20,6 +23,7 @@ type ProgressScreenProps = {
   userStats: TraineeStats;
   workoutHistory: WorkoutSummaryData[];
   onStartAnotherWorkout: () => void;
+  onStartPlanDay?: (config: WeeklyPlanDayConfig) => void;
   onReturnHome: () => void;
   onViewWorkoutDetail: (workout: WorkoutSummaryData) => void;
   primaryButton: string;
@@ -38,6 +42,127 @@ function EmptyTrendState({ message }: { message: string }) {
   );
 }
 
+function EmptyDashboardState({
+  title,
+  message,
+  chips,
+}: {
+  title: string;
+  message: string;
+  chips: string[];
+}) {
+  return (
+    <div className="rounded-[1.8rem] border border-dashed border-blue-400/16 bg-[linear-gradient(135deg,rgba(59,130,246,0.08),rgba(2,6,23,0.82))] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+      <p className="text-[11px] font-black uppercase tracking-[0.26em] text-blue-300">New Athlete View</p>
+      <h3 className="mt-2 text-lg font-black text-white">{title}</h3>
+      <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-400">{message}</p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        {chips.map((chip) => (
+          <span
+            key={chip}
+            className="rounded-full border border-white/8 bg-slate-950/70 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400"
+          >
+            {chip}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Cold-start projection — instead of hiding the chart for new users, render a
+// low-opacity dashed target trajectory derived from their profile so they can
+// see exactly what tracking will look like once they start logging.
+function BaselineProjection({
+  target,
+  caption,
+  color,
+}: {
+  target: number;
+  caption: string;
+  color: string;
+}) {
+  const STEPS = [0.16, 0.32, 0.48, 0.64, 0.8, 0.95];
+  const LABELS = ["W1", "W2", "W3", "W4", "W5", "Goal"];
+  const polyPoints = STEPS.map((f, i) => `${(i / (STEPS.length - 1)) * 100},${(1 - f) * 100}`).join(" ");
+
+  return (
+    <div className="mt-4">
+      <div className="relative h-24">
+        {/* Target ceiling label */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 flex items-center gap-2">
+          <span className="shrink-0 text-[9px] font-black uppercase tracking-[0.14em]" style={{ color }}>
+            Target {target}
+          </span>
+          <div className="h-px flex-1 border-t border-dashed" style={{ borderColor: color, opacity: 0.45 }} />
+        </div>
+
+        {/* Chart area */}
+        <div className="absolute inset-x-0 bottom-6 top-4">
+          {/* Ghost rising bars */}
+          <div className="absolute inset-0 flex items-end gap-2">
+            {STEPS.map((f, i) => (
+              <div
+                key={i}
+                className="flex-1 rounded-full"
+                style={{
+                  height: `${f * 100}%`,
+                  background: `linear-gradient(to top, ${color}2e, ${color}0a)`,
+                }}
+              />
+            ))}
+          </div>
+          {/* Dashed projected trajectory line */}
+          <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+            <polyline
+              points={polyPoints}
+              fill="none"
+              stroke={color}
+              strokeWidth={1.5}
+              strokeDasharray="3 3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              vectorEffect="non-scaling-stroke"
+              opacity={0.7}
+            />
+            {STEPS.map((f, i) => (
+              <circle
+                key={i}
+                cx={(i / (STEPS.length - 1)) * 100}
+                cy={(1 - f) * 100}
+                r={1.4}
+                fill={color}
+                vectorEffect="non-scaling-stroke"
+                opacity={0.85}
+              />
+            ))}
+          </svg>
+        </div>
+
+        {/* Week labels */}
+        <div className="absolute inset-x-0 bottom-0 flex gap-2">
+          {LABELS.map((label, i) => (
+            <span
+              key={label}
+              className="flex-1 text-center text-[10px] font-black uppercase tracking-[0.14em]"
+              style={{ color: i === LABELS.length - 1 ? color : undefined }}
+            >
+              <span className={i === LABELS.length - 1 ? "" : "text-slate-600"}>{label}</span>
+            </span>
+          ))}
+        </div>
+      </div>
+      <div className="mt-3 flex items-center gap-2">
+        <span className="rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.16em]"
+          style={{ borderColor: `${color}55`, color }}>
+          Projected
+        </span>
+        <p className="text-[11px] leading-relaxed text-slate-500">{caption}</p>
+      </div>
+    </div>
+  );
+}
+
 function MiniBarChart({
   points,
   colorClass,
@@ -49,7 +174,10 @@ function MiniBarChart({
 
   return (
     <div className="mt-4">
-      <div className="flex h-24 items-end gap-2">
+      <div className="relative flex h-24 items-end gap-2">
+        <div className="pointer-events-none absolute inset-x-0 border-t border-dashed border-white/[0.08]" style={{ bottom: "25%" }} />
+        <div className="pointer-events-none absolute inset-x-0 border-t border-dashed border-white/[0.10]" style={{ bottom: "50%" }} />
+        <div className="pointer-events-none absolute inset-x-0 border-t border-dashed border-white/[0.08]" style={{ bottom: "75%" }} />
         {points.map((point) => (
           <div key={`${point.label}-${point.value}`} className="flex min-w-0 flex-1 flex-col items-center gap-2">
             <div className="flex h-20 w-full items-end rounded-full bg-white/[0.05] px-1 py-1">
@@ -92,6 +220,118 @@ function SparklineRow({
   );
 }
 
+function MetricDeltaPill({
+  delta,
+  suffix = "",
+}: {
+  delta: number | null;
+  suffix?: string;
+}) {
+  if (delta === null) {
+    return (
+      <span className="rounded-full border border-white/8 bg-slate-900/70 px-2 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-slate-500">
+        No baseline
+      </span>
+    );
+  }
+
+  const toneClass =
+    delta < 0
+      ? "border-emerald-400/22 bg-emerald-500/12 text-emerald-200"
+      : delta > 0
+        ? "border-red-400/22 bg-red-500/12 text-red-200"
+        : "border-blue-400/22 bg-blue-500/12 text-blue-200";
+
+  return (
+    <span className={`rounded-full border px-2 py-1 text-[9px] font-black uppercase tracking-[0.16em] ${toneClass}`}>
+      {delta > 0 ? "+" : ""}
+      {delta}
+      {suffix}
+      {" · 7D"}
+    </span>
+  );
+}
+
+function MetricSparkline({
+  points,
+  stroke,
+  fill,
+}: {
+  points: TrendPoint[];
+  stroke: string;
+  fill: string;
+}) {
+  if (points.length === 0) {
+    return <div className="mt-3 h-12 rounded-xl border border-white/8 bg-slate-900/60" />;
+  }
+
+  const values = points.map((point) => point.value);
+  const max = Math.max(...values, 1);
+  const min = Math.min(...values, 0);
+  const range = max - min || 1;
+  const coordinates = points
+    .map((point, index) => {
+      const x = points.length === 1 ? 50 : (index / (points.length - 1)) * 100;
+      const y = 100 - ((point.value - min) / range) * 100;
+      return `${x},${y}`;
+    })
+    .join(" ");
+  const areaCoordinates = `0,100 ${coordinates} 100,100`;
+
+  return (
+    <div className="mt-3">
+      <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="h-12 w-full overflow-visible">
+        <polyline
+          points="0,8 100,8"
+          fill="none"
+          stroke="rgba(148,163,184,0.10)"
+          strokeWidth="1"
+          strokeDasharray="3 3"
+          vectorEffect="non-scaling-stroke"
+        />
+        <polyline
+          points="0,16 100,16"
+          fill="none"
+          stroke="rgba(148,163,184,0.10)"
+          strokeWidth="1"
+          strokeDasharray="3 3"
+          vectorEffect="non-scaling-stroke"
+        />
+        <polyline
+          points="0,24 100,24"
+          fill="none"
+          stroke="rgba(148,163,184,0.16)"
+          strokeWidth="1"
+          strokeDasharray="3 3"
+          vectorEffect="non-scaling-stroke"
+        />
+        <polygon points={areaCoordinates} fill={fill} opacity="0.24" transform="scale(1,0.3)" transform-origin="center" />
+        <polyline
+          points={coordinates}
+          fill="none"
+          stroke={stroke}
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
+        />
+        {points.map((point, index) => {
+          const x = points.length === 1 ? 50 : (index / (points.length - 1)) * 100;
+          const y = 100 - ((point.value - min) / range) * 100;
+          return <circle key={`${point.label}-${point.value}`} cx={x} cy={y} r="2" fill={stroke} vectorEffect="non-scaling-stroke" />;
+        })}
+      </svg>
+      <div className="mt-1 grid grid-cols-7 gap-1 text-[8px] font-black uppercase tracking-[0.16em] text-slate-600">
+        {points.map((point) => (
+          <span key={point.label} className="truncate text-center">
+            {point.label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ProgressBar({
   percent,
   trackClassName = "bg-white/5",
@@ -111,6 +351,47 @@ function ProgressBar({
   );
 }
 
+function buildMetricTrend(
+  history: BodyProfileHistoryEntry[],
+  accessor: (entry: BodyProfileHistoryEntry) => number | null,
+  fallbackValue: number | null
+): { points: TrendPoint[]; delta: number | null } {
+  const recentPoints = history
+    .map((entry) => {
+      const value = accessor(entry);
+      if (value === null || !Number.isFinite(value)) {
+        return null;
+      }
+
+      const labelDate = new Date(`${entry.date}T12:00:00`);
+      return {
+        label: Number.isNaN(labelDate.getTime())
+          ? entry.date.slice(5).replace("-", "/")
+          : labelDate.toLocaleDateString("en-US", { weekday: "narrow" }),
+        value,
+      };
+    })
+    .filter((point): point is TrendPoint => point !== null)
+    .slice(-7);
+
+  const points =
+    recentPoints.length > 0
+      ? recentPoints
+      : fallbackValue !== null
+        ? Array.from({ length: 7 }, (_, index) => ({
+            label: ["M", "T", "W", "T", "F", "S", "S"][index] ?? "",
+            value: fallbackValue,
+          }))
+        : [];
+
+  const delta =
+    points.length >= 2
+      ? Number((points[points.length - 1].value - points[0].value).toFixed(1))
+      : null;
+
+  return { points, delta };
+}
+
 function TrendCard({
   eyebrow,
   title,
@@ -120,6 +401,8 @@ function TrendCard({
   barColorClass,
   footer,
   children,
+  projection,
+  glow,
 }: {
   eyebrow: string;
   title: string;
@@ -129,6 +412,8 @@ function TrendCard({
   barColorClass: string;
   footer?: string;
   children?: ReactNode;
+  projection?: { target: number; caption: string; color: string };
+  glow?: string;
 }) {
   return (
     <div className="rounded-[1.65rem] border border-white/8 bg-slate-950/58 p-5 shadow-[0_18px_42px_rgba(15,23,42,0.2),inset_0_1px_0_rgba(255,255,255,0.03)]">
@@ -145,9 +430,12 @@ function TrendCard({
       {series.available ? (
         <>
           <div className="mt-4 grid grid-cols-3 gap-3">
-            <div className="rounded-2xl border border-white/8 bg-slate-950/50 px-3 py-3">
+            <div
+              className="rounded-2xl border bg-[linear-gradient(145deg,rgba(24,24,27,0.9),rgba(2,6,23,0.92))] px-3 py-3"
+              style={glow ? { borderColor: `${glow}66`, boxShadow: `0 0 18px ${glow}33, inset 0 1px 0 ${glow}1f` } : undefined}
+            >
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Latest</p>
-              <p className="mt-1 text-lg font-black text-white">{series.latestValue ?? "--"}</p>
+              <p className="mt-1 text-lg font-black" style={glow ? { color: glow } : undefined}>{series.latestValue ?? "--"}</p>
             </div>
             <div className="rounded-2xl border border-white/8 bg-slate-950/50 px-3 py-3">
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Average</p>
@@ -166,7 +454,15 @@ function TrendCard({
         </>
       ) : (
         <>
-          <EmptyTrendState message={series.emptyMessage} />
+          {projection ? (
+            <BaselineProjection
+              target={projection.target}
+              caption={projection.caption}
+              color={projection.color}
+            />
+          ) : (
+            <EmptyTrendState message={series.emptyMessage} />
+          )}
           {children}
         </>
       )}
@@ -182,6 +478,7 @@ export function ProgressScreen({
   userStats,
   workoutHistory,
   onStartAnotherWorkout,
+  onStartPlanDay,
   onReturnHome,
   onViewWorkoutDetail,
   primaryButton,
@@ -221,6 +518,8 @@ export function ProgressScreen({
     [bodyProfile, userStats, weeklyPlan, workoutHistory]
   );
   const recentWorkoutsToDisplay = trendData.safeHistory.slice(-5).reverse();
+  const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
+  const bodyProfileHistory = useMemo(() => readBodyProfileHistory(), [bodyProfile?.lastUpdated]);
 
   const progressCoachBrain = useMemo(
     () =>
@@ -247,6 +546,35 @@ export function ProgressScreen({
   const bmi = calculateBMI(bodyProfile?.heightInches, bodyProfile?.weightLbs);
   const bmiCategory = getBMICategory(bmi);
   const bodyProfileSummary = getBodyProfileSummary(bodyProfile ?? {});
+  const weightTrend = useMemo(
+    () => buildMetricTrend(bodyProfileHistory, (entry) => entry.weightLbs ?? null, bodyProfile?.weightLbs ?? null),
+    [bodyProfile?.weightLbs, bodyProfileHistory]
+  );
+  const bmiTrend = useMemo(
+    () => buildMetricTrend(bodyProfileHistory, (entry) => entry.bmi, bmi),
+    [bmi, bodyProfileHistory]
+  );
+
+  // Cold-start baseline projections — profile-driven target trajectories shown
+  // in the trend cards before any sessions are logged.
+  const projectionGoal = bodyProfile?.activityGoal?.trim() || "Lean Muscle";
+  const projectionWeight = bodyProfile?.weightLbs ?? 180;
+  const advancedLevel = (bmi ?? 0) > 0 && (bmi ?? 25) < 25;
+  const workoutScoreProjection = {
+    target: advancedLevel ? 88 : 82,
+    color: "#60a5fa",
+    caption: `Projected path for your ${projectionGoal} goal at ${projectionWeight} lbs. Log a session to start tracking.`,
+  };
+  const formScoreProjection = {
+    target: 90,
+    color: "#34d399",
+    caption: `Clean-rep form target for ${projectionGoal}. Your real form scores will fill this in.`,
+  };
+  const xpProjection = {
+    target: 150,
+    color: "#e879f9",
+    caption: `Estimated XP ramp over your first 5 sessions at this intensity.`,
+  };
   const motivationalLine =
     userStats.workoutsCompleted === 0
       ? "Complete your first workout to start earning badges and building momentum."
@@ -266,7 +594,7 @@ export function ProgressScreen({
           : "Consistency bias";
   const coachInsightTone =
     coachInsight.priority === "high"
-      ? "border-amber-400/18 bg-amber-500/10 text-amber-200"
+      ? "border-red-400/18 bg-red-500/10 text-red-200"
       : coachInsight.priority === "medium"
         ? "border-blue-400/18 bg-blue-500/10 text-blue-200"
         : "border-emerald-400/18 bg-emerald-500/10 text-emerald-200";
@@ -274,7 +602,7 @@ export function ProgressScreen({
     difficultyAdjustment.direction === "increase"
       ? "border-emerald-400/18 bg-emerald-500/10 text-emerald-200"
       : difficultyAdjustment.direction === "decrease"
-        ? "border-amber-400/18 bg-amber-500/10 text-amber-200"
+        ? "border-red-400/18 bg-red-500/10 text-red-200"
         : difficultyAdjustment.direction === "form_focus"
           ? "border-cyan-400/18 bg-cyan-500/10 text-cyan-200"
           : difficultyAdjustment.direction === "recovery"
@@ -302,14 +630,24 @@ export function ProgressScreen({
             </div>
           </header>
 
+          {userStats.workoutsCompleted === 0 ? (
+            <section className="mb-6">
+              <EmptyDashboardState
+                title="Your progress hub will populate after your first sessions."
+                message="As soon as you complete workouts, GymTwin will start surfacing score trends, body-metric deltas, streak movement, and adaptive recommendations here."
+                chips={["Workout score", "Form trend", "Body delta", "Weekly streak", "Coach insights"]}
+              />
+            </section>
+          ) : null}
+
           <section className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-3">
-            <div className="rounded-[1.75rem] border border-white/8 bg-slate-950/58 p-5 text-center shadow-[0_18px_42px_rgba(15,23,42,0.2),inset_0_1px_0_rgba(255,255,255,0.03)]">
+            <div className="rounded-[1.75rem] border border-blue-400/22 bg-[linear-gradient(135deg,rgba(59,130,246,0.1),rgba(15,23,42,0.88))] p-5 text-center shadow-[0_0_28px_rgba(59,130,246,0.1),inset_0_1px_0_rgba(59,130,246,0.14)]">
               <StatCard value={userStats.workoutsCompleted} label="Workouts" colorClass="text-blue-400" />
             </div>
-            <div className="rounded-[1.75rem] border border-white/8 bg-slate-950/58 p-5 text-center shadow-[0_18px_42px_rgba(15,23,42,0.2),inset_0_1px_0_rgba(255,255,255,0.03)]">
+            <div className="rounded-[1.75rem] border border-fuchsia-400/22 bg-[linear-gradient(135deg,rgba(217,70,239,0.1),rgba(15,23,42,0.88))] p-5 text-center shadow-[0_0_28px_rgba(217,70,239,0.1),inset_0_1px_0_rgba(217,70,239,0.14)]">
               <StatCard value={userStats.streak} label="Day Streak" colorClass="text-fuchsia-400" suffix="🔥" />
             </div>
-            <div className="col-span-2 rounded-[1.75rem] border border-white/8 bg-slate-950/58 p-5 text-center shadow-[0_18px_42px_rgba(15,23,42,0.2),inset_0_1px_0_rgba(255,255,255,0.03)] lg:col-span-1">
+            <div className="col-span-2 rounded-[1.75rem] border border-indigo-400/22 bg-[linear-gradient(135deg,rgba(99,102,241,0.1),rgba(15,23,42,0.88))] p-5 text-center shadow-[0_0_28px_rgba(99,102,241,0.1),inset_0_1px_0_rgba(99,102,241,0.14)] lg:col-span-1">
               <StatCard value={userStats.totalMinutes} label="Real Training Minutes" colorClass="text-indigo-400" />
             </div>
           </section>
@@ -341,6 +679,8 @@ export function ProgressScreen({
                 accentTextClass="text-blue-300"
                 barColorClass="from-blue-400 via-cyan-300 to-blue-500"
                 footer="Tracks recent scored sessions without changing your scoring model."
+                projection={workoutScoreProjection}
+                glow="#60a5fa"
               />
 
               <TrendCard
@@ -350,6 +690,8 @@ export function ProgressScreen({
                 series={trendData.formScoreTrend}
                 accentTextClass="text-emerald-300"
                 barColorClass="from-emerald-400 via-lime-300 to-emerald-500"
+                projection={formScoreProjection}
+                glow="#34d399"
                 footer={
                   trendData.repQuality.available
                     ? `Rep quality estimated from ${trendData.repQuality.sourceSessions} saved session${
@@ -388,12 +730,13 @@ export function ProgressScreen({
                 accentTextClass="text-fuchsia-300"
                 barColorClass="from-fuchsia-400 via-violet-300 to-pink-500"
                 footer="Shows how much XP your recent sessions are contributing."
+                projection={xpProjection}
               />
 
               <div className="rounded-[1.65rem] border border-white/8 bg-slate-950/58 p-5 shadow-[0_18px_42px_rgba(15,23,42,0.2),inset_0_1px_0_rgba(255,255,255,0.03)]">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-[11px] font-black uppercase tracking-[0.24em] text-amber-300">Weekly Plan</p>
+                    <p className="text-[11px] font-black uppercase tracking-[0.24em] text-cyan-300">Weekly Plan</p>
                     <h3 className="mt-2 text-lg font-black text-white">Weekly Plan Completion</h3>
                   </div>
                   <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-200">
@@ -413,7 +756,7 @@ export function ProgressScreen({
                     </div>
                     <ProgressBar
                       percent={trendData.weeklyPlanCompletion.percent}
-                      fillClassName="bg-gradient-to-r from-amber-400 via-orange-300 to-amber-500"
+                      fillClassName="bg-gradient-to-r from-cyan-400 via-blue-300 to-cyan-500"
                     />
                     <p className="mt-4 text-sm leading-relaxed text-slate-300">
                       Today is <span className="font-black text-white">{trendData.weeklyPlanCompletion.todayLabel}</span>. Keep checking off plan days to tighten weekly consistency.
@@ -561,7 +904,7 @@ export function ProgressScreen({
           <section className="mb-6 rounded-[1.7rem] border border-white/8 bg-slate-950/58 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-[11px] font-black uppercase tracking-[0.26em] text-amber-300">Recovery & Consistency</p>
+                <p className="text-[11px] font-black uppercase tracking-[0.26em] text-fuchsia-300">Recovery & Consistency</p>
                 <h3 className="mt-2 text-lg font-black text-white">Momentum Guardrails</h3>
               </div>
               <div className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] ${difficultyTone}`}>
@@ -607,16 +950,24 @@ export function ProgressScreen({
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-2xl border border-white/8 bg-slate-950/55 px-4 py-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Current Weight</p>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Current Weight</p>
+                  <MetricDeltaPill delta={weightTrend.delta} suffix=" lb" />
+                </div>
                 <p className="mt-1 text-xl font-black text-white">{bodyProfile?.weightLbs ? `${bodyProfile.weightLbs} lb` : "--"}</p>
+                <MetricSparkline points={weightTrend.points} stroke="#60a5fa" fill="#60a5fa" />
               </div>
               <div className="rounded-2xl border border-white/8 bg-slate-950/55 px-4 py-3">
                 <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Goal Weight</p>
                 <p className="mt-1 text-xl font-black text-white">{bodyProfile?.goalWeightLbs ? `${bodyProfile.goalWeightLbs} lb` : "--"}</p>
               </div>
               <div className="rounded-2xl border border-white/8 bg-slate-950/55 px-4 py-3">
-                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">BMI</p>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">BMI</p>
+                  <MetricDeltaPill delta={bmiTrend.delta} />
+                </div>
                 <p className="mt-1 text-xl font-black text-white">{bmi ?? "--"}</p>
+                <MetricSparkline points={bmiTrend.points} stroke="#34d399" fill="#34d399" />
               </div>
               <div className="rounded-2xl border border-white/8 bg-slate-950/55 px-4 py-3">
                 <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">BMI Category</p>
@@ -714,9 +1065,35 @@ export function ProgressScreen({
             </div>
             {weeklyPlan ? (
               <>
+                {weeklyPlan.splitName && (
+                  <p className="mb-3 text-[10px] font-black uppercase tracking-[0.28em] text-purple-400">
+                    {weeklyPlan.splitName}{weeklyPlan.isDeloadWeek ? " · Deload Week" : ""}
+                  </p>
+                )}
                 <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
                   {weeklyPlan.days.map((day) => {
                     const isToday = day.dayLabel === todayPlanLabel;
+                    const isRest = day.isRestDay;
+                    const splitLabel = day.splitType
+                      ? {
+                          push: "Push", pull: "Pull", legs: "Legs", full_body: "Full Body",
+                          conditioning: "Circuit", core_mobility: "Mobility",
+                          recovery: "Recovery", rest: "Rest",
+                        }[day.splitType]
+                      : null;
+                    const splitColor = day.splitType
+                      ? {
+                          push: "border-blue-900/40 bg-blue-950/30 text-blue-300",
+                          pull: "border-fuchsia-900/40 bg-fuchsia-950/30 text-fuchsia-300",
+                          legs: "border-orange-900/40 bg-orange-950/30 text-orange-300",
+                          full_body: "border-purple-900/40 bg-purple-950/30 text-purple-300",
+                          conditioning: "border-yellow-900/40 bg-yellow-950/30 text-yellow-300",
+                          core_mobility: "border-teal-900/40 bg-teal-950/30 text-teal-300",
+                          recovery: "border-emerald-900/40 bg-emerald-950/30 text-emerald-300",
+                          rest: "border-slate-700/40 bg-slate-900/40 text-slate-500",
+                        }[day.splitType]
+                      : "border-white/8 bg-white/4 text-slate-400";
+
                     return (
                       <div
                         key={day.id}
@@ -724,21 +1101,57 @@ export function ProgressScreen({
                           day.completed
                             ? "border-emerald-400/18 bg-emerald-500/10"
                             : isToday
-                              ? "border-blue-400/18 bg-blue-500/10"
-                              : "border-white/8 bg-slate-950/55"
+                              ? "border-blue-400/24 bg-blue-950/30 shadow-[0_0_24px_rgba(59,130,246,0.12)]"
+                              : isRest
+                                ? "border-white/5 bg-slate-950/40 opacity-60"
+                                : "border-white/8 bg-slate-950/55"
                         }`}
                       >
-                        <div className="flex items-center justify-between gap-3">
-                          <p className="text-sm font-black text-white">{day.dayLabel}</p>
-                          <span className="rounded-full border border-white/10 bg-black/10 px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-200">
-                            {day.completed ? "Done" : isToday ? "Today" : day.difficulty}
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-black text-white">{day.dayLabel}</p>
+                            {splitLabel && (
+                              <span className={`mt-1 inline-block rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-wider ${splitColor}`}>
+                                {splitLabel}
+                              </span>
+                            )}
+                          </div>
+                          <span className={`shrink-0 rounded-full border border-white/10 bg-black/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.18em] ${
+                            day.completed ? "text-emerald-300" : isToday ? "text-blue-300" : "text-slate-500"
+                          }`}>
+                            {day.completed ? "✓ Done" : isToday ? "Today" : isRest ? "Rest" : `${day.durationMinutes}m`}
                           </span>
                         </div>
+
                         <p className="mt-2 text-sm font-semibold text-slate-200">{day.focus}</p>
-                        <p className="mt-1 text-xs leading-relaxed text-slate-400">{day.recommendedWorkout}</p>
-                        <p className="mt-3 text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">
-                          {day.durationMinutes} minutes
-                        </p>
+
+                        {!isRest && day.workoutConfig && (
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {day.workoutConfig.muscleGroups.slice(0, 3).map((g) => (
+                              <span key={g} className="rounded-full border border-white/8 bg-white/4 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-slate-500">
+                                {g}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {isToday && !day.completed && !isRest && day.workoutConfig && onStartPlanDay && (
+                          <button
+                            onClick={() => onStartPlanDay(day.workoutConfig!)}
+                            className="mt-3 w-full rounded-xl bg-gradient-to-r from-blue-600/90 to-purple-600/90 py-2 text-[10px] font-black uppercase tracking-wider text-white shadow-[0_0_16px_rgba(99,102,241,0.3)] transition hover:brightness-110 active:scale-95"
+                          >
+                            Start Today’s Session →
+                          </button>
+                        )}
+
+                        {!isToday && !day.completed && !isRest && day.workoutConfig && onStartPlanDay && (
+                          <button
+                            onClick={() => onStartPlanDay(day.workoutConfig!)}
+                            className="mt-3 w-full rounded-xl border border-white/8 bg-white/4 py-2 text-[10px] font-black uppercase tracking-wider text-slate-400 transition hover:border-white/16 hover:text-slate-200 active:scale-95"
+                          >
+                            Start This Day
+                          </button>
+                        )}
                       </div>
                     );
                   })}
@@ -773,56 +1186,71 @@ export function ProgressScreen({
                 No workout history yet.
               </div>
             ) : (
-              <div className="space-y-4">
-                {recentWorkoutsToDisplay.map((session) => (
-                  <button
-                    key={session.id}
-                    onClick={() => onViewWorkoutDetail(session)}
-                    className="relative w-full overflow-hidden rounded-[1.75rem] border border-white/8 bg-slate-950/60 p-4 text-left shadow-[0_18px_48px_rgba(15,23,42,0.26)] transition hover:border-purple-500/35 hover:shadow-[0_22px_55px_rgba(76,29,149,0.18)] active:scale-[0.98]"
-                  >
-                    <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-blue-400/35 to-fuchsia-400/35" />
-                    {session.difficultyFeedback ? (
-                      <div className="absolute right-4 top-4">
-                        <FeedbackBadge feedback={session.difficultyFeedback} />
-                      </div>
-                    ) : null}
-                    <p className="mb-2 text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">
-                      {session.completedAt}
-                    </p>
-                    <h4 className="text-sm font-black text-slate-100">
-                      {session.goal} <span className="text-fuchsia-300">• {session.level}</span>
-                    </h4>
-                    <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-slate-500">Tap to inspect session detail</p>
-                    <div className="mt-4 grid grid-cols-3 gap-2 border-t border-white/6 pt-3 text-xs text-slate-400">
-                      <div>
-                        <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Equipment</p>
-                        <p className="mt-1 font-semibold text-slate-200">{session.equipment}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Time</p>
-                        <p className="mt-1 font-semibold text-slate-200">{session.actualSessionMinutes}m</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Reps</p>
-                        <p className="mt-1 font-semibold text-slate-200">{session.estimatedReps}</p>
-                      </div>
+              <div className="space-y-3">
+                {recentWorkoutsToDisplay.map((session) => {
+                  const isExpanded = expandedSessionId === session.id;
+                  return (
+                    <div
+                      key={session.id}
+                      className="relative overflow-hidden rounded-[1.75rem] border border-white/8 bg-slate-950/60 shadow-[0_18px_48px_rgba(15,23,42,0.26)] transition hover:border-purple-500/25"
+                    >
+                      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-blue-400/35 to-fuchsia-400/35" />
+
+                      {/* Row header — toggles expansion */}
+                      <button
+                        onClick={() => setExpandedSessionId(isExpanded ? null : session.id)}
+                        className="flex w-full items-center gap-3 p-4 text-left"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">
+                            {session.completedAt}
+                          </p>
+                          <h4 className="mt-0.5 text-sm font-black text-slate-100">
+                            {session.goal} <span className="text-fuchsia-300">• {session.level}</span>
+                          </h4>
+                          <p className="mt-0.5 text-[10px] uppercase tracking-[0.16em] text-slate-600">
+                            {session.equipment} · {session.actualSessionMinutes}m · {session.estimatedReps} reps
+                          </p>
+                        </div>
+                        {session.difficultyFeedback ? (
+                          <FeedbackBadge feedback={session.difficultyFeedback} />
+                        ) : null}
+                        <span className={`text-slate-500 transition-transform duration-200 ${isExpanded ? "rotate-180" : ""}`}>
+                          ▾
+                        </span>
+                      </button>
+
+                      {/* Expanded drill-down */}
+                      {isExpanded ? (
+                        <div className="border-t border-white/6 px-4 pb-4 pt-3">
+                          <div className="grid grid-cols-3 gap-2">
+                            {[
+                              { label: "Score", value: session.workoutScore ?? "--", color: "text-blue-300" },
+                              { label: "Form", value: session.formScore ?? "--", color: "text-emerald-300" },
+                              { label: "XP", value: session.xpEarned ?? "--", color: "text-fuchsia-300" },
+                            ].map(({ label, value, color }) => (
+                              <div key={label} className="rounded-xl border border-white/8 bg-slate-950/60 px-3 py-2.5 text-center">
+                                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">{label}</p>
+                                <p className={`mt-1 text-lg font-black ${color}`}>{value}</p>
+                              </div>
+                            ))}
+                          </div>
+                          {session.coachNote ? (
+                            <p className="mt-3 rounded-xl border border-white/8 bg-slate-950/50 px-3 py-2 text-xs leading-relaxed text-slate-300">
+                              <span className="font-black text-violet-300">Coach note: </span>{session.coachNote}
+                            </p>
+                          ) : null}
+                          <button
+                            onClick={() => onViewWorkoutDetail(session)}
+                            className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl border border-fuchsia-400/20 bg-fuchsia-500/10 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-fuchsia-200 transition hover:bg-fuchsia-500/16"
+                          >
+                            View Full Detail →
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
-                    <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-slate-400">
-                      <div>
-                        <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Score</p>
-                        <p className="mt-1 font-semibold text-slate-200">{session.workoutScore ?? "--"}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">Form</p>
-                        <p className="mt-1 font-semibold text-slate-200">{session.formScore ?? "--"}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] uppercase tracking-[0.2em] text-slate-500">XP</p>
-                        <p className="mt-1 font-semibold text-slate-200">{session.xpEarned ?? "--"}</p>
-                      </div>
-                    </div>
-                  </button>
-                ))}
+                  );
+                })}
               </div>
             )}
           </section>

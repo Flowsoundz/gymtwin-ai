@@ -47,10 +47,10 @@ export function FloatingCoachAvatar({
         };
       case "warning":
         return {
-          shell: "border-amber-400/32 bg-slate-950/84 shadow-[0_0_42px_rgba(245,158,11,0.16)]",
-          gradient: "from-amber-500/28 via-fuchsia-500/14 to-slate-950",
+          shell: "border-cyan-400/32 bg-slate-950/84 shadow-[0_0_42px_rgba(34,211,238,0.16)]",
+          gradient: "from-cyan-500/28 via-fuchsia-500/14 to-slate-950",
           badge: "Adjust",
-          badgeClass: "border-amber-400/28 bg-amber-500/12 text-amber-100",
+          badgeClass: "border-cyan-400/28 bg-cyan-500/12 text-cyan-100",
         };
       case "error":
         return {

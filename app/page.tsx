@@ -3,11 +3,15 @@
 import React, { useEffect, useEffectEvent, useMemo, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import type {
+  AdaptiveProfile,
   AppScreen,
   AvatarDisplaySettings,
   BodyProfile,
   CoachAvatar,
   CoachName,
+  PersonalizedWorkoutPlan,
+  PostWorkoutFeedback,
+  WeeklyPlanDayConfig,
   WorkoutGoal,
   WorkoutLevel,
   Equipment,
@@ -69,25 +73,93 @@ import { readBodyProfile, saveBodyProfile } from "@/lib/bodyProfileStorage";
 import { generateWeeklyPlan } from "@/lib/weeklyPlanEngine";
 import { clearWeeklyPlan, markTodayComplete, readWeeklyPlan, saveWeeklyPlan } from "@/lib/weeklyPlanStorage";
 import { buildRoutine, cleanMovementName } from "@/lib/workoutEngine";
+import { generatePersonalizedPlan, planToWorkoutMovements } from "@/lib/personalizedWorkoutEngine";
+import {
+  deriveWorkoutAdjustments,
+  readAdaptiveProfile,
+  saveAdaptiveProfile,
+  updateAdaptiveProfile,
+} from "@/lib/adaptiveProfileEngine";
 import {
   defaultAvatarDisplaySettings,
   readAvatarDisplaySettings,
   saveAvatarDisplaySettings,
 } from "@/lib/avatarDisplaySettings";
 import { DraggableCoach } from "@/components/DraggableCoach";
+import { NutritionScreen } from "@/components/NutritionScreen";
+import { FoodCameraScreen } from "@/components/FoodCameraScreen";
 import { getExerciseClipName } from "@/lib/exerciseAnimationMap";
 import type { CoachAnimationHint } from "@/lib/coachBrain";
 import { OnboardingScreen } from "@/components/OnboardingScreen";
+import { WorkoutPlanScreen } from "@/components/WorkoutPlanScreen";
 import {
   isOnboardingDone,
   isSafetyAccepted,
   markSafetyAccepted,
   readQuickStartDefaults,
+  saveQuickStartDefaults,
   isCameraTried,
   markCameraTried,
   areFirstHintsShown,
   markFirstHintsShown,
 } from "@/lib/onboardingStorage";
+import {
+  diagnosticsEnabled,
+  readClientDiagnostics,
+  setClientDiagnosticsContext,
+} from "@/lib/debugDiagnostics";
+import { calculateTargetsFromProfile, estimateWorkoutCaloriesBurned } from "@/lib/nutritionCalc";
+import {
+  appendFoodItem,
+  copyYesterdayMealsToToday,
+  readTodayNutritionLog,
+  removeFoodItem,
+} from "@/lib/nutritionStorage";
+import type { FoodItem, MacroTargets } from "@/types";
+
+function DebugDiagnosticsReporter({ currentScreen }: { currentScreen: AppScreen }) {
+  useEffect(() => {
+    if (!diagnosticsEnabled) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const sendSnapshot = async () => {
+      setClientDiagnosticsContext({
+        currentScreen,
+        routePath: window.location.pathname,
+      });
+      const snapshot = readClientDiagnostics();
+
+      try {
+        await fetch("/api/debug/diagnostics", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(snapshot),
+        });
+      } catch (error) {
+        if (!cancelled) {
+          console.warn("[GymTwinDebugClient] failed to post diagnostics", error);
+        }
+      }
+    };
+
+    void sendSnapshot();
+    const interval = window.setInterval(() => {
+      void sendSnapshot();
+    }, 15000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [currentScreen]);
+
+  return null;
+}
 
 export default function GymTwinApp() {
   const [currentScreen, setCurrentScreen] = useState<AppScreen>("landing");
@@ -105,6 +177,7 @@ export default function GymTwinApp() {
   const [workoutHistory, setWorkoutHistory] = useState<WorkoutSummaryData[]>([]);
   const [selectedWorkoutDetail, setSelectedWorkoutDetail] = useState<WorkoutSummaryData | null>(null);
   const [hasResumeSession, setHasResumeSession] = useState(false);
+  const [todayFoodLog, setTodayFoodLog] = useState<FoodItem[]>([]);
 
   const [selectedGoal, setSelectedGoal] = useState<WorkoutGoal>("Build muscle");
   const [selectedLevel, setSelectedLevel] = useState<WorkoutLevel>("Beginner");
@@ -113,6 +186,8 @@ export default function GymTwinApp() {
   const [selectedAvatar, setSelectedAvatar] = useState<CoachAvatar>("Nova");
   const [selectedCoach, setSelectedCoach] = useState<CoachName>("Supportive");
 
+  const [personalizedPlan, setPersonalizedPlan] = useState<PersonalizedWorkoutPlan | null>(null);
+  const [adaptiveProfile, setAdaptiveProfile] = useState<AdaptiveProfile | null>(null);
   const [activeRoutine, setActiveRoutine] = useState<WorkoutMovement[]>([]);
   const [movementIndex, setMovementIndex] = useState(0);
   const [workingSet, setWorkingSet] = useState(1);
@@ -154,6 +229,22 @@ export default function GymTwinApp() {
     });
   }, [lastWorkoutSummary, userStats, workoutHistory]);
 
+  const nutritionTargets: MacroTargets = useMemo(
+    () => calculateTargetsFromProfile(bodyProfile),
+    [bodyProfile]
+  );
+
+  const caloriesBurnedToday = useMemo(() => {
+    const today = todayString();
+    const todayWorkout = workoutHistory.find((w) => w.completedAt === today);
+    if (!todayWorkout) return 0;
+    return estimateWorkoutCaloriesBurned(
+      todayWorkout.actualSessionMinutes,
+      bodyProfile?.weightLbs ?? 180
+    );
+  }, [workoutHistory, bodyProfile]);
+
+
   const handleRestCountdownFinished = useEffectEvent(() => {
     if (activeRoutine.length > 0) advanceExecutionTrack();
   });
@@ -188,6 +279,17 @@ export default function GymTwinApp() {
     setCurrentScreen("landing");
   }
 
+  function persistAvatarSelection(nextAvatar: CoachAvatar) {
+    setSelectedAvatar(nextAvatar);
+    const currentDefaults = readQuickStartDefaults();
+    if (currentDefaults) {
+      saveQuickStartDefaults({
+        ...currentDefaults,
+        avatar: nextAvatar,
+      });
+    }
+  }
+
   useEffect(() => {
     const savedStats = readUserStats();
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -199,7 +301,9 @@ export default function GymTwinApp() {
     setWorkoutHistory(readWorkoutHistory());
     setBodyProfile(readBodyProfile());
     setWeeklyPlan(readWeeklyPlan());
+    setTodayFoodLog(readTodayNutritionLog().consumed);
     setAvatarDisplaySettings(readAvatarDisplaySettings());
+    setAdaptiveProfile(readAdaptiveProfile());
     setHasResumeSession(hasStoredActiveSession());
 
     // UX: restore persisted safety + camera state
@@ -275,7 +379,6 @@ export default function GymTwinApp() {
     });
 
     return () => subscription.unsubscribe();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Handle "Sign In" button from SettingsScreen
@@ -356,7 +459,27 @@ export default function GymTwinApp() {
 
   function initializeTrainingSession() {
     if (!hasAcceptedSafety) return;
-    let routine = buildRoutine(selectedGoal, selectedLevel, selectedEquipment, Number(sessionLength));
+
+    // Derive adaptive adjustments from the user's feedback history
+    const profile = adaptiveProfile ?? readAdaptiveProfile();
+    const adjustments = deriveWorkoutAdjustments(profile);
+
+    // Generate rich personalized plan from onboarding values + adaptive adjustments
+    const plan = generatePersonalizedPlan(
+      selectedGoal,
+      selectedLevel,
+      selectedEquipment,
+      sessionLength,
+      selectedCoach,
+      adjustments
+    );
+    setPersonalizedPlan(plan);
+
+    // Convert plan to WorkoutMovement[] for the player
+    let routine = planToWorkoutMovements(plan);
+
+    // FUTURE[adaptive]: apply difficulty feedback from previous session here
+    // Apply historical difficulty adjustment if available
     const historicalMatch = workoutHistory.find(
       (item) =>
         item.goal === selectedGoal &&
@@ -364,7 +487,6 @@ export default function GymTwinApp() {
         item.equipment === selectedEquipment &&
         item.difficultyFeedback !== null
     );
-
     if (historicalMatch?.difficultyFeedback) {
       const feedback = historicalMatch.difficultyFeedback;
       routine = routine.map((ex) => {
@@ -375,6 +497,10 @@ export default function GymTwinApp() {
       });
     }
 
+    // FUTURE[adaptive]: apply energy rating from previous session to scale volume
+    // FUTURE[adaptive]: apply soreness rating to skip or regress affected muscle groups
+    // FUTURE[adaptive]: apply missed workout recovery logic to adjust intensity
+
     if (routine.length === 0) {
       setDisplayedSpeech("No compatible routine found. Please adjust your settings.");
       return;
@@ -383,8 +509,8 @@ export default function GymTwinApp() {
     setActiveRoutine(routine); setMovementIndex(0); setWorkingSet(1); setCurrentReps(routine[0].baseReps);
     setTotalAccumulatedReps(0); setSessionStartedAt(null); setIsRestPhase(false); setRestCountdown(0);
     setExerciseCountdown(routine[0].activeSeconds); clearStoredActiveSession();
-    setHasResumeSession(false); setCurrentScreen("preview");
-    const phrase = "Review your custom program. Press Start when ready.";
+    setHasResumeSession(false); setCurrentScreen("workout_plan");
+    const phrase = "Your personalized plan is ready. Review it and press Begin when you're set.";
     setDisplayedSpeech(phrase); setTimeout(() => speak(phrase), 450);
   }
 
@@ -488,15 +614,32 @@ export default function GymTwinApp() {
     setDisplayedSpeech(line); speak(line); setCurrentScreen("summary");
   }
 
-  function submitDifficultyFeedback(feedback: "too_easy" | "perfect" | "too_hard") {
+  function submitAdaptiveFeedback(feedback: PostWorkoutFeedback) {
     if (!lastWorkoutSummary) return;
+
+    // Persist all feedback dimensions to the workout summary record
     const updatedSummary = buildScoredWorkoutSummary({
       ...lastWorkoutSummary,
-      difficultyFeedback: feedback,
+      difficultyFeedback: feedback.difficultyFeedback,
+      energyRating: feedback.energyRating,
+      sorenessRating: feedback.sorenessRating,
+      sorenessAreas: feedback.sorenessAreas,
     });
-    setLastWorkoutSummary(updatedSummary); saveLastWorkoutSummary(updatedSummary);
-    const updatedHistory = workoutHistory.map((item) => item.id === lastWorkoutSummary.id ? updatedSummary : item);
-    setWorkoutHistory(updatedHistory); saveWorkoutHistory(updatedHistory);
+    setLastWorkoutSummary(updatedSummary);
+    saveLastWorkoutSummary(updatedSummary);
+
+    const updatedHistory = workoutHistory.map((item) =>
+      item.id === lastWorkoutSummary.id ? updatedSummary : item
+    );
+    setWorkoutHistory(updatedHistory);
+    saveWorkoutHistory(updatedHistory);
+
+    // Update and persist the adaptive profile so the next plan generation uses it
+    const currentProfile = adaptiveProfile ?? readAdaptiveProfile();
+    const nextProfile = updateAdaptiveProfile(currentProfile, feedback, updatedSummary.completedAt);
+    setAdaptiveProfile(nextProfile);
+    saveAdaptiveProfile(nextProfile);
+
     setCurrentScreen("progress");
   }
 
@@ -515,16 +658,13 @@ export default function GymTwinApp() {
     return getExerciseClipName(activeMovement);
   }, [currentScreen, activeMovement, isRestPhase]);
 
-  const [floatingHint, setFloatingHint] = useState<CoachAnimationHint>("idle");
-
-  // Reset hint when leaving screens that drive it
-  useEffect(() => {
-    if (currentScreen === "summary") {
-      setFloatingHint("celebrate");
-    } else {
-      setFloatingHint("idle");
-    }
-  }, [currentScreen]);
+  const [floatingHintState, setFloatingHint] = useState<CoachAnimationHint>("idle");
+  const floatingHint: CoachAnimationHint =
+    currentScreen === "summary"
+      ? "celebrate"
+      : currentScreen === "player"
+        ? floatingHintState
+        : "idle";
 
   // Show the draggable floating coach only when:
   // - not on screens that already feature the coach prominently
@@ -540,6 +680,34 @@ export default function GymTwinApp() {
     avatarDisplaySettings.mode === "floating_overlay";
 
   const elapsedMinutes = sessionStartedAt ? calculateActualMinutes(sessionStartedAt) : 0;
+  // Live calorie credit — recomputes every render (timers drive re-renders during player)
+  const activeSessionCalories =
+    currentScreen === "player" && sessionStartedAt
+      ? estimateWorkoutCaloriesBurned(elapsedMinutes, bodyProfile?.weightLbs ?? 180)
+      : 0;
+
+  function handleLogMealItem(item: FoodItem) {
+    const updated = appendFoodItem(item);
+    setTodayFoodLog(updated.consumed);
+  }
+
+  function handleRemoveFoodItem(id: string) {
+    const updated = removeFoodItem(id);
+    setTodayFoodLog(updated.consumed);
+  }
+
+  function handleCopyYesterdayMeals() {
+    const updated = copyYesterdayMealsToToday();
+    setTodayFoodLog(updated.consumed);
+  }
+
+  function handleStartPlanDay(config: WeeklyPlanDayConfig) {
+    setSelectedGoal(config.goal);
+    setSelectedLevel(config.level);
+    setSelectedEquipment(config.equipment);
+    setSessionLength(config.sessionLength);
+    setCurrentScreen("setup");
+  }
 
   function handleQuickStart() {
     const defaults = readQuickStartDefaults();
@@ -564,6 +732,7 @@ export default function GymTwinApp() {
 
   return (
     <>
+      <DebugDiagnosticsReporter currentScreen={currentScreen} />
       {currentScreen === "onboarding" && (
         <OnboardingScreen
           onComplete={(defaults) => {
@@ -580,27 +749,6 @@ export default function GymTwinApp() {
 
       {currentScreen === "auth" && (
         <AuthScreen onSkip={() => setCurrentScreen("landing")} />
-      )}
-
-      {/* Guest sync banner — shown on landing when not signed in */}
-      {currentScreen === "landing" && !supabaseUser && !syncBannerDismissed && (
-        <div className="fixed bottom-4 left-1/2 z-50 flex w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 items-center justify-between gap-3 rounded-2xl border border-purple-500/30 bg-slate-950/90 px-4 py-3 shadow-[0_0_24px_rgba(139,92,246,0.2)] backdrop-blur-xl">
-          <p className="text-xs font-bold text-slate-200">Sign in to sync your progress across devices</p>
-          <div className="flex shrink-0 items-center gap-2">
-            <button
-              onClick={() => setCurrentScreen("auth")}
-              className="rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 px-3 py-1.5 text-[11px] font-black text-white"
-            >
-              Sign In
-            </button>
-            <button
-              onClick={() => setSyncBannerDismissed(true)}
-              className="text-slate-500 hover:text-slate-300 text-lg leading-none"
-            >
-              ×
-            </button>
-          </div>
-        </div>
       )}
 
       {currentScreen === "landing" && (
@@ -621,6 +769,10 @@ export default function GymTwinApp() {
           onGenerateWeeklyPlan={handleGenerateWeeklyPlan}
           selectedAvatar={selectedAvatar}
           cameraTried={cameraTried}
+          showSyncBanner={!supabaseUser && !syncBannerDismissed}
+          onOpenAuth={() => setCurrentScreen("auth")}
+          onDismissSyncBanner={() => setSyncBannerDismissed(true)}
+          onViewNutrition={() => setCurrentScreen("nutrition")}
           primaryButton={primaryButton}
           secondaryButton={secondaryButton}
         />
@@ -633,6 +785,7 @@ export default function GymTwinApp() {
           onOpenModelLab={() => setCurrentScreen("model_lab")}
           onResetLocalData={resetLocalAppData}
           selectedAvatar={selectedAvatar}
+          onSelectedAvatarChange={persistAvatarSelection}
           bodyProfile={bodyProfile}
           avatarDisplaySettings={avatarDisplaySettings}
           onBodyProfileChange={(profile) => {
@@ -693,6 +846,20 @@ export default function GymTwinApp() {
         />
       )}
 
+      {currentScreen === "workout_plan" && personalizedPlan && (
+        <WorkoutPlanScreen
+          plan={personalizedPlan}
+          selectedCoach={selectedCoach}
+          selectedAvatar={selectedAvatar}
+          selectedGoal={selectedGoal}
+          selectedLevel={selectedLevel}
+          onBeginWorkout={launchActiveWorkoutTracking}
+          onBackToSetup={() => setCurrentScreen("setup")}
+          primaryButton={primaryButton}
+          secondaryButton={secondaryButton}
+        />
+      )}
+
       {currentScreen === "preview" && activeRoutine.length > 0 && (
         <RoutinePreviewScreen
           activeRoutine={activeRoutine}
@@ -723,6 +890,7 @@ export default function GymTwinApp() {
           avatarDisplaySettings={avatarDisplaySettings}
           isMuted={isMuted}
           displayedSpeech={displayedSpeech}
+          personalizedPlan={personalizedPlan ?? undefined}
           cleanMovementName={cleanMovementName}
           secondsToClock={secondsToClock}
           onToggleMute={() => setIsMuted((muted) => !muted)}
@@ -748,7 +916,7 @@ export default function GymTwinApp() {
           weeklyPlan={weeklyPlan}
           workoutHistory={workoutHistory}
           userStats={userStats}
-          onSubmitDifficultyFeedback={submitDifficultyFeedback}
+          onSubmitAdaptiveFeedback={submitAdaptiveFeedback}
           onRepeatWorkout={initializeTrainingSession}
           onStartNewWorkout={() => setCurrentScreen("setup")}
           onViewProgress={() => setCurrentScreen("progress")}
@@ -785,10 +953,36 @@ export default function GymTwinApp() {
           userStats={userStats}
           workoutHistory={workoutHistory}
           onStartAnotherWorkout={() => setCurrentScreen("setup")}
+          onStartPlanDay={handleStartPlanDay}
           onReturnHome={resetWorkout}
           onViewWorkoutDetail={viewWorkoutDetail}
           primaryButton={primaryButton}
           secondaryButton={secondaryButton}
+        />
+      )}
+
+      {currentScreen === "nutrition" && (
+        <NutritionScreen
+          targets={nutritionTargets}
+          todayFoodLog={todayFoodLog}
+          caloriesBurnedToday={caloriesBurnedToday}
+          activeSessionCalories={activeSessionCalories}
+          bodyProfile={bodyProfile}
+          onBack={() => setCurrentScreen("landing")}
+          onOpenFoodCamera={() => setCurrentScreen("food_camera")}
+          onCopyYesterdayMeals={handleCopyYesterdayMeals}
+          onRemoveFoodItem={handleRemoveFoodItem}
+          primaryButton={primaryButton}
+        />
+      )}
+
+      {currentScreen === "food_camera" && (
+        <FoodCameraScreen
+          onBack={() => setCurrentScreen("nutrition")}
+          onAddFoodItems={(items) => {
+            items.forEach((item) => handleLogMealItem(item));
+            setCurrentScreen("nutrition");
+          }}
         />
       )}
 
