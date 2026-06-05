@@ -1,8 +1,30 @@
 import { EXERCISE_LOG_KEY, EXERCISE_PR_KEY } from "@/lib/storageKeys";
 import type { ExerciseLogEntry, ExercisePR } from "@/types";
 
-// Max entries kept in localStorage — prunes oldest when exceeded
+// Max entries kept — prunes oldest when exceeded
 const MAX_LOG_ENTRIES = 600;
+
+// ─── IndexedDB async persistence (non-blocking during camera tracking) ────────
+// Writes go to IndexedDB asynchronously; reads stay synchronous from localStorage
+// for backward-compat until a future init-from-IDB migration is added.
+
+async function idbSet(key: string, value: unknown): Promise<void> {
+  if (typeof window === "undefined") return;
+  try {
+    const { set } = await import("idb-keyval");
+    await set(key, value);
+  } catch {
+    // IDB unavailable — fall through, localStorage write already done
+  }
+}
+
+async function idbDel(key: string): Promise<void> {
+  if (typeof window === "undefined") return;
+  try {
+    const { del } = await import("idb-keyval");
+    await del(key);
+  } catch { /* ignore */ }
+}
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
 
@@ -16,11 +38,12 @@ export function readExerciseLog(): ExerciseLogEntry[] {
 
 function saveExerciseLog(entries: ExerciseLogEntry[]): void {
   if (typeof window === "undefined") return;
-  // Keep most recent entries when over the cap
   const pruned = entries.length > MAX_LOG_ENTRIES
     ? entries.slice(entries.length - MAX_LOG_ENTRIES)
     : entries;
+  // Sync write to localStorage keeps reads fast; async write to IDB for capacity
   window.localStorage.setItem(EXERCISE_LOG_KEY, JSON.stringify(pruned));
+  void idbSet(EXERCISE_LOG_KEY, pruned);
 }
 
 export function readExercisePRs(): Record<string, ExercisePR> {
@@ -34,12 +57,15 @@ export function readExercisePRs(): Record<string, ExercisePR> {
 function saveExercisePRs(prs: Record<string, ExercisePR>): void {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(EXERCISE_PR_KEY, JSON.stringify(prs));
+  void idbSet(EXERCISE_PR_KEY, prs);
 }
 
 export function clearExerciseLog(): void {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(EXERCISE_LOG_KEY);
   window.localStorage.removeItem(EXERCISE_PR_KEY);
+  void idbDel(EXERCISE_LOG_KEY);
+  void idbDel(EXERCISE_PR_KEY);
 }
 
 // ─── Epley 1RM Formula ────────────────────────────────────────────────────────

@@ -117,6 +117,7 @@ export function WorkoutPlayerScreen({
   const [trackerWeight, setTrackerWeight] = useState<number | null>(null);
   const [prFlash, setPrFlash] = useState<string | null>(null);
   const [difficultyToast, setDifficultyToast] = useState<{ message: string; direction: "easy" | "hard" } | null>(null);
+  const [voiceCaption, setVoiceCaption] = useState<string | null>(null);
   const previousRestCountdownRef = useRef<number | null>(null);
   const previousActiveSetKeyRef = useRef<string | null>(null);
   const lastAutoSpeakRef = useRef<number>(0);
@@ -316,24 +317,30 @@ export function WorkoutPlayerScreen({
     stopCamera();
   };
 
-  // Auto voice interruption — fires when camera detects a new form issue
+  // Auto voice interruption — cooldown adapts to coaching intensity preference
   useEffect(() => {
     if (!isCameraRunning || isMuted || !onAutoSpeak) return;
     if (feedbackSeverity !== "error" && feedbackSeverity !== "warning") return;
     if (!latestIssue || latestIssue === lastAutoSpeakIssueRef.current) return;
+    const cooldownMs =
+      avatarDisplaySettings.talkativeness === "quiet" ? 15000 :
+      avatarDisplaySettings.talkativeness === "hype"  ? 4000  : 8000;
     const now = Date.now();
-    if (now - lastAutoSpeakRef.current < 8000) return;
+    if (now - lastAutoSpeakRef.current < cooldownMs) return;
     lastAutoSpeakIssueRef.current = latestIssue;
     lastAutoSpeakRef.current = now;
     const cue =
-      latestIssue === "shallow" ? "Go deeper — full range of motion." :
-      latestIssue === "unstable" ? "Slow down and control the movement." :
-      latestIssue === "lost_tracking" ? "Step back — I need your full body in frame." :
-      latestIssue === "hips_high" ? "Lower your hips. Keep your spine neutral." :
-      latestIssue === "hips_low" ? "Lift your hips and brace your core." :
+      latestIssue === "shallow"       ? "Go deeper — full range of motion."         :
+      latestIssue === "unstable"      ? "Slow down and control the movement."        :
+      latestIssue === "lost_tracking" ? "Step back — I need your full body in frame.":
+      latestIssue === "hips_high"     ? "Lower your hips. Keep your spine neutral."  :
+      latestIssue === "hips_low"      ? "Lift your hips and brace your core."        :
       feedbackMessage;
-    if (cue) onAutoSpeak(cue);
-  }, [feedbackSeverity, latestIssue, isCameraRunning, isMuted, onAutoSpeak, feedbackMessage]);
+    if (!cue) return;
+    onAutoSpeak(cue);
+    setVoiceCaption(cue);
+    window.setTimeout(() => setVoiceCaption(null), 4000);
+  }, [feedbackSeverity, latestIssue, isCameraRunning, isMuted, onAutoSpeak, feedbackMessage, avatarDisplaySettings.talkativeness]);
 
   // Difficulty adjustment wrappers — show toast then call parent
   function handleDifficultyEasy() {
@@ -1694,6 +1701,16 @@ export function WorkoutPlayerScreen({
           </div>
         </div>
       ) : null}
+
+      {/* Voice caption overlay — a11y: visible text when coach auto-speaks */}
+      {voiceCaption && (
+        <div className="pointer-events-none fixed inset-x-4 bottom-20 z-50 flex justify-center">
+          <div className="max-w-lg rounded-2xl border border-cyan-400/30 bg-slate-950/92 px-5 py-3 shadow-[0_0_24px_rgba(34,211,238,0.18)] backdrop-blur-xl">
+            <p className="text-[10px] font-black uppercase tracking-[0.26em] text-cyan-400">Coach</p>
+            <p className="mt-1 text-sm font-semibold leading-snug text-white">{voiceCaption}</p>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

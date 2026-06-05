@@ -18,20 +18,44 @@ export type CastPayload = {
 };
 
 const CHANNEL = "gymtwin_cast";
+const THROTTLE_MS = 50; // 20Hz — smooth enough for countdown display
 
 export function useCastSender(payload: CastPayload | null) {
   const channelRef = useRef<BroadcastChannel | null>(null);
+  const lastPostRef = useRef<number>(0);
+  const pendingRef = useRef<CastPayload | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined" || !("BroadcastChannel" in window)) return;
     channelRef.current = new BroadcastChannel(CHANNEL);
-    return () => channelRef.current?.close();
+    return () => {
+      channelRef.current?.close();
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
   }, []);
 
-  // No deps — posts on every render; workout timers drive ~1Hz re-renders anyway
   useEffect(() => {
     if (!payload || !channelRef.current) return;
-    channelRef.current.postMessage(payload);
+
+    const now = Date.now();
+    const elapsed = now - lastPostRef.current;
+
+    const dispatch = (p: CastPayload) => {
+      channelRef.current?.postMessage(p);
+      lastPostRef.current = Date.now();
+      pendingRef.current = null;
+    };
+
+    if (elapsed >= THROTTLE_MS) {
+      dispatch(payload);
+    } else {
+      pendingRef.current = payload;
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
+        if (pendingRef.current) dispatch(pendingRef.current);
+      }, THROTTLE_MS - elapsed);
+    }
   });
 }
 

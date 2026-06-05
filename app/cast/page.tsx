@@ -40,6 +40,12 @@ export default function CastPage() {
           ? "border-cyan-400/50 shadow-[inset_0_0_80px_rgba(34,211,238,0.06)]"
           : "border-white/0";
 
+  const formIcon =
+    state.feedbackSeverity === "good"    ? { symbol: "✓", label: "Good form",    color: "text-emerald-400" } :
+    state.feedbackSeverity === "error"   ? { symbol: "!", label: "Fix form",      color: "text-red-400"     } :
+    state.feedbackSeverity === "warning" ? { symbol: "△", label: "Check form",   color: "text-cyan-400"    } :
+    null;
+
   return (
     <div className={`flex min-h-screen flex-col bg-[#020617] text-white border-[3px] transition-all duration-700 ${borderGlow}`}>
       {/* Progress bar */}
@@ -99,11 +105,23 @@ export default function CastPage() {
             >
               {state.exerciseName}
             </h1>
-            <div
-              className="mt-6 font-mono font-black leading-none text-purple-400"
-              style={{ fontSize: "clamp(10rem, 26vw, 20rem)" }}
-            >
-              {state.currentReps}
+            <div className="relative mt-6 flex items-center justify-center gap-6">
+              <div
+                className="font-mono font-black leading-none text-purple-400"
+                style={{ fontSize: "clamp(10rem, 26vw, 20rem)" }}
+              >
+                {state.currentReps}
+              </div>
+              {formIcon && (
+                <div className="flex flex-col items-center gap-1" aria-label={formIcon.label}>
+                  <span className={`font-black leading-none ${formIcon.color}`} style={{ fontSize: "clamp(4rem, 10vw, 8rem)" }}>
+                    {formIcon.symbol}
+                  </span>
+                  <span className={`text-xl font-black uppercase tracking-widest ${formIcon.color}`}>
+                    {formIcon.label}
+                  </span>
+                </div>
+              )}
             </div>
             <p className="text-4xl font-black uppercase tracking-[0.2em] text-slate-600">reps</p>
 
