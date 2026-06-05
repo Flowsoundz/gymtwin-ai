@@ -280,22 +280,35 @@ function sanitizeAnimationClips(
     return clips;
   }
 
+  // Clips where the character is already prone/floor-level: strip the entire
+  // hips position track so FLOOR_ANCHOR_OFFSET can place the model correctly.
+  // Standing clips that have vertical hip movement (squats, deadlifts): keep Y
+  // so the descent is real, only zero X/Z horizontal drift.
+  const FLOOR_CLIP_KEYWORDS = ["pushup", "push_up", "plank", "situp", "sit_up", "burpee", "crunch", "pike"];
+  const isFloorClip = (name: string) => {
+    const lower = name.toLowerCase();
+    return FLOOR_CLIP_KEYWORDS.some((kw) => lower.includes(kw));
+  };
+
   return clips.map((clip) => {
-    const newTracks = clip.tracks.map((track) => {
-      if (track.name !== "mixamorigHips.position") return track;
-      // Zero X and Z (horizontal drift) but keep Y so squats/deadlifts
-      // descend correctly and feet stay on the floor.
+    const newTracks = clip.tracks.flatMap((track) => {
+      if (track.name !== "mixamorigHips.position") return [track];
+      if (isFloorClip(clip.name)) {
+        // Floor pose: strip entirely; FLOOR_ANCHOR_OFFSET handles placement.
+        return [];
+      }
+      // Standing with vertical descent: keep Y, zero X/Z drift.
       const src = (track as VectorKeyframeTrack).values;
       const values = src instanceof Float32Array ? src.slice() : Float32Array.from(src);
       for (let i = 0; i < values.length; i += 3) {
         values[i]     = 0; // X
         values[i + 2] = 0; // Z
       }
-      return new VectorKeyframeTrack(
+      return [new VectorKeyframeTrack(
         track.name,
         Array.from((track as VectorKeyframeTrack).times),
         values
-      );
+      )];
     });
     return new AnimationClip(clip.name, clip.duration, newTracks);
   });
