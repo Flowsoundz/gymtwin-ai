@@ -474,56 +474,50 @@ export function WorkoutPlayerScreen({
 
   const voicePanel = (
     <div className="rounded-[1.7rem] border border-white/8 bg-white/6 p-4 backdrop-blur-xl shadow-[0_18px_60px_rgba(15,23,42,0.45)]">
-      <div className="rounded-[1.25rem] border border-white/8 bg-slate-950/55 px-4 py-4 text-left text-sm leading-relaxed text-slate-300">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-blue-300">Voice Control</p>
-            <p className="mt-1 text-xs font-bold text-slate-100">
-              {isSupported ? (isListening ? "Listening" : "Off") : "Unavailable"}
-            </p>
-          </div>
-          <div className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] ${isListening ? "border-emerald-400/30 bg-emerald-500/15 text-emerald-200" : "border-slate-700/60 bg-slate-900/70 text-slate-300"}`}>
-            {isListening ? "Listening" : "Voice"}
-          </div>
+      <div className="flex items-center gap-3">
+        {/* Ambient ring — pulses when listening */}
+        <div className="relative flex h-10 w-10 shrink-0 items-center justify-center">
+          {isListening && (
+            <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400/20" />
+          )}
+          <span className={`absolute inset-[3px] rounded-full border-2 transition-all duration-500 ${isListening ? "border-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.5)]" : "border-slate-700"}`} />
+          <span className={`h-2.5 w-2.5 rounded-full transition-all duration-500 ${isListening ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" : "bg-slate-600"}`} />
         </div>
-        <p className="mt-3 text-xs leading-relaxed text-slate-400">
-          {isSupported
-            ? "Try “complete set”, “skip rest”, “start camera”, “stop camera”, or “pain stop”."
-            : "Voice commands are not supported in this browser yet."}
-        </p>
-        {transcript ? (
-          <p className="mt-3 rounded-xl border border-white/8 bg-slate-900/75 px-3 py-2 text-xs text-slate-200">
-            Heard: <span className="font-semibold">{transcript}</span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-500">Voice</p>
+          <p className={`text-xs font-bold transition-colors ${isListening ? "text-emerald-300" : "text-slate-400"}`}>
+            {!isSupported ? "Unavailable" : isListening ? "Listening…" : "Off"}
           </p>
-        ) : null}
-        {voiceErrorMessage ? (
-          <p className="mt-3 text-xs leading-relaxed text-red-200">{voiceErrorMessage}</p>
-        ) : null}
-        {conversationState ? (
-          <div className="mt-4 rounded-[1.2rem] border border-fuchsia-400/18 bg-gradient-to-br from-blue-500/10 via-slate-950/65 to-fuchsia-500/10 px-4 py-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.24em] text-fuchsia-200">Conversation Mode</p>
-                <p className="mt-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-400">
-                  Intent: {conversationState.intent.replaceAll("_", " ")}
-                </p>
-              </div>
-              <div className="rounded-full border border-white/10 bg-slate-900/70 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em] text-slate-200">
-                Local
-              </div>
-            </div>
-            <p className="mt-3 text-sm font-medium leading-relaxed text-white">{conversationState.answer}</p>
-          </div>
-        ) : null}
-        {isSupported ? (
+        </div>
+        {isSupported && (
           <button
             onClick={isListening ? stopListening : startListening}
-            className={`mt-4 w-full ${isListening ? "rounded-2xl border border-white/10 bg-slate-900/80 px-4 py-3 text-sm font-black tracking-wide text-slate-100 shadow-[0_12px_30px_rgba(15,23,42,0.35)] transition hover:border-blue-400/30 hover:bg-slate-800/90" : primaryButton}`}
+            className={`shrink-0 rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] transition active:scale-95 ${
+              isListening
+                ? "border-emerald-400/30 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25"
+                : "border-slate-700 bg-slate-900 text-slate-400 hover:border-slate-600 hover:text-slate-200"
+            }`}
           >
-            {isListening ? "Stop Voice" : "Start Voice"}
+            {isListening ? "Stop" : "Start"}
           </button>
-        ) : null}
+        )}
       </div>
+      {transcript && (
+        <p className="mt-3 rounded-xl border border-white/8 bg-slate-900/75 px-3 py-2 text-xs text-slate-200">
+          Heard: <span className="font-semibold">{transcript}</span>
+        </p>
+      )}
+      {voiceErrorMessage && (
+        <p className="mt-2 text-xs leading-relaxed text-red-300">{voiceErrorMessage}</p>
+      )}
+      {conversationState && (
+        <div className="mt-3 rounded-[1.2rem] border border-fuchsia-400/18 bg-gradient-to-br from-blue-500/10 via-slate-950/65 to-fuchsia-500/10 px-4 py-3">
+          <p className="text-[10px] font-black uppercase tracking-[0.24em] text-fuchsia-300">
+            {conversationState.intent.replaceAll("_", " ")}
+          </p>
+          <p className="mt-2 text-sm font-medium leading-relaxed text-white">{conversationState.answer}</p>
+        </div>
+      )}
     </div>
   );
 
@@ -1341,16 +1335,12 @@ export function WorkoutPlayerScreen({
                           <p className="mt-1.5 text-slate-200 italic leading-relaxed">
                             &ldquo;{personalizedExercise.coachingCue}&rdquo;
                           </p>
-                          <p className="mt-4 text-slate-400">
-                            <span className="mr-2 text-[10px] font-black uppercase tracking-[0.2em] text-purple-400">Breathe:</span>
-                            {activeMovement.breathingCue}
-                          </p>
                         </>
                       ) : (
-                        <>
-                          <p className="text-slate-400"><span className="mr-2 text-xs font-black uppercase tracking-[0.2em] text-blue-400">Form:</span>{activeMovement.formGuide}</p>
-                          <p className="mt-4 text-slate-400"><span className="mr-2 text-xs font-black uppercase tracking-[0.2em] text-purple-400">Breathe:</span>{activeMovement.breathingCue}</p>
-                        </>
+                        <p className="text-slate-400">
+                          <span className="mr-2 text-[10px] font-black uppercase tracking-[0.2em] text-blue-400">Form:</span>
+                          {activeMovement.formGuide}
+                        </p>
                       )}
                     </div>
                   </div>
@@ -1359,30 +1349,39 @@ export function WorkoutPlayerScreen({
                 <section className="rounded-[1.9rem] border border-white/8 bg-white/6 p-4 backdrop-blur-xl shadow-[0_18px_60px_rgba(15,23,42,0.45)] lg:p-5">
                   <div className="space-y-3">
                     <button onClick={handleCompleteSet} className={primaryButton}>Complete Set</button>
-                    <div className="grid grid-cols-2 gap-3">
+
+                    {/* Compact difficulty nudge row */}
+                    <div className="flex items-stretch gap-2">
                       <button
                         onClick={onChangeDifficultyEasy}
-                        className="rounded-2xl border border-slate-800 bg-slate-900 px-3 py-3 text-left transition-all active:scale-95 hover:border-emerald-700/40"
+                        className="flex flex-1 items-center gap-2 rounded-2xl border border-emerald-900/40 bg-emerald-950/20 px-3 py-2.5 transition-all active:scale-95 hover:border-emerald-700/50 hover:bg-emerald-950/30"
                       >
-                        <p className="text-xs font-black text-emerald-300">Too Easy +2</p>
-                        {personalizedExercise && (
-                          <p className="mt-0.5 text-[9px] leading-snug text-slate-500">
-                            {personalizedExercise.harderOption}
-                          </p>
-                        )}
+                        <span className="text-lg leading-none text-emerald-400">↑</span>
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-300">Too Easy</p>
+                          {personalizedExercise && (
+                            <p className="mt-0.5 truncate text-[9px] leading-snug text-slate-500">
+                              {personalizedExercise.harderOption}
+                            </p>
+                          )}
+                        </div>
                       </button>
                       <button
                         onClick={onChangeDifficultyHard}
-                        className="rounded-2xl border border-slate-800 bg-slate-900 px-3 py-3 text-left transition-all active:scale-95 hover:border-orange-700/40"
+                        className="flex flex-1 items-center gap-2 rounded-2xl border border-orange-900/40 bg-orange-950/20 px-3 py-2.5 transition-all active:scale-95 hover:border-orange-700/50 hover:bg-orange-950/30"
                       >
-                        <p className="text-xs font-black text-orange-300">Too Hard −2</p>
-                        {personalizedExercise && (
-                          <p className="mt-0.5 text-[9px] leading-snug text-slate-500">
-                            {personalizedExercise.easierOption}
-                          </p>
-                        )}
+                        <span className="text-lg leading-none text-orange-400">↓</span>
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-300">Too Hard</p>
+                          {personalizedExercise && (
+                            <p className="mt-0.5 truncate text-[9px] leading-snug text-slate-500">
+                              {personalizedExercise.easierOption}
+                            </p>
+                          )}
+                        </div>
                       </button>
                     </div>
+
                     <div className="grid grid-cols-2 gap-3 pt-1 text-xs font-black uppercase tracking-wider">
                       <button onClick={onAdvanceExecutionTrack} className="pl-2 text-left text-slate-600 transition hover:text-slate-400">Skip Movement</button>
                       <button onClick={handleSafetyStop} className="pr-2 text-right text-red-500/80 transition hover:text-red-400">Pain / Stop</button>
