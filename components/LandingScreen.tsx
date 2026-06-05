@@ -4,11 +4,20 @@ import Image from "next/image";
 import { getAvatarLabel, getAvatarRole } from "@/lib/avatarAssets";
 import { getAvatarAsset } from "@/lib/avatarAssets";
 import { getCoachAdaptationRecommendation } from "@/lib/coachAdaptationEngine";
+import {
+  generateNovaDeloadNote,
+  getAFIBand,
+  getMacrocycleArc,
+  getPhaseBadgeColor,
+  getPhaseLabel,
+} from "@/lib/macrocycleEngine";
+import { getTopLoggedExercises } from "@/lib/progressiveOverloadEngine";
 import { deriveProgressTrends } from "@/lib/progressTrends";
 import { todayString, yesterdayString } from "@/lib/time";
 import { getTodayWeeklyPlanLabel } from "@/lib/weeklyPlanEngine";
 import { useEffect, useMemo, useState } from "react";
-import type { BodyProfile, CoachAvatar, TraineeStats, WeeklyPlan, WorkoutSummaryData } from "@/types";
+import type { AdaptiveProfile, BodyProfile, CoachAvatar, TraineeStats, WeeklyPlan, WeeklyPlanDayConfig, WorkoutSummaryData } from "@/types";
+import type { Macrocycle } from "@/types/macrocycle";
 
 type LandingScreenProps = {
   userStats: TraineeStats;
@@ -31,6 +40,9 @@ type LandingScreenProps = {
   onOpenAuth?: () => void;
   onDismissSyncBanner?: () => void;
   onViewNutrition: () => void;
+  macrocycle?: Macrocycle | null;
+  adaptiveProfile?: AdaptiveProfile | null;
+  onStartPlanDay?: (config: WeeklyPlanDayConfig) => void;
   primaryButton: string;
   secondaryButton: string;
 };
@@ -191,6 +203,9 @@ export function LandingScreen({
   onOpenAuth,
   onDismissSyncBanner,
   onViewNutrition,
+  macrocycle,
+  adaptiveProfile,
+  onStartPlanDay,
 }: LandingScreenProps) {
   const [activeTab, setActiveTab] = useState<NavTab>("home");
   const [heroInteractive, setHeroInteractive] = useState(false);
@@ -241,6 +256,16 @@ export function LandingScreen({
   );
 
   const isFirstSession = userStats.workoutsCompleted === 0 && userStats.streak === 0 && userStats.totalMinutes === 0;
+
+  // Macrocycle intelligence
+  const macroArc = macrocycle ? getMacrocycleArc(macrocycle) : null;
+  const macroAfiBand = macrocycle ? getAFIBand(macrocycle.accumulatedFatigueIndex) : null;
+  const isDeloadWeek = macrocycle?.currentPhase === "deload";
+  const isHeavyWeek = macrocycle?.currentPhase === "loaded warning";
+  const novaDeloadMessage = isDeloadWeek && macrocycle ? generateNovaDeloadNote(macrocycle) : null;
+
+  // Progressive overload — last 3 logged exercises
+  const topLogged = useMemo(() => getTopLoggedExercises(3), [workoutHistory.length]);
   const greeting = useMemo(
     () => buildGreeting(userStats, latestWorkoutSummary, isFirstSession),
     [userStats, latestWorkoutSummary, isFirstSession]
@@ -440,6 +465,60 @@ export function LandingScreen({
             </div>
 
             <div className="flex flex-col gap-6">
+
+              {/* Deload Week Announcement — takes priority over everything */}
+              {isDeloadWeek && novaDeloadMessage && macrocycle && (
+                <div className="relative overflow-hidden rounded-[1.8rem] border border-blue-500/30 bg-[linear-gradient(135deg,rgba(30,58,138,0.2),rgba(15,23,42,0.9))] p-5 shadow-[0_0_30px_rgba(59,130,246,0.1)]">
+                  <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-blue-400/60 to-transparent" />
+                  <div className="flex items-center gap-2.5 mb-3">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-full border border-blue-500/40 bg-blue-950/60 text-xs font-black text-blue-300 shadow-[0_0_12px_rgba(59,130,246,0.35)]">◈</div>
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.26em] text-blue-400">Deload Week · Nova</p>
+                      <p className="text-sm font-black text-white">This Week We Shift the Target</p>
+                    </div>
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-slate-300 line-clamp-3">{novaDeloadMessage}</p>
+                </div>
+              )}
+
+              {/* Macrocycle Status Strip */}
+              {macrocycle && macroArc && !isDeloadWeek && (
+                <div className={`rounded-2xl border p-3.5 ${isHeavyWeek ? "border-yellow-900/40 bg-yellow-950/15" : "border-purple-900/30 bg-purple-950/15"}`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className={`text-[9px] font-black uppercase tracking-[0.28em] ${isHeavyWeek ? "text-yellow-400" : "text-purple-400"}`}>
+                        Training Block
+                      </p>
+                      <p className="text-sm font-black text-white">
+                        Week {macrocycle.currentWeek} of {macrocycle.targetWeeks}
+                        <span className={`ml-2 text-[10px] font-bold rounded-full border px-2 py-0.5 ${getPhaseBadgeColor(macrocycle.currentPhase)}`}>
+                          {getPhaseLabel(macrocycle.currentPhase)}
+                        </span>
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {macroArc.map((w) => (
+                        <div
+                          key={w.week}
+                          className={`rounded-full transition-all ${
+                            w.status === "current"
+                              ? "h-2.5 w-4 bg-purple-400 shadow-[0_0_6px_rgba(168,85,247,0.7)]"
+                              : w.status === "completed"
+                                ? "h-2 w-2 bg-white/35"
+                                : "h-2 w-2 bg-white/10"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  {macroAfiBand && macroAfiBand !== "fresh" && macroAfiBand !== "building" && (
+                    <p className={`mt-1.5 text-[10px] font-bold uppercase tracking-wider ${macroAfiBand === "critical" || macroAfiBand === "overloaded" ? "text-red-400" : "text-yellow-400"}`}>
+                      {macroAfiBand === "critical" ? "⚠ Critical fatigue — deload soon" : macroAfiBand === "overloaded" ? "⚠ High fatigue accumulating" : "◈ Heavy load week — recovery ahead"}
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div className="bento-card rounded-3xl border border-white/8 bg-slate-950/65 p-5 backdrop-blur-md">
                 <div className="mb-5">
                   <p className="text-[11px] font-black uppercase tracking-[0.3em] text-slate-500">Dashboard</p>
@@ -480,9 +559,31 @@ export function LandingScreen({
                       {todayPlan ? todayPlan.focus : "No plan yet"}
                     </p>
                     {todayPlan ? (
-                      <p className="mt-0.5 text-xs text-slate-400">
-                        {todayPlan.dayLabel} · {todayPlan.recommendedWorkout} · {todayPlan.durationMinutes} min
-                      </p>
+                      <>
+                        <p className="mt-0.5 text-xs text-slate-400">
+                          {todayPlan.dayLabel} · {todayPlan.durationMinutes} min
+                        </p>
+                        {todayPlan.workoutConfig?.muscleGroups && todayPlan.workoutConfig.muscleGroups.length > 0 && (
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                            {todayPlan.workoutConfig.muscleGroups.slice(0, 3).map((g) => (
+                              <span key={g} className="rounded-full border border-white/8 bg-white/5 px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider text-slate-500">
+                                {g}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {todayPlan.workoutConfig && onStartPlanDay && !todayPlan.completed && !todayPlan.isRestDay && (
+                          <button
+                            onClick={() => onStartPlanDay(todayPlan.workoutConfig!)}
+                            className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-950/40 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-blue-300 transition hover:border-blue-500/50 hover:bg-blue-950/60 active:scale-95"
+                          >
+                            ▶ Start This Session
+                          </button>
+                        )}
+                        {todayPlan.isRestDay && (
+                          <span className="mt-1.5 inline-block rounded-full border border-teal-900/40 bg-teal-950/30 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-teal-400">Rest Day</span>
+                        )}
+                      </>
                     ) : (
                       <div className="mt-2 space-y-2">
                         <div className="flex flex-wrap gap-1.5">
@@ -567,6 +668,28 @@ export function LandingScreen({
                 )}
               </div>
 
+              {/* Last Logged — Progressive Overload Snapshot */}
+              {topLogged.length > 0 && (
+                <div className="rounded-2xl border border-white/8 bg-slate-950/60 px-4 py-4">
+                  <p className="mb-3 text-[10px] font-black uppercase tracking-[0.26em] text-emerald-400">Last Logged</p>
+                  <div className="space-y-2.5">
+                    {topLogged.map((ex) => (
+                      <div key={ex.name} className="flex items-center justify-between gap-2">
+                        <p className="text-[11px] font-semibold text-slate-300 truncate min-w-0">{ex.name}</p>
+                        <div className="shrink-0 flex items-center gap-1.5">
+                          {ex.pr?.bestWeightLbs != null && ex.pr.bestWeightLbs > 0 ? (
+                            <span className="text-[11px] font-black text-emerald-300">{ex.pr.bestWeightLbs} lbs</span>
+                          ) : ex.pr?.bestReps != null ? (
+                            <span className="text-[11px] font-black text-blue-300">{ex.pr.bestReps} reps</span>
+                          ) : null}
+                          {ex.pr && <span className="text-[9px] text-slate-600">PR</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <QuickActionCard
                   icon="📷"
@@ -637,6 +760,18 @@ export function LandingScreen({
                 <p className="text-[10px] font-black uppercase tracking-[0.28em] text-violet-400">{coachName}&apos;s Insight</p>
                 <p className="mt-1 text-sm font-black text-white">{coachRecommendation.title}</p>
                 <p className="mt-1 text-xs leading-relaxed text-slate-400">{coachRecommendation.message}</p>
+                {adaptiveProfile && adaptiveProfile.totalFeedbackSubmissions > 0 && (
+                  <p className="mt-2 text-[10px] leading-relaxed text-purple-300/80 border-t border-white/6 pt-2">
+                    {adaptiveProfile.consecutiveTooHardSessions >= 2
+                      ? "⚠ Recovery mode — back-to-back hard sessions detected."
+                      : adaptiveProfile.consecutiveTooEasySessions >= 2
+                        ? "↑ Stepping up — consistent easy sessions, intensity increasing."
+                        : adaptiveProfile.activeSorenessAreas.length > 0
+                          ? `◈ ${adaptiveProfile.activeSorenessAreas.join(", ")} flagged — next plan adapts around soreness.`
+                          : `◈ Engine calibrated · ${adaptiveProfile.totalFeedbackSubmissions} session${adaptiveProfile.totalFeedbackSubmissions !== 1 ? "s" : ""} logged`
+                    }
+                  </p>
+                )}
               </div>
               <div className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${
                 coachRecommendation.priority === "high"
