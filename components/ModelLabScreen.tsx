@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   Coach3D,
   getCoachModelTransformPreset,
@@ -347,9 +347,15 @@ export function ModelLabScreen({
   const [previewTransform, setPreviewTransform] = useState<Required<PreviewTransform>>(() =>
     createPreviewTransformFromPreset(ATLAS_RUNTIME_COACH_MODEL_PATH, "in_frame")
   );
+  // Ref-buffered live value — mutated directly during slider drag to avoid 60Hz
+  // React state updates. Committed to state on drag-end (onPointerUp) or debounce.
+  const liveTransformRef = useRef<Required<PreviewTransform>>(previewTransform);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    setPreviewTransform(createPreviewTransformFromPreset(selectedModel.path, previewFrame));
+    const next = createPreviewTransformFromPreset(selectedModel.path, previewFrame);
+    liveTransformRef.current = next;
+    setPreviewTransform(next);
   }, [previewFrame, selectedModel.path]);
 
   useEffect(() => {
@@ -362,15 +368,22 @@ export function ModelLabScreen({
     value: number,
     index?: number
   ) => {
-    setPreviewTransform((current) => {
-      if (field === "scale") {
-        return { ...current, scale: value };
-      }
-
-      const nextTuple = [...current[field]] as [number, number, number];
+    // 1. Mutate ref immediately — Coach3D reads this on next frame, zero React re-renders
+    const draft = { ...liveTransformRef.current };
+    if (field === "scale") {
+      draft.scale = value;
+    } else {
+      const nextTuple = [...(draft[field] as [number, number, number])] as [number, number, number];
       nextTuple[index ?? 0] = value;
-      return { ...current, [field]: nextTuple };
-    });
+      (draft as Record<string, unknown>)[field] = nextTuple;
+    }
+    liveTransformRef.current = draft;
+
+    // 2. Debounced React state commit — updates slider labels + JSON preview at most every 80ms
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(() => {
+      setPreviewTransform({ ...liveTransformRef.current });
+    }, 80);
   };
 
   const controlGroups = useMemo<TransformControl[]>(
@@ -444,13 +457,35 @@ export function ModelLabScreen({
 
   const currentValuesBlock = useMemo(
     () =>
-      `{\n  position: [${previewTransform.position.map(formatTransformNumber).join(", ")}],\n  scale: ${formatTransformNumber(previewTransform.scale)},\n  rotation: [${previewTransform.rotation.map(formatTransformNumber).join(", ")}],\n  cameraPosition: [${previewTransform.cameraPosition.map(formatTransformNumber).join(", ")}]\n}`,
+      JSON.stringify(
+        {
+          position: previewTransform.position.map((v) => parseFloat(formatTransformNumber(v))),
+          scale: parseFloat(formatTransformNumber(previewTransform.scale)),
+          rotation: previewTransform.rotation.map((v) => parseFloat(formatTransformNumber(v))),
+          cameraPosition: previewTransform.cameraPosition.map((v) => parseFloat(formatTransformNumber(v))),
+        },
+        null,
+        2
+      ),
     [previewTransform]
   );
 
   const handleCopyValues = async () => {
+    // Read from the live ref so Copy always captures the latest slider position,
+    // even if the debounced React state hasn't committed yet.
+    const live = liveTransformRef.current;
+    const serialized = JSON.stringify(
+      {
+        position: live.position.map((v) => parseFloat(formatTransformNumber(v))),
+        scale: parseFloat(formatTransformNumber(live.scale)),
+        rotation: live.rotation.map((v) => parseFloat(formatTransformNumber(v))),
+        cameraPosition: live.cameraPosition.map((v) => parseFloat(formatTransformNumber(v))),
+      },
+      null,
+      2
+    );
     try {
-      await navigator.clipboard.writeText(currentValuesBlock);
+      await navigator.clipboard.writeText(serialized);
       setCopyState("copied");
       window.setTimeout(() => setCopyState("idle"), 1800);
     } catch {
