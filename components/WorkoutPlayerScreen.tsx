@@ -25,6 +25,7 @@ import {
 } from "@/lib/conversationCommands";
 import { useRepSpeech } from "@/hooks/useRepSpeech";
 import { getLastLoggedWeight } from "@/lib/progressiveOverloadEngine";
+import { useCastSender } from "@/hooks/useCastSync";
 import type {
   AvatarDisplaySettings,
   CoachAvatar,
@@ -716,6 +717,26 @@ export function WorkoutPlayerScreen({
 
   const persistentCoachMessage =
     coachBrain.mood === "idle" && displayedSpeech ? displayedSpeech : coachBrain.message;
+
+  useCastSender(
+    !isRestPhase || restCountdown > 0
+      ? {
+          exerciseName: cleanMovementName(activeMovement.name),
+          phase: activeMovement.phase,
+          currentReps,
+          workingSet,
+          totalSets: activeMovement.sets,
+          isRestPhase,
+          restCountdown,
+          exerciseCountdown,
+          progressPercent,
+          coachMessage: persistentCoachMessage,
+          feedbackSeverity,
+          elapsedMinutes,
+        }
+      : null
+  );
+
   const avatarCoachState = useMemo(
     () =>
       getAvatarCoachLayerState({
@@ -997,6 +1018,19 @@ export function WorkoutPlayerScreen({
             </div>
             <div className="flex items-center gap-2">
               <button onClick={onToggleMute} className="flex h-9 w-9 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-sm transition hover:border-white/20 active:scale-95">{isMuted ? "🔇" : "🔊"}</button>
+              <button
+                onClick={() => window.open("/cast", "gymtwin-cast", "width=1920,height=1080,menubar=no,toolbar=no,location=no,status=no")}
+                className="flex h-9 w-9 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-slate-400 transition hover:border-blue-400/30 hover:bg-blue-500/10 hover:text-blue-300 active:scale-95"
+                aria-label="Cast to screen"
+                title="Cast to TV / second screen"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="7" width="20" height="13" rx="2" />
+                  <path d="M2 17a4 4 0 0 1 4-4" />
+                  <path d="M2 21a8 8 0 0 1 8-8" />
+                  <circle cx="2" cy="21" r="1" fill="currentColor" stroke="none" />
+                </svg>
+              </button>
               <button
                 onClick={() => setQuickSettingsOpen((o) => !o)}
                 className={`flex h-9 w-9 items-center justify-center rounded-2xl border text-sm transition active:scale-95 ${
