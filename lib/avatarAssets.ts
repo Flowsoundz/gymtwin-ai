@@ -2,13 +2,24 @@ import type { CoachAvatar } from "@/types";
 
 export const ATLAS_RUNTIME_COACH_MODEL_PATH =
   "/models/atlas-coach-mobile.pre_male_models_2026-05-31.glb";
-export const NOVA_RUNTIME_COACH_MODEL_PATH =
+
+// New optimized female model: Blender → Mixamo rig → GLB, 43k triangles.
+// Exported with Z-up (Blender default without Y-up conversion); Coach3D
+// applies a -π/2 X-rotation wrapper so it stands upright in Three.js.
+export const GYMTWIN_FEMALE_MODEL_PATH =
+  "/models/gymtwin/female/GymTwin_Female_43K_Rigged.glb";
+
+// Legacy female model kept as fallback — not actively used by Nova.
+export const NOVA_LEGACY_MODEL_PATH =
   "/models/GT_Female_40k_RiggedApp_v01.glb";
+
+export const NOVA_RUNTIME_COACH_MODEL_PATH = GYMTWIN_FEMALE_MODEL_PATH;
 
 export function isSharedRuntimeHumanoidModel(modelPath: string): boolean {
   return (
     modelPath.includes("atlas-coach-mobile") ||
-    modelPath.includes("GT_Female_40k_RiggedApp_v01")
+    modelPath.includes("GT_Female_40k_RiggedApp_v01") ||
+    modelPath.includes("GymTwin_Female_43K_Rigged")
   );
 }
 

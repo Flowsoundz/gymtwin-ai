@@ -10,6 +10,7 @@ import type { Group, Object3D } from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import {
   ATLAS_RUNTIME_COACH_MODEL_PATH,
+  GYMTWIN_FEMALE_MODEL_PATH,
   getAvatarLabel,
   getAvatarModelPaths,
   NOVA_RUNTIME_COACH_MODEL_PATH,
@@ -921,11 +922,14 @@ function CoachModel({
           </AnimPackErrorBoundary>
         </Suspense>
       )}
-      <primitive
-        object={clonedScene}
-        scale={transform.scale}
-        position={[0, isFloorMovement ? FLOOR_ANCHOR_OFFSET : 0, 0]}
-      />
+      {/* Z-up correction wrapper for models exported from Blender without Y-up conversion. */}
+      <group rotation={modelPath === GYMTWIN_FEMALE_MODEL_PATH ? [-Math.PI / 2, 0, 0] : [0, 0, 0]}>
+        <primitive
+          object={clonedScene}
+          scale={transform.scale}
+          position={[0, isFloorMovement ? FLOOR_ANCHOR_OFFSET : 0, 0]}
+        />
+      </group>
       {/* Neon spine path overlay — hips→head, color reacts to spinal curvature */}
       <primitive object={spineLine} />
       {skeletonHelper ? (
@@ -1045,6 +1049,24 @@ export function getCoachModelTransformPreset(
   modelPath: string,
   previewFrame: Coach3DPreviewFrame = "in_frame"
 ): ModelTransform {
+  // New female model: exported from Blender with Z-up. A -π/2 X-rotation wrapper in
+  // CoachModel corrects the orientation so the character stands upright (1.70m, Y-up).
+  // Feet land at Y=0 naturally after the rotation — no position offset needed.
+  if (modelPath === GYMTWIN_FEMALE_MODEL_PATH) {
+    const base = {
+      position: [0, 0, 0] as [number, number, number],
+      rotation: [0, 0, 0] as [number, number, number],
+      scale: 1.15,
+    };
+    if (previewFrame === "bust") {
+      return { ...base, cameraPosition: [0, 1.45, 4.8], fovCompact: 32, fovDefault: 28, orbitTarget: [0, 1.40, 0] };
+    }
+    if (previewFrame === "full_body") {
+      return { ...base, scale: 1.2, cameraPosition: [0, 1.1, 3.2], fovCompact: 44, fovDefault: 37, orbitTarget: [0, 0.95, 0] };
+    }
+    return { ...base, cameraPosition: [0, 1.3, 4.2], fovCompact: 36, fovDefault: 32, orbitTarget: [0, 1.2, 0] };
+  }
+
   if (isSharedRuntimeHumanoidModel(modelPath)) {
     // Character is 2.45m tall (Y=0 floor to Y=2.45 head) after fitScale.
     // Each frame gets its own camera so tuning one context never bleeds into another.
