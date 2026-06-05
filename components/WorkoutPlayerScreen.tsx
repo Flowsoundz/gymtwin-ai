@@ -1262,6 +1262,27 @@ export function WorkoutPlayerScreen({
                 <div className="mt-4 text-8xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-blue-400 to-indigo-600 font-mono lg:text-[7rem]">
                   {secondsToClock(restCountdown)}
                 </div>
+
+                {/* ── Rest info strip: calories / muscle worked / breathing ── */}
+                <div className="mx-auto mt-6 grid max-w-lg grid-cols-3 gap-2.5">
+                  <div className="rounded-2xl border border-white/8 bg-slate-950/55 px-3 py-3 text-center">
+                    <p className="text-xl font-black text-emerald-400">~{Math.round(elapsedMinutes * 7)}</p>
+                    <p className="mt-0.5 text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">kcal burned</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/8 bg-slate-950/55 px-3 py-3 text-center">
+                    <p className="text-sm font-black capitalize text-fuchsia-300">
+                      {personalizedExercise?.muscleGroup ?? activeMovement.category}
+                    </p>
+                    <p className="mt-0.5 text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">just worked</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/8 bg-slate-950/55 px-3 py-3 text-center">
+                    <p className="text-[10px] font-black leading-snug text-cyan-300">
+                      4s inhale<br />2s hold<br />6s exhale
+                    </p>
+                    <p className="mt-0.5 text-[9px] font-black uppercase tracking-[0.2em] text-slate-500">breathe</p>
+                  </div>
+                </div>
+
                 {/* ── Next-exercise preview ── */}
                 {workingSet < activeMovement.sets ? (
                   // Same exercise, next set
