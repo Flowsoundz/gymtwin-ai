@@ -5,7 +5,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { ContactShadows, Html, OrbitControls, useGLTF } from "@react-three/drei";
 import { clone as skeletonClone } from "three/examples/jsm/utils/SkeletonUtils.js";
-import { ACESFilmicToneMapping, AnimationClip, AnimationMixer, BufferAttribute, BufferGeometry, CanvasTexture, Color, Line, LineBasicMaterial, LoopOnce, LoopRepeat, Mesh, PCFSoftShadowMap, SkeletonHelper, SRGBColorSpace, Vector3 } from "three";
+import { ACESFilmicToneMapping, AnimationClip, AnimationMixer, BufferAttribute, BufferGeometry, CanvasTexture, Color, Line, LineBasicMaterial, LoopOnce, LoopRepeat, Mesh, PCFSoftShadowMap, SkeletonHelper, SRGBColorSpace, Vector3, VectorKeyframeTrack } from "three";
 import type { Group, Object3D } from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import {
@@ -281,13 +281,23 @@ function sanitizeAnimationClips(
   }
 
   return clips.map((clip) => {
-    const filteredTracks = clip.tracks.filter(
-      (track) => track.name !== "mixamorigHips.position"
-    );
-    if (filteredTracks.length === clip.tracks.length) {
-      return clip;
-    }
-    return new AnimationClip(clip.name, clip.duration, filteredTracks);
+    const newTracks = clip.tracks.map((track) => {
+      if (track.name !== "mixamorigHips.position") return track;
+      // Zero X and Z (horizontal drift) but keep Y so squats/deadlifts
+      // descend correctly and feet stay on the floor.
+      const src = (track as VectorKeyframeTrack).values;
+      const values = src instanceof Float32Array ? src.slice() : Float32Array.from(src);
+      for (let i = 0; i < values.length; i += 3) {
+        values[i]     = 0; // X
+        values[i + 2] = 0; // Z
+      }
+      return new VectorKeyframeTrack(
+        track.name,
+        Array.from((track as VectorKeyframeTrack).times),
+        values
+      );
+    });
+    return new AnimationClip(clip.name, clip.duration, newTracks);
   });
 }
 
