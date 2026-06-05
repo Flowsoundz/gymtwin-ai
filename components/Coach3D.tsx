@@ -1643,6 +1643,9 @@ export function Coach3D({
   );
 }
 
+// Point useGLTF at our local Draco decoder so Draco-compressed GLBs load correctly
+useGLTF.setDecoderPath("/draco/");
+
 // Eagerly warm drei's GLTF cache so the model is ready before any Coach3D mounts
 useGLTF.preload(ATLAS_RUNTIME_COACH_MODEL_PATH);
 useGLTF.preload(NOVA_RUNTIME_COACH_MODEL_PATH);
