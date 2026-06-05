@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FoodItem } from "@/types";
 
 type DetectedItem = {
@@ -14,24 +14,12 @@ type DetectedItem = {
   portion: number; // multiplier: 0.5 | 0.75 | 1 | 1.25 | 1.5 | 2
 };
 
-type ScanPhase = "idle" | "scanning" | "detected" | "confirming";
+type ScanPhase = "idle" | "scanning" | "detected" | "confirming" | "error";
 
 type FoodCameraScreenProps = {
   onBack: () => void;
   onAddFoodItems: (items: FoodItem[]) => void;
 };
-
-// Mock food detection library — replace with real API call when available
-const DETECTION_LIBRARY: Omit<DetectedItem, "portion">[] = [
-  { name: "Grilled Chicken Breast", calories: 165, protein: 31, carbs: 0,  fats: 4,  servingSize: "100g",    confidence: 94 },
-  { name: "Brown Rice (cooked)",    calories: 216, protein: 5,  carbs: 45, fats: 2,  servingSize: "1 cup",   confidence: 88 },
-  { name: "Steamed Broccoli",       calories: 55,  protein: 4,  carbs: 11, fats: 1,  servingSize: "1 cup",   confidence: 91 },
-  { name: "Sweet Potato",           calories: 103, protein: 2,  carbs: 24, fats: 0,  servingSize: "1 medium",confidence: 86 },
-  { name: "Greek Yogurt (plain)",   calories: 100, protein: 17, carbs: 6,  fats: 0,  servingSize: "170g",    confidence: 89 },
-  { name: "Salmon Fillet",          calories: 208, protein: 28, carbs: 0,  fats: 10, servingSize: "100g",    confidence: 92 },
-  { name: "Avocado",                calories: 160, protein: 2,  carbs: 9,  fats: 15, servingSize: "½ fruit", confidence: 95 },
-  { name: "Oatmeal (cooked)",       calories: 154, protein: 5,  carbs: 28, fats: 3,  servingSize: "1 cup",   confidence: 87 },
-];
 
 const PORTION_STEPS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
 
@@ -98,10 +86,12 @@ function PortionAdjuster({
 
 export function FoodCameraScreen({ onBack, onAddFoodItems }: FoodCameraScreenProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [scanPhase, setScanPhase] = useState<ScanPhase>("idle");
   const [detectedItems, setDetectedItems] = useState<DetectedItem[]>([]);
+  const [scanError, setScanError] = useState<string | null>(null);
 
   // Start camera on mount
   useEffect(() => {
@@ -114,9 +104,7 @@ export function FoodCameraScreen({ onBack, onAddFoodItems }: FoodCameraScreenPro
         });
         if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
         streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
+        if (videoRef.current) videoRef.current.srcObject = stream;
       } catch {
         if (!cancelled) setCameraError("Camera access denied. Allow camera permission and try again.");
       }
@@ -130,31 +118,54 @@ export function FoodCameraScreen({ onBack, onAddFoodItems }: FoodCameraScreenPro
     };
   }, []);
 
-  // After a short idle period, simulate detection beginning
-  useEffect(() => {
-    if (scanPhase !== "idle" || cameraError) return;
-    const t = window.setTimeout(() => setScanPhase("scanning"), 1800);
-    return () => window.clearTimeout(t);
-  }, [scanPhase, cameraError]);
+  const handleCapture = useCallback(async () => {
+    if (scanPhase === "detected") { setScanPhase("confirming"); return; }
+    if (scanPhase !== "idle" && scanPhase !== "error") return;
 
-  useEffect(() => {
-    if (scanPhase !== "scanning") return;
-    const t = window.setTimeout(() => {
-      // Pick 1–2 random items from the library
-      const shuffled = [...DETECTION_LIBRARY].sort(() => Math.random() - 0.5);
-      const count = Math.random() > 0.45 ? 2 : 1;
-      setDetectedItems(shuffled.slice(0, count).map((item) => ({ ...item, portion: 1 })));
+    const video = videoRef.current;
+    if (!video || video.readyState < 2) return;
+
+    // Draw current frame to off-screen canvas
+    const canvas = canvasRef.current!;
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+    canvas.getContext("2d")!.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const base64 = canvas.toDataURL("image/jpeg", 0.82).split(",")[1];
+
+    setScanPhase("scanning");
+    setScanError(null);
+
+    try {
+      const res = await fetch("/api/food-scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageBase64: base64 }),
+      });
+      const data = await res.json() as { items?: DetectedItem[]; error?: string };
+
+      if (!res.ok || data.error) {
+        setScanError(data.error ?? "Scan failed — try again.");
+        setScanPhase("error");
+        return;
+      }
+
+      const items = (data.items ?? []).map((i) => ({ ...i, portion: 1 as number }));
+      if (items.length === 0) {
+        setScanError("No food detected — try pointing at your plate.");
+        setScanPhase("error");
+        return;
+      }
+      setDetectedItems(items);
       setScanPhase("detected");
-    }, 2600);
-    return () => window.clearTimeout(t);
+    } catch {
+      setScanError("Network error — check your connection.");
+      setScanPhase("error");
+    }
   }, [scanPhase]);
-
-  function handleCapture() {
-    if (scanPhase === "detected") setScanPhase("confirming");
-  }
 
   function handleRescan() {
     setDetectedItems([]);
+    setScanError(null);
     setScanPhase("idle");
   }
 
@@ -196,6 +207,9 @@ export function FoodCameraScreen({ onBack, onAddFoodItems }: FoodCameraScreenPro
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950 text-white">
+      {/* Hidden canvas for frame capture */}
+      <canvas ref={canvasRef} className="hidden" aria-hidden />
+
       {/* Camera feed */}
       <div className="relative h-full w-full overflow-hidden">
         <video
@@ -224,7 +238,11 @@ export function FoodCameraScreen({ onBack, onAddFoodItems }: FoodCameraScreenPro
               <div className="absolute inset-x-0 -bottom-10 flex justify-center">
                 <div className="rounded-full border border-blue-400/30 bg-slate-950/75 px-4 py-1.5 backdrop-blur-md">
                   <p className="text-[11px] font-black uppercase tracking-[0.2em] text-blue-300">
-                    {scanPhase === "scanning" ? "Analyzing..." : scanPhase === "detected" ? "Food detected ✓" : "Center your plate in the frame"}
+                    {scanPhase === "scanning"
+                      ? "Analyzing with AI…"
+                      : scanPhase === "detected"
+                        ? "Food detected ✓"
+                        : "Center your plate · tap Scan Meal"}
                   </p>
                 </div>
               </div>
@@ -276,7 +294,10 @@ export function FoodCameraScreen({ onBack, onAddFoodItems }: FoodCameraScreenPro
 
         {/* Bottom capture bar */}
         {!cameraError && scanPhase !== "confirming" && (
-          <div className="absolute inset-x-0 bottom-0 z-10 flex items-center justify-center gap-4 bg-gradient-to-t from-slate-950/90 to-transparent px-6 pb-8 pt-16">
+          <div className="absolute inset-x-0 bottom-0 z-10 flex flex-col items-center gap-3 bg-gradient-to-t from-slate-950/90 to-transparent px-6 pb-8 pt-16">
+            {scanError && (
+              <p className="text-center text-xs font-bold text-red-400">{scanError}</p>
+            )}
             {scanPhase === "detected" ? (
               <button
                 onClick={handleCapture}
@@ -284,10 +305,18 @@ export function FoodCameraScreen({ onBack, onAddFoodItems }: FoodCameraScreenPro
               >
                 Add {detectedItems.length === 1 ? "Item" : "Items"} to Log →
               </button>
-            ) : (
-              <div className="rounded-full border border-white/10 bg-slate-900/60 px-6 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-slate-400 backdrop-blur-md">
-                {scanPhase === "scanning" ? "Identifying food items..." : "Point camera at your meal"}
+            ) : scanPhase === "scanning" ? (
+              <div className="flex items-center gap-3 rounded-full border border-blue-400/20 bg-slate-900/75 px-6 py-3 backdrop-blur-md">
+                <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-blue-400" />
+                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-blue-300">Analyzing with AI…</p>
               </div>
+            ) : (
+              <button
+                onClick={handleCapture}
+                className="rounded-[1.4rem] bg-gradient-to-r from-slate-700 to-slate-800 px-10 py-4 text-sm font-black uppercase tracking-[0.18em] text-white shadow-[0_0_20px_rgba(0,0,0,0.4)] transition hover:from-blue-700 hover:to-violet-700 active:scale-[0.98]"
+              >
+                {scanPhase === "error" ? "Try Again" : "Scan Meal"}
+              </button>
             )}
           </div>
         )}
