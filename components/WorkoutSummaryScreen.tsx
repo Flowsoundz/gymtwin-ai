@@ -6,11 +6,14 @@ import { StatCard } from "@/components/ui/StatCard";
 import { buildFeedbackPreview } from "@/lib/adaptiveProfileEngine";
 import { getAvatarLabel } from "@/lib/avatarAssets";
 import { getAvatarCoachLayerState } from "@/lib/avatarCoachLayer";
+import { getAchievementBadges } from "@/lib/achievementEngine";
 import { getCoachAdaptationRecommendation } from "@/lib/coachAdaptationEngine";
 import { getCoachBrainResponse } from "@/lib/coachBrain";
 import { getDifficultyAdjustmentRecommendation } from "@/lib/difficultyAdjustmentEngine";
 import { deriveProgressTrends } from "@/lib/progressTrends";
-import { useMemo, useState } from "react";
+import { EARNED_BADGE_IDS_KEY } from "@/lib/storageKeys";
+import { useEffect, useMemo, useState } from "react";
+import type { AchievementBadge } from "@/types";
 import type {
   BodyProfile,
   CoachAvatar,
@@ -60,6 +63,22 @@ export function WorkoutSummaryScreen({
   const [sorenessPick, setSorenessPick] = useState<SorenessRating>("none");
   const [sorenessAreas, setSorenessAreas] = useState<string[]>([]);
   const [submittedFeedback, setSubmittedFeedback] = useState<PostWorkoutFeedback | null>(null);
+  const [newBadges, setNewBadges] = useState<AchievementBadge[]>([]);
+
+  // Detect badges unlocked by this session and persist the updated earned set
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const all = getAchievementBadges({ userStats, workoutHistory, lastWorkoutSummary });
+    const unlocked = all.filter((b) => b.unlocked);
+    const stored: string[] = JSON.parse(localStorage.getItem(EARNED_BADGE_IDS_KEY) ?? "[]");
+    const fresh = unlocked.filter((b) => !stored.includes(b.id));
+    if (fresh.length > 0) {
+      setNewBadges(fresh);
+      localStorage.setItem(EARNED_BADGE_IDS_KEY, JSON.stringify(unlocked.map((b) => b.id)));
+    }
+  // Run once on mount — intentional empty deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const SORENESS_AREAS = ["Quads", "Glutes", "Hamstrings", "Chest", "Back", "Shoulders", "Arms", "Core"];
 
@@ -368,6 +387,32 @@ export function WorkoutSummaryScreen({
               {lastWorkoutSummary.coachNote ?? avatarCoachState.message}
             </p>
           </section>
+
+          {/* ── New badge unlock celebration ── */}
+          {newBadges.length > 0 && (
+            <section className="mb-8 rounded-[1.8rem] border border-amber-400/28 bg-[linear-gradient(135deg,rgba(120,53,15,0.28),rgba(2,6,23,0.92))] p-5 shadow-[0_0_32px_rgba(251,191,36,0.14)]">
+              <div className="mb-1 inline-flex items-center gap-2 rounded-full border border-amber-400/30 bg-amber-500/12 px-3 py-1 text-[10px] font-black uppercase tracking-[0.24em] text-amber-200">
+                Badge Unlocked
+              </div>
+              <h3 className="mt-2 text-xl font-black text-white">
+                {newBadges.length === 1 ? "New Achievement" : `${newBadges.length} New Achievements`}
+              </h3>
+              <div className="mt-3 space-y-2.5">
+                {newBadges.map((badge) => (
+                  <div
+                    key={badge.id}
+                    className="flex items-center gap-3 rounded-2xl border border-amber-400/20 bg-slate-950/60 px-4 py-3"
+                  >
+                    <span className="text-2xl leading-none">{badge.icon}</span>
+                    <div>
+                      <p className="text-sm font-black text-amber-100">{badge.title}</p>
+                      <p className="text-[11px] leading-snug text-slate-400">{badge.description}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
           <section className="mb-8 rounded-[1.8rem] border border-cyan-400/14 bg-[linear-gradient(135deg,rgba(8,47,73,0.52),rgba(2,6,23,0.92))] p-5 shadow-[0_0_28px_rgba(34,211,238,0.08)]">
             <div className="flex items-start justify-between gap-3">

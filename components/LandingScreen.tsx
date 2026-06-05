@@ -11,6 +11,7 @@ import {
   getPhaseBadgeColor,
   getPhaseLabel,
 } from "@/lib/macrocycleEngine";
+import { getAchievementBadges } from "@/lib/achievementEngine";
 import { getTopLoggedExercises } from "@/lib/progressiveOverloadEngine";
 import { deriveProgressTrends } from "@/lib/progressTrends";
 import { todayString, yesterdayString } from "@/lib/time";
@@ -266,6 +267,12 @@ export function LandingScreen({
 
   // Progressive overload — last 3 logged exercises
   const topLogged = useMemo(() => getTopLoggedExercises(3), [workoutHistory.length]);
+  const badgeSummary = useMemo(() => {
+    const all = getAchievementBadges({ userStats, workoutHistory, lastWorkoutSummary: latestWorkoutSummary });
+    const unlocked = all.filter((b) => b.unlocked);
+    const next = all.find((b) => !b.unlocked) ?? null;
+    return { unlocked, total: all.length, next };
+  }, [userStats, workoutHistory, latestWorkoutSummary]);
   const greeting = useMemo(
     () => buildGreeting(userStats, latestWorkoutSummary, isFirstSession),
     [userStats, latestWorkoutSummary, isFirstSession]
@@ -532,6 +539,30 @@ export function LandingScreen({
                   <NeonStatPill value={userStats.streak} label="Streak 🔥" colorClass="text-fuchsia-400" />
                   <NeonStatPill value={userStats.totalMinutes} label="Minutes" colorClass="text-violet-400" />
                 </div>
+
+                {/* Badge progress shelf */}
+                {!isFirstSession && (
+                  <div className="mt-3 flex items-center gap-3 rounded-2xl border border-white/8 bg-slate-950/50 px-4 py-2.5">
+                    <div className="flex items-center gap-1">
+                      {badgeSummary.unlocked.slice(0, 5).map((b) => (
+                        <span key={b.id} className="text-base leading-none" title={b.title}>{b.icon}</span>
+                      ))}
+                      {badgeSummary.unlocked.length === 0 && (
+                        <span className="text-sm text-slate-600">No badges yet</span>
+                      )}
+                    </div>
+                    <div className="flex-1 text-right">
+                      {badgeSummary.next ? (
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">
+                          Next: <span className="text-slate-400">{badgeSummary.next.icon} {badgeSummary.next.title}</span>
+                        </p>
+                      ) : (
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-400">All badges unlocked!</p>
+                      )}
+                      <p className="text-[10px] text-slate-700">{badgeSummary.unlocked.length}/{badgeSummary.total} unlocked</p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="relative overflow-hidden rounded-3xl border border-blue-400/14 bg-blue-500/8 p-5 backdrop-blur-md">
