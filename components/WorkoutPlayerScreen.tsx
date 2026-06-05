@@ -69,6 +69,7 @@ type WorkoutPlayerScreenProps = {
   ) => { isPR: boolean; prLabel: string | null };
   isFirstWorkout?: boolean;
   onFirstHintsDismissed?: () => void;
+  onAutoSpeak?: (message: string) => void;
   primaryButton: string;
 };
 
@@ -102,6 +103,7 @@ export function WorkoutPlayerScreen({
   onCoachAnimHint,
   isFirstWorkout = false,
   onFirstHintsDismissed,
+  onAutoSpeak,
   primaryButton,
 }: WorkoutPlayerScreenProps) {
   const [hintsVisible, setHintsVisible] = useState(isFirstWorkout);
@@ -113,13 +115,17 @@ export function WorkoutPlayerScreen({
   const [trackerReps, setTrackerReps] = useState(currentReps);
   const [trackerWeight, setTrackerWeight] = useState<number | null>(null);
   const [prFlash, setPrFlash] = useState<string | null>(null);
+  const [difficultyToast, setDifficultyToast] = useState<{ message: string; direction: "easy" | "hard" } | null>(null);
   const previousRestCountdownRef = useRef<number | null>(null);
   const previousActiveSetKeyRef = useRef<string | null>(null);
+  const lastAutoSpeakRef = useRef<number>(0);
+  const lastAutoSpeakIssueRef = useRef<string | null>(null);
 
   function dismissHints() {
     setHintsVisible(false);
     onFirstHintsDismissed?.();
   }
+
   const [isCameraCoachOpen, setIsCameraCoachOpen] = useState(false);
   const prevCoachAnimHint = useRef<CoachAnimationHint | null>(null);
   const [formRecap, setFormRecap] = useState<{
@@ -308,6 +314,40 @@ export function WorkoutPlayerScreen({
     setIsCameraCoachOpen(false);
     stopCamera();
   };
+
+  // Auto voice interruption — fires when camera detects a new form issue
+  useEffect(() => {
+    if (!isCameraRunning || isMuted || !onAutoSpeak) return;
+    if (feedbackSeverity !== "error" && feedbackSeverity !== "warning") return;
+    if (!latestIssue || latestIssue === lastAutoSpeakIssueRef.current) return;
+    const now = Date.now();
+    if (now - lastAutoSpeakRef.current < 8000) return;
+    lastAutoSpeakIssueRef.current = latestIssue;
+    lastAutoSpeakRef.current = now;
+    const cue =
+      latestIssue === "shallow" ? "Go deeper — full range of motion." :
+      latestIssue === "unstable" ? "Slow down and control the movement." :
+      latestIssue === "lost_tracking" ? "Step back — I need your full body in frame." :
+      latestIssue === "hips_high" ? "Lower your hips. Keep your spine neutral." :
+      latestIssue === "hips_low" ? "Lift your hips and brace your core." :
+      feedbackMessage;
+    if (cue) onAutoSpeak(cue);
+  }, [feedbackSeverity, latestIssue, isCameraRunning, isMuted, onAutoSpeak, feedbackMessage]);
+
+  // Difficulty adjustment wrappers — show toast then call parent
+  function handleDifficultyEasy() {
+    const hint = personalizedExercise?.harderOption ?? "Adding 2 reps to push hypertrophic range.";
+    setDifficultyToast({ message: `Stepping up — ${hint}`, direction: "easy" });
+    window.setTimeout(() => setDifficultyToast(null), 3500);
+    onChangeDifficultyEasy();
+  }
+
+  function handleDifficultyHard() {
+    const hint = personalizedExercise?.easierOption ?? "Dropping 2 reps. Quality over ego.";
+    setDifficultyToast({ message: `Backing off — ${hint}`, direction: "hard" });
+    window.setTimeout(() => setDifficultyToast(null), 3500);
+    onChangeDifficultyHard();
+  }
 
   const handleCompleteSet = () => {
     const shouldShowRecap =
@@ -1348,12 +1388,24 @@ export function WorkoutPlayerScreen({
 
                 <section className="rounded-[1.9rem] border border-white/8 bg-white/6 p-4 backdrop-blur-xl shadow-[0_18px_60px_rgba(15,23,42,0.45)] lg:p-5">
                   <div className="space-y-3">
+                    {/* Difficulty adjustment toast */}
+                    {difficultyToast && (
+                      <div className={`rounded-2xl border px-4 py-3 text-xs font-bold leading-relaxed transition-all ${
+                        difficultyToast.direction === "easy"
+                          ? "border-emerald-400/30 bg-emerald-950/30 text-emerald-200"
+                          : "border-orange-400/30 bg-orange-950/30 text-orange-200"
+                      }`}>
+                        {difficultyToast.direction === "easy" ? "↑ " : "↓ "}
+                        {difficultyToast.message}
+                      </div>
+                    )}
+
                     <button onClick={handleCompleteSet} className={primaryButton}>Complete Set</button>
 
                     {/* Compact difficulty nudge row */}
                     <div className="flex items-stretch gap-2">
                       <button
-                        onClick={onChangeDifficultyEasy}
+                        onClick={handleDifficultyEasy}
                         className="flex flex-1 items-center gap-2 rounded-2xl border border-emerald-900/40 bg-emerald-950/20 px-3 py-2.5 transition-all active:scale-95 hover:border-emerald-700/50 hover:bg-emerald-950/30"
                       >
                         <span className="text-lg leading-none text-emerald-400">↑</span>
@@ -1367,7 +1419,7 @@ export function WorkoutPlayerScreen({
                         </div>
                       </button>
                       <button
-                        onClick={onChangeDifficultyHard}
+                        onClick={handleDifficultyHard}
                         className="flex flex-1 items-center gap-2 rounded-2xl border border-orange-900/40 bg-orange-950/20 px-3 py-2.5 transition-all active:scale-95 hover:border-orange-700/50 hover:bg-orange-950/30"
                       >
                         <span className="text-lg leading-none text-orange-400">↓</span>

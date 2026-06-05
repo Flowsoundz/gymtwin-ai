@@ -966,6 +966,7 @@ export default function GymTwinApp() {
           onChangeDifficultyEasy={() => changeDifficulty("easy")}
           onChangeDifficultyHard={() => changeDifficulty("hard")}
           onCoachAnimHint={setFloatingHint}
+          onAutoSpeak={speak}
           isFirstWorkout={!firstHintsDismissed && userStats.workoutsCompleted === 0}
           onFirstHintsDismissed={() => { setFirstHintsDismissed(true); markFirstHintsShown(); }}
           primaryButton={primaryButton}
