@@ -2,6 +2,17 @@
 
 import { useState } from "react";
 import { Coach3D } from "@/components/Coach3D";
+import {
+  countCameraReadyExercises,
+  getCameraCoachLabel,
+} from "@/lib/cameraCoachMapping";
+import {
+  generateNovaDeloadNote,
+  getAFIBand,
+  getNovaDeloadProgressionIntent,
+  getPhaseBadgeColor,
+  getPhaseLabel,
+} from "@/lib/macrocycleEngine";
 import type {
   CoachAvatar,
   CoachName,
@@ -10,9 +21,11 @@ import type {
   WorkoutGoal,
   WorkoutLevel,
 } from "@/types";
+import type { Macrocycle } from "@/types/macrocycle";
 
 type WorkoutPlanScreenProps = {
   plan: PersonalizedWorkoutPlan;
+  macrocycle?: Macrocycle | null;
   selectedCoach: CoachName;
   selectedAvatar: CoachAvatar;
   selectedGoal: WorkoutGoal;
@@ -186,6 +199,7 @@ function SectionBlock({
 
 export function WorkoutPlanScreen({
   plan,
+  macrocycle,
   selectedCoach,
   selectedAvatar,
   selectedGoal,
@@ -208,6 +222,24 @@ export function WorkoutPlanScreen({
       : selectedCoach === "Motivational"
         ? "Coach"
         : selectedCoach;
+
+  const allExerciseNames = [
+    ...plan.warmup,
+    ...plan.mainBlock,
+    ...plan.cooldown,
+  ].map((ex) => ex.name);
+  const cameraStats = countCameraReadyExercises(allExerciseNames);
+
+  const isDeloadWeek = macrocycle?.currentPhase === "deload";
+  const isNearingDeload = macrocycle?.currentPhase === "loaded warning";
+  const macroWeekLabel = macrocycle
+    ? `Week ${macrocycle.currentWeek} of ${macrocycle.targetWeeks}`
+    : null;
+  const macroPhaseLabel = macrocycle ? getPhaseLabel(macrocycle.currentPhase) : null;
+  const macroPhaseBadge = macrocycle ? getPhaseBadgeColor(macrocycle.currentPhase) : null;
+  const afiBand = macrocycle ? getAFIBand(macrocycle.accumulatedFatigueIndex) : null;
+  const novaDeloadNote = isDeloadWeek && macrocycle ? generateNovaDeloadNote(macrocycle) : null;
+  const novaDeloadIntent = isDeloadWeek && macrocycle ? getNovaDeloadProgressionIntent(macrocycle) : null;
 
   return (
     <main className="min-h-screen overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.18),_transparent_28%),radial-gradient(circle_at_bottom,_rgba(59,130,246,0.1),_transparent_28%),linear-gradient(180deg,_#020617_0%,_#020617_48%,_#030712_100%)] px-4 pb-16 pt-8 text-white antialiased sm:px-6 lg:px-8 lg:py-12">
@@ -234,6 +266,21 @@ export function WorkoutPlanScreen({
               <span className="rounded-full border border-slate-700/60 bg-slate-900/70 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">
                 ~{plan.estimatedDuration} min
               </span>
+              {macroWeekLabel && macroPhaseLabel && macroPhaseBadge && (
+                <span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-wider ${macroPhaseBadge}`}>
+                  {macroWeekLabel} · {macroPhaseLabel}
+                </span>
+              )}
+              {isNearingDeload && !isDeloadWeek && (
+                <span className="rounded-full border border-yellow-900/50 bg-yellow-950/40 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-yellow-300">
+                  ⚠ Heavy Load Week
+                </span>
+              )}
+              {afiBand && (afiBand === "overloaded" || afiBand === "critical") && !isDeloadWeek && (
+                <span className="rounded-full border border-red-900/50 bg-red-950/40 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-red-300">
+                  High Fatigue
+                </span>
+              )}
             </div>
             <h1 className={`text-3xl font-black tracking-tight sm:text-4xl ${goalAccentClass(selectedGoal)} [background:linear-gradient(135deg,#fff_0%,currentColor_100%)] [-webkit-background-clip:text] [-webkit-text-fill-color:transparent]`}>
               {plan.title}
@@ -260,6 +307,30 @@ export function WorkoutPlanScreen({
 
             {/* ─── Left column: Exercises ──────────────────────────────── */}
             <div className="space-y-8">
+
+              {/* Deload Week Announcement — shown when macrocycle triggers a deload */}
+              {isDeloadWeek && novaDeloadNote && (
+                <div className="relative overflow-hidden rounded-[1.8rem] border border-blue-500/30 bg-[linear-gradient(135deg,rgba(30,58,138,0.18),rgba(15,23,42,0.88))] p-6 shadow-[0_0_40px_rgba(59,130,246,0.12)]">
+                  <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-blue-400/60 to-transparent" />
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full border border-blue-500/40 bg-blue-950/60 text-sm font-black text-blue-300 shadow-[0_0_16px_rgba(59,130,246,0.3)]">
+                      ◈
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.28em] text-blue-400">
+                        Deload Week · Nova
+                      </p>
+                      <p className="text-base font-black text-white">This Week We Shift the Target</p>
+                    </div>
+                  </div>
+                  <p className="text-sm leading-relaxed text-slate-300">{novaDeloadNote}</p>
+                  {novaDeloadIntent && (
+                    <p className="mt-3 text-[11px] leading-relaxed text-blue-200/70 italic border-t border-blue-900/30 pt-3">
+                      {novaDeloadIntent}
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Warmup */}
               <SectionBlock
@@ -344,22 +415,55 @@ export function WorkoutPlanScreen({
                 <p className="text-[11px] leading-relaxed text-slate-300">{plan.progressionIntent}</p>
               </div>
 
-              {/* Future: Camera Form Analysis Placeholder */}
-              {/* FUTURE[camera]: Replace this card with live form analysis once Phase 3 camera AI is ready */}
-              <div className="relative overflow-hidden rounded-[1.6rem] border border-fuchsia-900/25 bg-[linear-gradient(135deg,rgba(88,28,135,0.08),rgba(15,23,42,0.6))] p-5">
-                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-fuchsia-500/30 to-transparent" />
-                <div className="flex items-center gap-2.5 mb-2">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full border border-fuchsia-900/40 bg-fuchsia-950/40 text-[11px] text-fuchsia-400">
-                    ◎
+              {/* Camera Coach Readiness Card */}
+              <div className="relative overflow-hidden rounded-[1.6rem] border border-fuchsia-900/30 bg-[linear-gradient(135deg,rgba(88,28,135,0.1),rgba(15,23,42,0.65))] p-5">
+                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-fuchsia-500/40 to-transparent" />
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-full border border-fuchsia-900/40 bg-fuchsia-950/40 text-[11px] text-fuchsia-400">
+                      ◎
+                    </div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.22em] text-fuchsia-400">Camera Form Coach</p>
                   </div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-fuchsia-400">Camera Form Analysis</p>
+                  {cameraStats.total > 0 ? (
+                    <span className="rounded-full border border-fuchsia-500/40 bg-fuchsia-950/50 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-fuchsia-300">
+                      {cameraStats.total} ready
+                    </span>
+                  ) : (
+                    <span className="rounded-full border border-slate-700/40 bg-slate-900/50 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-slate-500">
+                      0 this session
+                    </span>
+                  )}
                 </div>
-                <p className="text-[11px] leading-relaxed text-slate-400">
-                  Real-time form feedback from your coach is being built for Phase 3.
-                </p>
-                <span className="mt-2.5 inline-block rounded-full border border-fuchsia-900/30 bg-fuchsia-950/30 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-fuchsia-400">
-                  Coming Soon
-                </span>
+
+                {cameraStats.total > 0 ? (
+                  <>
+                    <p className="text-[11px] leading-relaxed text-slate-300">
+                      {cameraStats.total} exercise{cameraStats.total !== 1 ? "s" : ""} in this session support live form tracking. Tap <span className="text-fuchsia-300 font-bold">Start Camera Coach</span> when you reach them.
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {cameraStats.squat > 0 && (
+                        <span className="rounded-full border border-blue-900/40 bg-blue-950/30 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-blue-300">
+                          {getCameraCoachLabel("squat")} · {cameraStats.squat}
+                        </span>
+                      )}
+                      {cameraStats.pushup > 0 && (
+                        <span className="rounded-full border border-purple-900/40 bg-purple-950/30 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-purple-300">
+                          {getCameraCoachLabel("pushup")} · {cameraStats.pushup}
+                        </span>
+                      )}
+                      {cameraStats.plank > 0 && (
+                        <span className="rounded-full border border-teal-900/40 bg-teal-950/30 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-teal-300">
+                          {getCameraCoachLabel("plank")} · {cameraStats.plank}
+                        </span>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-[11px] leading-relaxed text-slate-400">
+                    This session&apos;s exercises don&apos;t have camera tracking yet. Sessions with squats, push-ups, or planks unlock live form coaching.
+                  </p>
+                )}
               </div>
 
               {/* Action Buttons */}

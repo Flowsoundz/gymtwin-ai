@@ -81,6 +81,17 @@ import {
   updateAdaptiveProfile,
 } from "@/lib/adaptiveProfileEngine";
 import {
+  advanceMacrocycleWeek,
+  getMacrocycleAdjustments,
+  initNewMacrocycle,
+  processMacrocyclePostSession,
+  readMacrocycle,
+  saveMacrocycle,
+  shouldAdvanceWeek,
+} from "@/lib/macrocycleEngine";
+import { appendSetLog } from "@/lib/progressiveOverloadEngine";
+import type { Macrocycle } from "@/types/macrocycle";
+import {
   defaultAvatarDisplaySettings,
   readAvatarDisplaySettings,
   saveAvatarDisplaySettings,
@@ -188,6 +199,7 @@ export default function GymTwinApp() {
 
   const [personalizedPlan, setPersonalizedPlan] = useState<PersonalizedWorkoutPlan | null>(null);
   const [adaptiveProfile, setAdaptiveProfile] = useState<AdaptiveProfile | null>(null);
+  const [macrocycleState, setMacrocycleState] = useState<Macrocycle | null>(null);
   const [activeRoutine, setActiveRoutine] = useState<WorkoutMovement[]>([]);
   const [movementIndex, setMovementIndex] = useState(0);
   const [workingSet, setWorkingSet] = useState(1);
@@ -304,6 +316,18 @@ export default function GymTwinApp() {
     setTodayFoodLog(readTodayNutritionLog().consumed);
     setAvatarDisplaySettings(readAvatarDisplaySettings());
     setAdaptiveProfile(readAdaptiveProfile());
+
+    // Load macrocycle and advance week if 7+ days have elapsed
+    const savedMacrocycle = readMacrocycle();
+    if (savedMacrocycle) {
+      const advanced = shouldAdvanceWeek(savedMacrocycle)
+        ? advanceMacrocycleWeek(savedMacrocycle)
+        : savedMacrocycle;
+      if (advanced !== savedMacrocycle) saveMacrocycle(advanced);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setMacrocycleState(advanced);
+    }
+
     setHasResumeSession(hasStoredActiveSession());
 
     // UX: restore persisted safety + camera state
@@ -460,11 +484,20 @@ export default function GymTwinApp() {
   function initializeTrainingSession() {
     if (!hasAcceptedSafety) return;
 
-    // Derive adaptive adjustments from the user's feedback history
-    const profile = adaptiveProfile ?? readAdaptiveProfile();
-    const adjustments = deriveWorkoutAdjustments(profile);
+    // Ensure macrocycle exists — lazy init on first workout
+    let currentMacro = macrocycleState ?? readMacrocycle();
+    if (!currentMacro) {
+      currentMacro = initNewMacrocycle(selectedGoal, selectedLevel, selectedEquipment);
+      saveMacrocycle(currentMacro);
+      setMacrocycleState(currentMacro);
+    }
 
-    // Generate rich personalized plan from onboarding values + adaptive adjustments
+    // Derive adaptive adjustments then stack macrocycle phase modifiers on top
+    const profile = adaptiveProfile ?? readAdaptiveProfile();
+    const adaptiveAdjustments = deriveWorkoutAdjustments(profile);
+    const adjustments = getMacrocycleAdjustments(adaptiveAdjustments);
+
+    // Generate rich personalized plan from onboarding values + stacked adjustments
     const plan = generatePersonalizedPlan(
       selectedGoal,
       selectedLevel,
@@ -634,11 +667,23 @@ export default function GymTwinApp() {
     setWorkoutHistory(updatedHistory);
     saveWorkoutHistory(updatedHistory);
 
-    // Update and persist the adaptive profile so the next plan generation uses it
+    // Update and persist the adaptive profile
     const currentProfile = adaptiveProfile ?? readAdaptiveProfile();
     const nextProfile = updateAdaptiveProfile(currentProfile, feedback, updatedSummary.completedAt);
     setAdaptiveProfile(nextProfile);
     saveAdaptiveProfile(nextProfile);
+
+    // Record session in the macrocycle and check for deload triggers
+    const currentMacro = macrocycleState ?? readMacrocycle();
+    if (currentMacro) {
+      const { macrocycle: updatedMacro } = processMacrocyclePostSession(
+        currentMacro,
+        nextProfile,
+        updatedSummary.id,
+        feedback
+      );
+      setMacrocycleState(updatedMacro);
+    }
 
     setCurrentScreen("progress");
   }
@@ -699,6 +744,24 @@ export default function GymTwinApp() {
   function handleCopyYesterdayMeals() {
     const updated = copyYesterdayMealsToToday();
     setTodayFoodLog(updated.consumed);
+  }
+
+  function handleLogSet(
+    exerciseName: string,
+    setNumber: number,
+    repsCompleted: number,
+    weightLbs: number | null,
+    durationSeconds: number | null
+  ) {
+    return appendSetLog({
+      exerciseName,
+      sessionId: `session-${sessionStartedAt ?? Date.now()}`,
+      completedAt: new Date().toISOString(),
+      setNumber,
+      repsCompleted,
+      weightLbs,
+      durationSeconds,
+    });
   }
 
   function handleStartPlanDay(config: WeeklyPlanDayConfig) {
@@ -849,6 +912,7 @@ export default function GymTwinApp() {
       {currentScreen === "workout_plan" && personalizedPlan && (
         <WorkoutPlanScreen
           plan={personalizedPlan}
+          macrocycle={macrocycleState}
           selectedCoach={selectedCoach}
           selectedAvatar={selectedAvatar}
           selectedGoal={selectedGoal}
@@ -891,6 +955,7 @@ export default function GymTwinApp() {
           isMuted={isMuted}
           displayedSpeech={displayedSpeech}
           personalizedPlan={personalizedPlan ?? undefined}
+          onLogSet={handleLogSet}
           cleanMovementName={cleanMovementName}
           secondsToClock={secondsToClock}
           onToggleMute={() => setIsMuted((muted) => !muted)}
@@ -952,6 +1017,8 @@ export default function GymTwinApp() {
           weeklyPlan={weeklyPlan}
           userStats={userStats}
           workoutHistory={workoutHistory}
+          adaptiveProfile={adaptiveProfile}
+          macrocycle={macrocycleState}
           onStartAnotherWorkout={() => setCurrentScreen("setup")}
           onStartPlanDay={handleStartPlanDay}
           onReturnHome={resetWorkout}

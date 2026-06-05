@@ -1,6 +1,6 @@
 import { calculateBMI, getBodyProfileSummary } from "@/lib/bodyMetrics";
 import { getTodayWeeklyPlanLabel } from "@/lib/weeklyPlanEngine";
-import type { BodyProfile, TraineeStats, WeeklyPlan, WorkoutSummaryData } from "@/types";
+import type { BodyProfile, EnergyRating, TraineeStats, WeeklyPlan, WorkoutSummaryData } from "@/types";
 
 export type TrendPoint = {
   label: string;
@@ -51,6 +51,33 @@ export type BodyMetricsTrend = {
   summary: string;
 };
 
+export type DifficultyDistribution = {
+  tooEasy: number;
+  perfect: number;
+  tooHard: number;
+  total: number;
+};
+
+export type EnergyBar = {
+  label: string;
+  rating: EnergyRating | null;
+  value: number; // 1=low 2=moderate 3=high
+};
+
+export type ActivityDay = {
+  date: string;
+  dayLabel: string;
+  count: number;
+};
+
+export type PersonalRecords = {
+  bestWorkoutScore: number | null;
+  bestFormScore: number | null;
+  bestStreak: number;
+  totalSets: number;
+  totalWorkouts: number;
+};
+
 export type ProgressTrends = {
   safeHistory: WorkoutSummaryData[];
   workoutScoreTrend: TrendSeries;
@@ -60,6 +87,11 @@ export type ProgressTrends = {
   consistency: ConsistencyTrend;
   repQuality: RepQualityTrend;
   bodyMetrics: BodyMetricsTrend;
+  energyBars: EnergyBar[];
+  difficultyDistribution: DifficultyDistribution;
+  volumePerWeek: TrendPoint[];
+  activityHeatmap: ActivityDay[];
+  personalRecords: PersonalRecords;
 };
 
 const TREND_EMPTY_MESSAGE = "Complete more workouts to unlock trends.";
@@ -316,6 +348,94 @@ function buildBodyMetrics(profile?: BodyProfile | null): BodyMetricsTrend {
   };
 }
 
+function getWeekKey(date: Date): string {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  return `${d.getUTCFullYear()}-W${weekNo}`;
+}
+
+function buildEnergyBars(history: WorkoutSummaryData[]): EnergyBar[] {
+  return history
+    .filter((s) => s.energyRating != null)
+    .slice(-8)
+    .map((s) => {
+      const rating = s.energyRating as EnergyRating;
+      const value = rating === "high" ? 3 : rating === "moderate" ? 2 : 1;
+      const date = parseSessionDate(s);
+      return { label: date ? formatShortDate(date) : "—", rating, value };
+    });
+}
+
+function buildDifficultyDistribution(history: WorkoutSummaryData[]): DifficultyDistribution {
+  const rated = history.filter((s) => s.difficultyFeedback != null);
+  return {
+    tooEasy: rated.filter((s) => s.difficultyFeedback === "too_easy").length,
+    perfect: rated.filter((s) => s.difficultyFeedback === "perfect").length,
+    tooHard: rated.filter((s) => s.difficultyFeedback === "too_hard").length,
+    total: rated.length,
+  };
+}
+
+function buildVolumePerWeek(history: WorkoutSummaryData[]): TrendPoint[] {
+  const weekMap = new Map<string, { sets: number; label: string }>();
+  for (const session of history) {
+    const date = parseSessionDate(session);
+    if (!date) continue;
+    const key = getWeekKey(date);
+    const existing = weekMap.get(key);
+    const sets = asFiniteNumber(session.totalSets) ?? 0;
+    const label = date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    weekMap.set(key, { sets: (existing?.sets ?? 0) + sets, label: existing?.label ?? label });
+  }
+  const today = new Date();
+  return Array.from({ length: 5 }, (_, i) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - (4 - i) * 7);
+    const key = getWeekKey(date);
+    const entry = weekMap.get(key);
+    const shortLabel = i === 4 ? "This wk" : i === 3 ? "Last wk" : `−${4 - i}wk`;
+    return { label: shortLabel, value: entry?.sets ?? 0 };
+  });
+}
+
+function buildActivityHeatmap(history: WorkoutSummaryData[]): ActivityDay[] {
+  const today = startOfDay(new Date());
+  const sessionKeys = new Set(
+    history
+      .map((s) => parseSessionDate(s))
+      .filter((d): d is Date => d !== null)
+      .map(dayKey)
+  );
+  return Array.from({ length: 35 }, (_, i) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - (34 - i));
+    const key = dayKey(date);
+    return {
+      date: key,
+      dayLabel: date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      count: sessionKeys.has(key) ? 1 : 0,
+    };
+  });
+}
+
+function buildPersonalRecords(
+  history: WorkoutSummaryData[],
+  userStats?: TraineeStats | null
+): PersonalRecords {
+  const scores = history.map((s) => asFiniteNumber(s.workoutScore)).filter((v): v is number => v !== null);
+  const formScores = history.map((s) => asFiniteNumber(s.formScore)).filter((v): v is number => v !== null);
+  const totalSets = history.reduce((sum, s) => sum + (asFiniteNumber(s.totalSets) ?? 0), 0);
+  return {
+    bestWorkoutScore: scores.length > 0 ? Math.max(...scores) : null,
+    bestFormScore: formScores.length > 0 ? Math.max(...formScores) : null,
+    bestStreak: userStats?.streak ?? 0,
+    totalSets,
+    totalWorkouts: history.length,
+  };
+}
+
 export function deriveProgressTrends({
   workoutHistory,
   weeklyPlan,
@@ -347,5 +467,10 @@ export function deriveProgressTrends({
     consistency: buildConsistency(safeHistory, userStats),
     repQuality: buildRepQuality(safeHistory),
     bodyMetrics: buildBodyMetrics(bodyProfile),
+    energyBars: buildEnergyBars(safeHistory),
+    difficultyDistribution: buildDifficultyDistribution(safeHistory),
+    volumePerWeek: buildVolumePerWeek(safeHistory),
+    activityHeatmap: buildActivityHeatmap(safeHistory),
+    personalRecords: buildPersonalRecords(safeHistory, userStats),
   };
 }

@@ -315,6 +315,26 @@ export interface PersonalizedWorkoutPlan {
   progressionIntent: string;
 }
 
+export interface ExerciseLogEntry {
+  id: string;
+  exerciseName: string;
+  sessionId: string;
+  completedAt: string;
+  setNumber: number;
+  repsCompleted: number;
+  weightLbs: number | null;
+  durationSeconds: number | null;
+  estimatedOneRepMax: number | null;
+}
+
+export interface ExercisePR {
+  exerciseName: string;
+  bestReps: number;
+  bestWeightLbs: number | null;
+  bestEstimated1RM: number | null;
+  achievedAt: string;
+}
+
 export interface ActiveSessionData {
   activeRoutine: WorkoutMovement[];
   movementIndex: number;

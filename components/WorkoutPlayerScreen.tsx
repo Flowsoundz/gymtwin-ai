@@ -9,7 +9,7 @@ import { getAvatarLabel } from "@/lib/avatarAssets";
 import { getAvatarCoachLayerState } from "@/lib/avatarCoachLayer";
 import { getExerciseDemoDescriptor } from "@/lib/exerciseDemoLibrary";
 import { playCountdownCue, playSetStartCue } from "@/lib/audioCues";
-import { getCameraCoachLabel, getCameraCoachModeForMovementName } from "@/lib/cameraCoachMapping";
+import { getCameraCoachHint, getCameraCoachLabel, getCameraCoachModeForMovementName } from "@/lib/cameraCoachMapping";
 import { getCoachBrainResponse } from "@/lib/coachBrain";
 import type { CoachAnimationHint } from "@/lib/coachBrain";
 import { getExerciseClipName, isFloorMovementName } from "@/lib/exerciseAnimationMap";
@@ -24,6 +24,7 @@ import {
   type ConversationIntent,
 } from "@/lib/conversationCommands";
 import { useRepSpeech } from "@/hooks/useRepSpeech";
+import { getLastLoggedWeight } from "@/lib/progressiveOverloadEngine";
 import type {
   AvatarDisplaySettings,
   CoachAvatar,
@@ -59,6 +60,13 @@ type WorkoutPlayerScreenProps = {
   onChangeDifficultyHard: () => void;
   onCoachAnimHint?: (hint: CoachAnimationHint) => void;
   personalizedPlan?: PersonalizedWorkoutPlan;
+  onLogSet?: (
+    exerciseName: string,
+    setNumber: number,
+    repsCompleted: number,
+    weightLbs: number | null,
+    durationSeconds: number | null
+  ) => { isPR: boolean; prLabel: string | null };
   isFirstWorkout?: boolean;
   onFirstHintsDismissed?: () => void;
   primaryButton: string;
@@ -90,6 +98,7 @@ export function WorkoutPlayerScreen({
   onChangeDifficultyEasy,
   onChangeDifficultyHard,
   personalizedPlan,
+  onLogSet,
   onCoachAnimHint,
   isFirstWorkout = false,
   onFirstHintsDismissed,
@@ -98,6 +107,12 @@ export function WorkoutPlayerScreen({
   const [hintsVisible, setHintsVisible] = useState(isFirstWorkout);
   const [quickSettingsOpen, setQuickSettingsOpen] = useState(false);
   const [coachLinePlaying, setCoachLinePlaying] = useState(false);
+
+  // Progressive overload tracker
+  const [trackerOpen, setTrackerOpen] = useState(false);
+  const [trackerReps, setTrackerReps] = useState(currentReps);
+  const [trackerWeight, setTrackerWeight] = useState<number | null>(null);
+  const [prFlash, setPrFlash] = useState<string | null>(null);
   const previousRestCountdownRef = useRef<number | null>(null);
   const previousActiveSetKeyRef = useRef<string | null>(null);
 
@@ -218,6 +233,15 @@ export function WorkoutPlayerScreen({
     },
   });
 
+  // Reset tracker state when exercise changes so stale values never carry over
+  useEffect(() => {
+    setTrackerOpen(false);
+    setTrackerReps(currentReps);
+    const lastWeight = getLastLoggedWeight(activeMovement.name);
+    setTrackerWeight(lastWeight);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMovement.id]);
+
   const supportedCameraMode = useMemo<TrackingMode | null>(() => {
     return getCameraCoachModeForMovementName(activeMovement.name);
   }, [activeMovement.name]);
@@ -317,6 +341,25 @@ export function WorkoutPlayerScreen({
     onTriggerRestPhase();
   };
 
+  function handleTrackerComplete() {
+    if (onLogSet) {
+      const isDuration = personalizedExercise?.duration != null;
+      const result = onLogSet(
+        cleanMovementName(activeMovement.name),
+        workingSet,
+        trackerReps,
+        trackerWeight,
+        isDuration ? (personalizedExercise?.duration ?? null) : null
+      );
+      if (result.isPR && result.prLabel) {
+        setPrFlash(result.prLabel);
+        window.setTimeout(() => setPrFlash(null), 3500);
+      }
+    }
+    setTrackerOpen(false);
+    handleCompleteSet();
+  }
+
   const handleSafetyStop = () => {
     setIsCameraCoachOpen(false);
     stopCamera();
@@ -402,14 +445,30 @@ export function WorkoutPlayerScreen({
   const cameraGuidanceCard = (
     <div className="rounded-[1.25rem] border border-white/8 bg-slate-950/55 px-4 py-4 text-left text-sm leading-relaxed text-slate-300">
       <p className="text-[10px] font-black uppercase tracking-[0.24em] text-blue-300">Camera Setup</p>
-      <p className="mt-2">Set up your phone like a workout mirror before you start live camera coaching.</p>
+      {supportedCameraMode && (
+        <p className="mt-2 font-semibold text-slate-200">
+          {getCameraCoachHint(supportedCameraMode)}
+        </p>
+      )}
       <ul className="mt-3 space-y-1 text-xs text-slate-400">
-        <li>Place your phone 6–8 feet away.</li>
-        <li>Keep your head, hips, knees, and feet visible.</li>
-        <li>Use good lighting for clearer tracking.</li>
-        <li>Camera processing stays on this device.</li>
-        <li>Prototype feedback only, not medical advice.</li>
+        {supportedCameraMode === "pushup" || supportedCameraMode === "plank" ? (
+          <li>Camera at floor level to your side — 4–6 feet away.</li>
+        ) : (
+          <li>Place your phone 6–8 feet away, facing you.</li>
+        )}
+        <li>Your full body must be visible from head to feet.</li>
+        <li>Good lighting significantly improves tracking accuracy.</li>
+        <li>Camera processing stays on this device — nothing is uploaded.</li>
+        <li>Prototype feedback only — not medical advice.</li>
       </ul>
+      {personalizedExercise && (
+        <div className="mt-3 rounded-xl border border-fuchsia-900/30 bg-fuchsia-950/20 px-3 py-2">
+          <p className="text-[9px] font-black uppercase tracking-wider text-fuchsia-400">Coach Cue for This Exercise</p>
+          <p className="mt-1 text-[11px] italic leading-relaxed text-slate-300">
+            &ldquo;{personalizedExercise.coachingCue}&rdquo;
+          </p>
+        </div>
+      )}
     </div>
   );
 
@@ -828,6 +887,11 @@ export function WorkoutPlayerScreen({
                   {cameraMetrics.metricLabel}
                 </p>
                 <p className="mt-2 text-sm font-bold leading-relaxed">{feedbackMessage}</p>
+                {feedbackSeverity === "neutral" && personalizedExercise && (
+                  <p className="mt-1.5 text-[11px] italic leading-relaxed text-fuchsia-200/80">
+                    &ldquo;{personalizedExercise.coachingCue}&rdquo;
+                  </p>
+                )}
               </div>
             </div>
             {trackingWarning ? <p className="mt-2 text-xs leading-relaxed opacity-80">{trackingWarning}</p> : null}
@@ -1208,6 +1272,11 @@ export function WorkoutPlayerScreen({
                   <div className="flex items-start justify-between gap-4">
                     <div className="max-w-2xl">
                       <p className="text-[11px] font-black uppercase tracking-[0.28em] text-blue-300">Active Movement</p>
+                      {prFlash && (
+                        <div className="mb-1.5 inline-flex items-center gap-2 rounded-full border border-yellow-500/40 bg-yellow-950/50 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-yellow-300 shadow-[0_0_16px_rgba(234,179,8,0.3)] animate-pulse">
+                          🏆 {prFlash}
+                        </div>
+                      )}
                       <h2 className="mt-2 text-3xl font-black leading-tight tracking-tight text-white lg:text-[2.6rem]">
                         {cleanMovementName(activeMovement.name)}
                       </h2>
@@ -1233,6 +1302,17 @@ export function WorkoutPlayerScreen({
                       <div className="text-6xl font-black tracking-tight text-purple-400 lg:text-7xl">
                         {currentReps} <span className="text-lg font-normal uppercase tracking-[0.22em] text-slate-500 lg:text-xl">reps</span>
                       </div>
+                      {isCameraCoachOpen && isCameraRunning && trackingReadiness.confidenceScore >= 60 && (
+                        <div className="mt-1 flex items-center gap-2">
+                          <div className="h-1.5 w-1.5 rounded-full bg-fuchsia-400 shadow-[0_0_6px_rgba(217,70,239,0.8)]" />
+                          <span className="text-sm font-black text-fuchsia-300">
+                            Camera: {selectedMode === "squat" ? squatRepCount : selectedMode === "pushup" ? pushupRepCount : `${Math.round(plankHoldSeconds)}s`}
+                          </span>
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">
+                            {selectedMode === "plank" ? "hold" : "reps tracked"}
+                          </span>
+                        </div>
+                      )}
                       <div className="mt-3 flex items-center gap-2">
                         <div className="flex items-center gap-1">
                           {Array.from({ length: activeMovement.sets }, (_, i) => (
@@ -1307,6 +1387,70 @@ export function WorkoutPlayerScreen({
                       <button onClick={onAdvanceExecutionTrack} className="pl-2 text-left text-slate-600 transition hover:text-slate-400">Skip Movement</button>
                       <button onClick={handleSafetyStop} className="pr-2 text-right text-red-500/80 transition hover:text-red-400">Pain / Stop</button>
                     </div>
+
+                    {/* Progressive Overload Tracker */}
+                    {onLogSet && (
+                      <div className="rounded-2xl border border-white/8 bg-slate-950/60 overflow-hidden">
+                        <button
+                          onClick={() => { setTrackerOpen((v) => !v); setTrackerReps(currentReps); }}
+                          className="w-full flex items-center justify-between px-4 py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-500 hover:text-slate-300 transition-colors"
+                        >
+                          <span>◈ Track This Set</span>
+                          <span>{trackerOpen ? "▲" : "▼"}</span>
+                        </button>
+
+                        {trackerOpen && (
+                          <div className="border-t border-white/6 px-4 pb-4 pt-3">
+                            <div className="grid grid-cols-2 gap-4 mb-3">
+                              {/* Reps */}
+                              <div>
+                                <p className="mb-1.5 text-[9px] font-black uppercase tracking-wider text-slate-500">Reps Done</p>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => setTrackerReps((r) => Math.max(1, r - 1))}
+                                    className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-sm font-black text-white transition hover:border-white/20 active:scale-95"
+                                  >−</button>
+                                  <span className="min-w-[2ch] text-center text-xl font-black text-white">{trackerReps}</span>
+                                  <button
+                                    onClick={() => setTrackerReps((r) => r + 1)}
+                                    className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-sm font-black text-white transition hover:border-white/20 active:scale-95"
+                                  >+</button>
+                                </div>
+                              </div>
+
+                              {/* Weight — only for non-bodyweight equipment */}
+                              {personalizedExercise?.equipment !== "Bodyweight" && (
+                                <div>
+                                  <p className="mb-1.5 text-[9px] font-black uppercase tracking-wider text-slate-500">
+                                    Weight (lbs)
+                                  </p>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={() => setTrackerWeight((w) => w === null ? null : Math.max(0, w - 5))}
+                                      className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-sm font-black text-white transition hover:border-white/20 active:scale-95"
+                                    >−</button>
+                                    <span className="min-w-[2.5ch] text-center text-xl font-black text-white">
+                                      {trackerWeight === null || trackerWeight === 0 ? "BW" : trackerWeight}
+                                    </span>
+                                    <button
+                                      onClick={() => setTrackerWeight((w) => (w ?? 0) + 5)}
+                                      className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-sm font-black text-white transition hover:border-white/20 active:scale-95"
+                                    >+</button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            <button
+                              onClick={handleTrackerComplete}
+                              className="w-full rounded-xl bg-gradient-to-r from-blue-600/90 to-purple-600/90 py-2.5 text-[11px] font-black uppercase tracking-wider text-white shadow-[0_0_16px_rgba(99,102,241,0.3)] transition hover:brightness-110 active:scale-95"
+                            >
+                              ◈ Track & Complete Set →
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </section>
               </>

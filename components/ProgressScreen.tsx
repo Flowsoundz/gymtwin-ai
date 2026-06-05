@@ -13,7 +13,20 @@ import { getDifficultyAdjustmentRecommendation } from "@/lib/difficultyAdjustmen
 import { deriveProgressTrends, type TrendPoint, type TrendSeries } from "@/lib/progressTrends";
 import { getTodayWeeklyPlanLabel } from "@/lib/weeklyPlanEngine";
 import { useMemo, useState, type ReactNode } from "react";
-import type { AchievementBadge, BodyProfile, CoachAvatar, TraineeStats, WeeklyPlan, WeeklyPlanDayConfig, WorkoutSummaryData } from "@/types";
+import { deriveWorkoutAdjustments } from "@/lib/adaptiveProfileEngine";
+import {
+  getProgressionSuggestion,
+  getTopLoggedExercises,
+  type ExerciseSummary,
+} from "@/lib/progressiveOverloadEngine";
+import {
+  getAFIBand,
+  getMacrocycleArc,
+  getPhaseBadgeColor,
+  getPhaseLabel,
+} from "@/lib/macrocycleEngine";
+import type { AdaptiveProfile, AchievementBadge, BodyProfile, CoachAvatar, TraineeStats, WeeklyPlan, WeeklyPlanDayConfig, WorkoutSummaryData } from "@/types";
+import type { Macrocycle } from "@/types/macrocycle";
 
 type ProgressScreenProps = {
   selectedAvatar?: CoachAvatar;
@@ -22,6 +35,8 @@ type ProgressScreenProps = {
   weeklyPlan?: WeeklyPlan | null;
   userStats: TraineeStats;
   workoutHistory: WorkoutSummaryData[];
+  adaptiveProfile?: AdaptiveProfile | null;
+  macrocycle?: Macrocycle | null;
   onStartAnotherWorkout: () => void;
   onStartPlanDay?: (config: WeeklyPlanDayConfig) => void;
   onReturnHome: () => void;
@@ -477,6 +492,8 @@ export function ProgressScreen({
   weeklyPlan,
   userStats,
   workoutHistory,
+  adaptiveProfile,
+  macrocycle,
   onStartAnotherWorkout,
   onStartPlanDay,
   onReturnHome,
@@ -518,6 +535,11 @@ export function ProgressScreen({
     [bodyProfile, userStats, weeklyPlan, workoutHistory]
   );
   const recentWorkoutsToDisplay = trendData.safeHistory.slice(-5).reverse();
+  const topExercises = useMemo<ExerciseSummary[]>(() => getTopLoggedExercises(10), [workoutHistory.length]);
+  const adaptiveAdjustments = useMemo(
+    () => (adaptiveProfile ? deriveWorkoutAdjustments(adaptiveProfile) : null),
+    [adaptiveProfile]
+  );
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
   const bodyProfileHistory = useMemo(() => readBodyProfileHistory(), [bodyProfile?.lastUpdated]);
 
@@ -658,6 +680,341 @@ export function ProgressScreen({
               {userStats.lastWorkoutDate || "No workout completed yet"}
             </p>
           </section>
+
+          {/* ── Progressive Overload — Exercise History ─────────────────── */}
+          {topExercises.length > 0 && (
+            <section className="mb-6 overflow-hidden rounded-[1.8rem] border border-white/8 bg-slate-950/58 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+              <div className="border-b border-white/6 px-5 py-4">
+                <p className="text-[11px] font-black uppercase tracking-[0.26em] text-emerald-400">Progressive Overload</p>
+                <p className="mt-0.5 text-sm font-black text-white">Exercise History & PRs</p>
+              </div>
+              <div className="divide-y divide-white/5">
+                {topExercises.map((ex) => {
+                  const suggestion = getProgressionSuggestion(ex.name);
+                  return (
+                    <div key={ex.name} className="px-5 py-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-black text-slate-100 truncate">{ex.name}</p>
+                          <p className="mt-0.5 text-[10px] text-slate-500">{ex.count} set{ex.count !== 1 ? "s" : ""} logged</p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          {ex.pr?.bestWeightLbs != null && ex.pr.bestWeightLbs > 0 ? (
+                            <>
+                              <p className="text-base font-black text-emerald-300">{ex.pr.bestWeightLbs} lbs</p>
+                              <p className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Best weight</p>
+                            </>
+                          ) : ex.pr?.bestReps != null ? (
+                            <>
+                              <p className="text-base font-black text-blue-300">{ex.pr.bestReps} reps</p>
+                              <p className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Best reps</p>
+                            </>
+                          ) : null}
+                          {ex.pr?.bestEstimated1RM != null && (
+                            <p className="text-[9px] text-slate-500">~{ex.pr.bestEstimated1RM} lbs 1RM</p>
+                          )}
+                        </div>
+                      </div>
+                      <p className="mt-2 text-[11px] leading-relaxed text-slate-400 italic">
+                        Next: {suggestion}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {/* ── Personal Records ─────────────────────────────────────────── */}
+          <section className="mb-6 rounded-[1.8rem] border border-white/8 bg-slate-950/58 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+            <p className="mb-4 text-[11px] font-black uppercase tracking-[0.26em] text-yellow-400">Personal Records</p>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {[
+                { label: "Best Score", value: trendData.personalRecords.bestWorkoutScore != null ? `${trendData.personalRecords.bestWorkoutScore}` : "—", color: "text-fuchsia-300" },
+                { label: "Best Form", value: trendData.personalRecords.bestFormScore != null ? `${trendData.personalRecords.bestFormScore}` : "—", color: "text-emerald-300" },
+                { label: "Peak Streak", value: `${trendData.personalRecords.bestStreak}d`, color: "text-orange-300" },
+                { label: "Total Sets", value: trendData.personalRecords.totalSets > 0 ? `${trendData.personalRecords.totalSets}` : "—", color: "text-blue-300" },
+              ].map(({ label, value, color }) => (
+                <div key={label} className="rounded-2xl border border-white/8 bg-slate-900/60 px-3 py-3 text-center">
+                  <p className={`text-2xl font-black ${color}`}>{value}</p>
+                  <p className="mt-1 text-[9px] font-black uppercase tracking-[0.22em] text-slate-500">{label}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* ── 35-Day Activity Heatmap ───────────────────────────────────── */}
+          <section className="mb-6 rounded-[1.8rem] border border-white/8 bg-slate-950/58 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <p className="text-[11px] font-black uppercase tracking-[0.26em] text-purple-400">Activity — Last 5 Weeks</p>
+              <span className="text-[10px] font-bold text-slate-500">
+                {trendData.activityHeatmap.filter(d => d.count > 0).length} active days
+              </span>
+            </div>
+            <div className="grid grid-cols-7 gap-1.5">
+              {["S","M","T","W","T","F","S"].map((d, i) => (
+                <p key={i} className="text-center text-[8px] font-black uppercase tracking-wider text-slate-600">{d}</p>
+              ))}
+              {trendData.activityHeatmap.map((day, i) => (
+                <div
+                  key={i}
+                  title={`${day.dayLabel}: ${day.count > 0 ? "Worked out" : "Rest"}`}
+                  className={`aspect-square rounded-md transition-colors ${
+                    day.count > 0
+                      ? "bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.4)]"
+                      : "bg-white/5"
+                  }`}
+                />
+              ))}
+            </div>
+            <div className="mt-3 flex items-center gap-2">
+              <div className="h-2.5 w-2.5 rounded-sm bg-white/5" />
+              <span className="text-[9px] text-slate-600">Rest</span>
+              <div className="ml-2 h-2.5 w-2.5 rounded-sm bg-purple-500" />
+              <span className="text-[9px] text-slate-600">Workout</span>
+            </div>
+          </section>
+
+          {/* ── Volume per Week + Energy Trend ───────────────────────────── */}
+          <div className="mb-6 grid gap-4 sm:grid-cols-2">
+            {/* Volume per week */}
+            <section className="rounded-[1.8rem] border border-white/8 bg-slate-950/58 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+              <p className="mb-4 text-[11px] font-black uppercase tracking-[0.26em] text-blue-400">Sets per Week</p>
+              {trendData.volumePerWeek.every(p => p.value === 0) ? (
+                <p className="text-xs text-slate-500">Complete workouts to see weekly volume.</p>
+              ) : (
+                <div className="flex items-end gap-1.5 h-20">
+                  {trendData.volumePerWeek.map((point, i) => {
+                    const max = Math.max(...trendData.volumePerWeek.map(p => p.value), 1);
+                    const pct = Math.round((point.value / max) * 100);
+                    const isLatest = i === trendData.volumePerWeek.length - 1;
+                    return (
+                      <div key={i} className="flex flex-1 flex-col items-center gap-1">
+                        <span className="text-[8px] font-bold text-slate-500">{point.value > 0 ? point.value : ""}</span>
+                        <div className="w-full rounded-t-lg transition-all" style={{ height: `${Math.max(4, pct)}%`, background: isLatest ? "linear-gradient(to top, rgb(99,102,241), rgb(168,85,247))" : "rgba(255,255,255,0.08)" }} />
+                        <span className="text-[8px] font-black uppercase tracking-wider text-slate-600">{point.label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            {/* Energy trend */}
+            <section className="rounded-[1.8rem] border border-white/8 bg-slate-950/58 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+              <p className="mb-4 text-[11px] font-black uppercase tracking-[0.26em] text-teal-400">Energy — Last 8 Sessions</p>
+              {trendData.energyBars.length === 0 ? (
+                <p className="text-xs text-slate-500">Rate your energy after workouts to see trends.</p>
+              ) : (
+                <div className="flex items-end gap-1.5 h-20">
+                  {trendData.energyBars.map((bar, i) => {
+                    const pct = bar.value === 3 ? 100 : bar.value === 2 ? 66 : 33;
+                    const color = bar.rating === "high" ? "rgba(52,211,153,0.8)" : bar.rating === "moderate" ? "rgba(99,102,241,0.7)" : "rgba(251,146,60,0.7)";
+                    return (
+                      <div key={i} className="flex flex-1 flex-col items-center gap-1" title={`${bar.label}: ${bar.rating ?? "—"}`}>
+                        <div className="w-full rounded-t-lg transition-all" style={{ height: `${pct}%`, background: color }} />
+                        <span className="text-[8px] font-black uppercase tracking-wider text-slate-600">{bar.label}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              <div className="mt-3 flex flex-wrap gap-2">
+                {[
+                  { label: "Low", color: "bg-orange-400/70" },
+                  { label: "Moderate", color: "bg-indigo-400/70" },
+                  { label: "High", color: "bg-emerald-400/70" },
+                ].map(({ label, color }) => (
+                  <span key={label} className="flex items-center gap-1.5 text-[9px] text-slate-500">
+                    <span className={`h-2 w-2 rounded-sm ${color}`} />{label}
+                  </span>
+                ))}
+              </div>
+            </section>
+          </div>
+
+          {/* ── Difficulty Distribution ───────────────────────────────────── */}
+          {trendData.difficultyDistribution.total > 0 && (
+            <section className="mb-6 rounded-[1.8rem] border border-white/8 bg-slate-950/58 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <p className="text-[11px] font-black uppercase tracking-[0.26em] text-fuchsia-400">Difficulty Breakdown</p>
+                <span className="text-[10px] text-slate-500">{trendData.difficultyDistribution.total} rated sessions</span>
+              </div>
+              <div className="flex h-3 overflow-hidden rounded-full">
+                {trendData.difficultyDistribution.tooEasy > 0 && (
+                  <div className="bg-blue-500/70 transition-all" style={{ width: `${(trendData.difficultyDistribution.tooEasy / trendData.difficultyDistribution.total) * 100}%` }} />
+                )}
+                {trendData.difficultyDistribution.perfect > 0 && (
+                  <div className="bg-emerald-500/70 transition-all" style={{ width: `${(trendData.difficultyDistribution.perfect / trendData.difficultyDistribution.total) * 100}%` }} />
+                )}
+                {trendData.difficultyDistribution.tooHard > 0 && (
+                  <div className="bg-red-500/70 transition-all" style={{ width: `${(trendData.difficultyDistribution.tooHard / trendData.difficultyDistribution.total) * 100}%` }} />
+                )}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-3">
+                {[
+                  { label: "Too Easy", count: trendData.difficultyDistribution.tooEasy, color: "text-blue-300" },
+                  { label: "Just Right", count: trendData.difficultyDistribution.perfect, color: "text-emerald-300" },
+                  { label: "Too Hard", count: trendData.difficultyDistribution.tooHard, color: "text-red-300" },
+                ].filter(d => d.count > 0).map(({ label, count, color }) => (
+                  <span key={label} className={`text-[10px] font-black ${color}`}>
+                    {label} <span className="text-slate-500 font-bold">×{count}</span>
+                  </span>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* ── Macrocycle Training Arc ──────────────────────────────────── */}
+          {macrocycle && (
+            <section className="mb-6 overflow-hidden rounded-[1.8rem] border border-white/8 bg-slate-950/58 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+              <div className="border-b border-white/6 px-5 py-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-black uppercase tracking-[0.26em] text-indigo-400">
+                      Training Arc
+                    </p>
+                    <p className="mt-0.5 text-sm font-black text-white">
+                      Block {macrocycle.id.slice(-6)} · Week {macrocycle.currentWeek} of {macrocycle.targetWeeks}
+                    </p>
+                  </div>
+                  <span className={`rounded-full border px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider ${getPhaseBadgeColor(macrocycle.currentPhase)}`}>
+                    {getPhaseLabel(macrocycle.currentPhase)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Phase timeline */}
+              <div className="p-5">
+                <div className="flex gap-1.5">
+                  {getMacrocycleArc(macrocycle).map((week) => (
+                    <div key={week.week} className="flex flex-1 flex-col items-center gap-1.5">
+                      <div
+                        className={`w-full rounded-lg py-2 text-center text-[8px] font-black uppercase tracking-wider transition-all ${
+                          week.status === "completed"
+                            ? "bg-white/10 text-slate-400"
+                            : week.status === "current"
+                              ? `${getPhaseBadgeColor(week.phase)} shadow-[0_0_12px_rgba(99,102,241,0.3)]`
+                              : "bg-white/4 text-slate-600"
+                        }`}
+                      >
+                        {getPhaseLabel(week.phase)}
+                      </div>
+                      <div className={`h-1.5 w-1.5 rounded-full ${
+                        week.status === "completed" ? "bg-white/40"
+                        : week.status === "current" ? "bg-indigo-400 shadow-[0_0_6px_rgba(99,102,241,0.8)]"
+                        : "bg-white/10"
+                      }`} />
+                      <span className="text-[8px] font-bold text-slate-600">W{week.week}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* AFI bar chart — one bar per session */}
+                {macrocycle.fatigueSnapshots.length > 0 && (
+                  <div className="mt-5">
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                        Fatigue per Session
+                      </p>
+                      <span className={`text-[10px] font-black uppercase tracking-wider ${
+                        getAFIBand(macrocycle.accumulatedFatigueIndex) === "critical" ? "text-red-400"
+                        : getAFIBand(macrocycle.accumulatedFatigueIndex) === "overloaded" ? "text-orange-400"
+                        : getAFIBand(macrocycle.accumulatedFatigueIndex) === "loaded" ? "text-yellow-400"
+                        : "text-emerald-400"
+                      }`}>
+                        AFI {macrocycle.accumulatedFatigueIndex.toFixed(1)} · {getAFIBand(macrocycle.accumulatedFatigueIndex)}
+                      </span>
+                    </div>
+                    <div className="flex items-end gap-1 h-12">
+                      {macrocycle.fatigueSnapshots.map((snap, i) => {
+                        const maxContrib = 8; // rawAFIContribution max
+                        const pct = Math.max(8, (Math.max(0, snap.rawAFIContribution) / maxContrib) * 100);
+                        const band = getAFIBand(snap.rawAFIContribution);
+                        const barColor =
+                          band === "critical" ? "bg-red-500/70"
+                          : band === "overloaded" ? "bg-orange-400/70"
+                          : band === "loaded" ? "bg-yellow-400/70"
+                          : snap.rawAFIContribution < 0 ? "bg-emerald-400/70"
+                          : "bg-indigo-400/70";
+                        return (
+                          <div
+                            key={i}
+                            title={`Session ${i + 1}: AFI contribution ${snap.rawAFIContribution > 0 ? "+" : ""}${snap.rawAFIContribution}`}
+                            className={`flex-1 rounded-t-sm transition-all ${barColor}`}
+                            style={{ height: `${pct}%` }}
+                          />
+                        );
+                      })}
+                    </div>
+                    <div className="mt-1 flex justify-between text-[8px] text-slate-600">
+                      <span>Session 1</span>
+                      <span>Session {macrocycle.fatigueSnapshots.length}</span>
+                    </div>
+                  </div>
+                )}
+
+                {macrocycle.fatigueSnapshots.length === 0 && (
+                  <p className="mt-4 text-xs text-slate-500">
+                    Complete your first session and rate it to start tracking fatigue across this block.
+                  </p>
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* ── Adaptive Engine Status ────────────────────────────────────── */}
+          {adaptiveProfile && adaptiveProfile.totalFeedbackSubmissions > 0 && adaptiveAdjustments && (
+            <section className="mb-6 overflow-hidden rounded-[1.8rem] border border-purple-900/30 bg-[linear-gradient(135deg,rgba(88,28,135,0.1),rgba(15,23,42,0.7))] shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-purple-500/30 to-transparent" />
+              <div className="border-b border-white/6 px-5 py-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[11px] font-black uppercase tracking-[0.26em] text-purple-400">Adaptive Engine</p>
+                  <span className="rounded-full border border-purple-500/30 bg-purple-950/50 px-2.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-purple-300">
+                    {adaptiveProfile.totalFeedbackSubmissions} sessions calibrated
+                  </span>
+                </div>
+                <p className="mt-1 text-sm font-bold text-white">
+                  {adaptiveAdjustments.isRecoverySession ? "Recovery Mode Active" : "Calibrated & Running"}
+                </p>
+              </div>
+              <div className="p-5">
+                <div className="grid grid-cols-3 gap-3 mb-4">
+                  {[
+                    { label: "Volume", value: `${Math.round(adaptiveAdjustments.volumeModifier * 100)}%`, positive: adaptiveAdjustments.volumeModifier >= 1 },
+                    { label: "Reps", value: `${Math.round(adaptiveAdjustments.repModifier * 100)}%`, positive: adaptiveAdjustments.repModifier >= 1 },
+                    { label: "Rest", value: `${Math.round(adaptiveAdjustments.restModifier * 100)}%`, positive: adaptiveAdjustments.restModifier <= 1 },
+                  ].map(({ label, value, positive }) => (
+                    <div key={label} className="rounded-2xl border border-white/8 bg-slate-900/60 px-3 py-3 text-center">
+                      <p className={`text-xl font-black ${positive ? "text-emerald-300" : "text-orange-300"}`}>{value}</p>
+                      <p className="mt-0.5 text-[9px] font-black uppercase tracking-wider text-slate-500">{label}</p>
+                    </div>
+                  ))}
+                </div>
+                {adaptiveAdjustments.excludedMuscleGroups.length > 0 && (
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    {adaptiveAdjustments.excludedMuscleGroups.map((g) => (
+                      <span key={g} className="rounded-full border border-red-900/40 bg-red-950/30 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-red-300">
+                        {g} — resting
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {adaptiveAdjustments.deprioritizedGroups.length > 0 && (
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    {adaptiveAdjustments.deprioritizedGroups.map((g) => (
+                      <span key={g} className="rounded-full border border-orange-900/40 bg-orange-950/30 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-orange-300">
+                        {g} — light
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <p className="text-[11px] leading-relaxed text-slate-400 italic">
+                  &ldquo;{adaptiveAdjustments.intensityNote}&rdquo;
+                </p>
+              </div>
+            </section>
+          )}
 
           <section className="mb-6 rounded-[1.8rem] border border-white/8 bg-slate-950/58 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
             <div className="mb-4 flex items-end justify-between gap-3">

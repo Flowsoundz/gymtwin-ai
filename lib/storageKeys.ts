@@ -13,3 +13,5 @@ export const FIRST_HINTS_SHOWN_KEY = "gymtwin_first_hints_shown";
 export const COACH_TRANSFORM_PRESETS_KEY = "gymtwin_coach_transform_presets_v4";
 export const NUTRITION_LOG_KEY = "gymtwin_nutrition_log";
 export const ADAPTIVE_PROFILE_KEY = "gymtwin_adaptive_profile";
+export const EXERCISE_LOG_KEY = "gymtwin_exercise_log";
+export const EXERCISE_PR_KEY = "gymtwin_exercise_prs";
