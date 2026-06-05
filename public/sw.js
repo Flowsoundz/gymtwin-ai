@@ -10,6 +10,9 @@ const RUNTIME_NEXT = `gt-next-${CACHE_VERSION}`;
 const PRECACHE_URLS = [
   "/",
   "/cast",
+  "/manifest.json",
+  "/icon-192.png",
+  "/icon-512.png",
   "/mediapipe/vision_wasm_internal.js",
   "/mediapipe/vision_wasm_internal.wasm",
   "/mediapipe/vision_wasm_nosimd_internal.js",
