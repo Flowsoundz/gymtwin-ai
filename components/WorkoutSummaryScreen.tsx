@@ -275,6 +275,63 @@ export function WorkoutSummaryScreen({
             </div>
           </section>
 
+          {/* ── Session Breakdown: Muscle Groups + PRs ── */}
+          {((lastWorkoutSummary.muscleGroups?.length ?? 0) > 0 || (lastWorkoutSummary.sessionPRs?.length ?? 0) > 0) && (
+            <section className="mb-6 rounded-[1.8rem] border border-white/8 bg-slate-950/60 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+              <p className="mb-3 text-[11px] font-black uppercase tracking-[0.26em] text-slate-400">Session Breakdown</p>
+
+              {/* Muscle group chips */}
+              {(lastWorkoutSummary.muscleGroups?.length ?? 0) > 0 && (
+                <div className="mb-4">
+                  <p className="mb-2 text-[10px] font-black uppercase tracking-[0.22em] text-slate-600">Muscles Worked</p>
+                  <div className="flex flex-wrap gap-2">
+                    {lastWorkoutSummary.muscleGroups!.map((group) => {
+                      const colors: Record<string, string> = {
+                        legs: "border-fuchsia-400/30 bg-fuchsia-500/12 text-fuchsia-200",
+                        "upper body": "border-blue-400/30 bg-blue-500/12 text-blue-200",
+                        core: "border-amber-400/30 bg-amber-500/12 text-amber-200",
+                        cardio: "border-red-400/30 bg-red-500/12 text-red-200",
+                      };
+                      const cls = colors[group] ?? "border-slate-400/20 bg-slate-500/10 text-slate-300";
+                      return (
+                        <span
+                          key={group}
+                          className={`rounded-full border px-3 py-1 text-[11px] font-black uppercase tracking-[0.18em] ${cls}`}
+                        >
+                          {group}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* PR badges */}
+              {(lastWorkoutSummary.sessionPRs?.length ?? 0) > 0 && (
+                <div>
+                  <p className="mb-2 text-[10px] font-black uppercase tracking-[0.22em] text-slate-600">Personal Records</p>
+                  <div className="space-y-2">
+                    {lastWorkoutSummary.sessionPRs!.map((pr, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between gap-3 rounded-2xl border border-amber-400/24 bg-amber-500/8 px-4 py-2.5"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-base leading-none text-amber-400">★</span>
+                          <p className="text-xs font-black capitalize text-amber-100">{pr.exerciseName}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-400">New PR</p>
+                          <p className="text-xs font-semibold text-amber-200">{pr.prLabel}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
+
           <section className="mb-6 rounded-[1.8rem] border border-white/8 bg-slate-950/60 p-5 text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
             <MetricRow label="Target Goal:" value={<span className="font-semibold text-slate-200">{lastWorkoutSummary.goal}</span>} />
             <MetricRow label="Intensity:" value={<span className="font-semibold text-fuchsia-300">{lastWorkoutSummary.level}</span>} />

@@ -220,6 +220,8 @@ export interface WorkoutSummaryData {
   xpEarned?: number;
   cleanRepEstimate?: number;
   coachNote?: string;
+  muscleGroups?: string[];
+  sessionPRs?: Array<{ exerciseName: string; prType: string; prLabel: string }>;
 }
 
 export interface WorkoutMovement {

@@ -89,7 +89,7 @@ import {
   saveMacrocycle,
   shouldAdvanceWeek,
 } from "@/lib/macrocycleEngine";
-import { appendSetLog } from "@/lib/progressiveOverloadEngine";
+import { appendSetLog, readExercisePRs } from "@/lib/progressiveOverloadEngine";
 import type { Macrocycle } from "@/types/macrocycle";
 import {
   defaultAvatarDisplaySettings,
@@ -624,12 +624,39 @@ export default function GymTwinApp() {
     const nextStats = { workoutsCompleted: userStats.workoutsCompleted + 1, streak: nextStreak, lastWorkoutDate: today, totalMinutes: userStats.totalMinutes + actualMins };
     setUserStats(nextStats); saveUserStats(nextStats);
 
+    const muscleGroupSet = new Set<string>();
+    for (const move of activeRoutine) {
+      if (!["warmup", "cooldown", "mobility"].includes(move.category)) {
+        muscleGroupSet.add(move.category);
+      }
+    }
+    const muscleGroups = [...muscleGroupSet];
+
+    const sessionPRsRaw = readExercisePRs();
+    const sessionPRs: Array<{ exerciseName: string; prType: string; prLabel: string }> = [];
+    const seenKeys = new Set<string>();
+    for (const move of activeRoutine) {
+      const key = move.name.replace(/-instance-\d+$/i, "").trim().toLowerCase();
+      if (seenKeys.has(key)) continue;
+      seenKeys.add(key);
+      const pr = sessionPRsRaw[key];
+      if (pr && pr.achievedAt === today) {
+        const prType = pr.bestWeightLbs !== null ? "weight" : "reps";
+        const prLabel = pr.bestWeightLbs !== null
+          ? `${pr.bestWeightLbs} lbs`
+          : `${pr.bestReps} reps`;
+        sessionPRs.push({ exerciseName: move.name.replace(/-instance-\d+$/i, "").trim(), prType, prLabel });
+      }
+    }
+
     const summaryPayload = buildScoredWorkoutSummary({
       id: `session-${Date.now()}`, goal: selectedGoal, level: selectedLevel, equipment: selectedEquipment, sessionLength,
       actualSessionMinutes: actualMins, exerciseCount: activeRoutine.length, totalSets: totalWorkoutSets, estimatedReps: totalAccumulatedReps + currentReps,
       coach: selectedCoach,
       difficultyFeedback: null,
       completedAt: today,
+      muscleGroups,
+      sessionPRs: sessionPRs.length > 0 ? sessionPRs : undefined,
     } satisfies WorkoutSummaryData);
 
     setLastWorkoutSummary(summaryPayload); saveLastWorkoutSummary(summaryPayload);
