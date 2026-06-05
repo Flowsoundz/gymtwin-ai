@@ -526,10 +526,13 @@ function CoachModel({
   }, [clonedScene, showSkeleton]);
   const [externalClips, setExternalClips] = useState<AnimationClip[]>([]);
   const [fitnessClips, setFitnessClips] = useState<AnimationClip[]>([]);
+  // A duration-0 clip is a T-pose/bind-pose placeholder, not a real animation.
+  // Treat the model as having no embedded animations so the external pack loads.
+  const hasRealEmbeddedClips = embeddedClips.some((c) => c.duration > 0);
   const baseAnimations = useMemo(() => {
-    const base = embeddedClips.length ? embeddedClips : externalClips;
+    const base = hasRealEmbeddedClips ? embeddedClips : externalClips;
     return sanitizeAnimationClips(modelPath, base);
-  }, [embeddedClips, externalClips, modelPath]);
+  }, [hasRealEmbeddedClips, embeddedClips, externalClips, modelPath]);
   const demoAnimations = useMemo(
     () => sanitizeAnimationClips(modelPath, fitnessClips),
     [fitnessClips, modelPath]
@@ -905,7 +908,7 @@ function CoachModel({
         <meshBasicMaterial color="#000000" transparent opacity={0.12} depthWrite={false} />
       </mesh>
 
-      {animate && !embeddedClips.length && (
+      {animate && !hasRealEmbeddedClips && (
         <Suspense fallback={null}>
           <AnimPackErrorBoundary>
             <AnimationPackLoader path={animPackPath} onClipsLoaded={setExternalClips} />
