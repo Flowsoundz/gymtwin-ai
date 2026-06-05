@@ -979,10 +979,19 @@ export function WorkoutPlayerScreen({
       )}
     </div>
   ) : (
-    <div className="rounded-[1.7rem] border border-white/8 bg-white/6 p-4 backdrop-blur-xl shadow-[0_18px_60px_rgba(15,23,42,0.45)]">
-      <p className="text-xs font-bold tracking-wide text-slate-500">
-        Camera coaching not available for this movement yet.
-      </p>
+    <div className="space-y-3">
+      <div className="rounded-[1.7rem] border border-white/8 bg-white/6 px-4 py-3 backdrop-blur-xl">
+        <p className="text-[10px] font-black uppercase tracking-[0.26em] text-slate-500">Camera Coach</p>
+        <p className="mt-1 text-xs text-slate-500">Live tracking not available for this movement — study the demo below.</p>
+      </div>
+      {ENABLE_EXERCISE_DEMOS && (
+        <ExerciseDemoCard
+          selectedAvatar={selectedAvatar}
+          exerciseName={cleanMovementName(activeMovement.name)}
+          demoClipName={demoClipName}
+          compact
+        />
+      )}
     </div>
   );
 
@@ -1590,7 +1599,7 @@ export function WorkoutPlayerScreen({
                 </div>
               </div>
               <p className="mt-3 text-xs leading-relaxed text-slate-400">
-                {supportedCameraMode ? cameraCoachAvailabilityDetail : "Camera coaching not available for this movement yet."}
+                {supportedCameraMode ? cameraCoachAvailabilityDetail : "Exercise demo shown in the camera panel — study your form before each set."}
               </p>
               <div className="mt-3 rounded-[1.25rem] border border-white/8 bg-slate-950/55 px-4 py-3">
                 <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Demo Pipeline</p>
