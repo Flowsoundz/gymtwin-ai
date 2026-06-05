@@ -5,7 +5,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { ContactShadows, Html, OrbitControls, useGLTF } from "@react-three/drei";
 import { clone as skeletonClone } from "three/examples/jsm/utils/SkeletonUtils.js";
-import { ACESFilmicToneMapping, AnimationClip, AnimationMixer, BufferAttribute, BufferGeometry, CanvasTexture, Color, Line, LineBasicMaterial, LoopOnce, LoopRepeat, Mesh, PCFSoftShadowMap, SkeletonHelper, SRGBColorSpace, Vector3, VectorKeyframeTrack } from "three";
+import { ACESFilmicToneMapping, AnimationClip, AnimationMixer, BufferAttribute, BufferGeometry, CanvasTexture, Color, Line, LineBasicMaterial, LoopOnce, LoopRepeat, Mesh, PCFShadowMap, SkeletonHelper, SRGBColorSpace, Vector3, VectorKeyframeTrack } from "three";
 import type { Group, Object3D } from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import {
@@ -1461,7 +1461,7 @@ export function Coach3D({
           <Coach3DErrorBoundary fallback={fallbackNode}>
             <Canvas
               key={canvasInstanceKey}
-              shadows={{ type: PCFSoftShadowMap }}
+              shadows={{ type: PCFShadowMap }}
               camera={{
                 position: initialCameraPosition,
                 fov: resolvedFov,
