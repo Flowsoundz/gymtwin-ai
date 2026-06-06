@@ -69,6 +69,20 @@ type SurfacePreset = {
   fov: number;
 };
 
+type LightingPreset = {
+  ambientIntensity: number;
+  hemisphereIntensity: number;
+  keyIntensity: number;
+  rimIntensity: number;
+  violetFillIntensity: number;
+  floorBounceIntensity: number;
+  topFillIntensity: number;
+  faceFillIntensity: number;
+  bloomIntensity: number;
+  floorMixStrength: number;
+  toneExposure: number;
+};
+
 function getSurfacePreset(
   characterId: CharacterId,
   surface: CoachCanvasSurface
@@ -105,6 +119,81 @@ function getSurfacePreset(
         cameraPosition: [0, 1.3, 4.2],
         target,
         fov: 34,
+      };
+  }
+}
+
+function getLightingPreset(surface: CoachCanvasSurface): LightingPreset {
+  switch (surface) {
+    case "hero":
+      return {
+        ambientIntensity: 0.18,
+        hemisphereIntensity: 0.34,
+        keyIntensity: 5.7,
+        rimIntensity: 3.9,
+        violetFillIntensity: 2.1,
+        floorBounceIntensity: 2.2,
+        topFillIntensity: 1.6,
+        faceFillIntensity: 0.7,
+        bloomIntensity: 0.95,
+        floorMixStrength: 22,
+        toneExposure: 1.5,
+      };
+    case "workout_panel":
+      return {
+        ambientIntensity: 0.15,
+        hemisphereIntensity: 0.28,
+        keyIntensity: 5.2,
+        rimIntensity: 2.9,
+        violetFillIntensity: 1.2,
+        floorBounceIntensity: 1.6,
+        topFillIntensity: 1.4,
+        faceFillIntensity: 0,
+        bloomIntensity: 0.6,
+        floorMixStrength: 16,
+        toneExposure: 1.42,
+      };
+    case "demo_card":
+      return {
+        ambientIntensity: 0.15,
+        hemisphereIntensity: 0.3,
+        keyIntensity: 5.1,
+        rimIntensity: 3.0,
+        violetFillIntensity: 1.25,
+        floorBounceIntensity: 1.55,
+        topFillIntensity: 1.45,
+        faceFillIntensity: 0,
+        bloomIntensity: 0.62,
+        floorMixStrength: 15,
+        toneExposure: 1.42,
+      };
+    case "summary":
+      return {
+        ambientIntensity: 0.17,
+        hemisphereIntensity: 0.31,
+        keyIntensity: 5.35,
+        rimIntensity: 3.2,
+        violetFillIntensity: 1.45,
+        floorBounceIntensity: 1.75,
+        topFillIntensity: 1.5,
+        faceFillIntensity: 0,
+        bloomIntensity: 0.72,
+        floorMixStrength: 18,
+        toneExposure: 1.46,
+      };
+    default:
+      return {
+        ambientIntensity: 0.18,
+        hemisphereIntensity: 0.32,
+        keyIntensity: 5.5,
+        rimIntensity: 3.6,
+        violetFillIntensity: 1.8,
+        floorBounceIntensity: 2.1,
+        topFillIntensity: 1.6,
+        faceFillIntensity: 0,
+        bloomIntensity: 0.85,
+        floorMixStrength: 24,
+        toneExposure: 1.55,
       };
   }
 }
@@ -232,7 +321,15 @@ function DynamicHexPlatform({
 
 // ─── Reflective floor ────────────────────────────────────────────────────────
 
-function ReflectiveFloor({ accentColor }: { accentColor: string }) {
+function ReflectiveFloor({
+  accentColor,
+  mixStrength,
+}: {
+  accentColor: string;
+  mixStrength: number;
+}) {
+  const floorTint = useMemo(() => new Color(accentColor).multiplyScalar(0.42), [accentColor]);
+
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.18, 0]} receiveShadow>
       <circleGeometry args={[3.5, 64]} />
@@ -240,12 +337,12 @@ function ReflectiveFloor({ accentColor }: { accentColor: string }) {
         blur={[300, 100]}
         resolution={512}
         mixBlur={1}
-        mixStrength={40}
+        mixStrength={mixStrength}
         roughness={1}
         depthScale={1.2}
         minDepthThreshold={0.4}
         maxDepthThreshold={1.4}
-        color={accentColor}
+        color={floorTint}
         metalness={0.8}
         mirror={0}
       />
@@ -462,6 +559,7 @@ export function OptimizedCoachCanvas({
     ? [1, 1]
     : [1, Math.min(devicePixelRatio, 1.8)];
   const surfacePreset = getSurfacePreset(characterId, surface);
+  const lightingPreset = getLightingPreset(surface);
   const resolvedCameraPosition = cameraPosition ?? surfacePreset.cameraPosition;
   const resolvedFov = fov ?? surfacePreset.fov;
   const orbitTarget = surfacePreset.target;
@@ -482,7 +580,7 @@ export function OptimizedCoachCanvas({
         onCreated={({ gl }) => {
           gl.outputColorSpace = SRGBColorSpace;
           gl.toneMapping = ACESFilmicToneMapping;
-          gl.toneMappingExposure = isCameraScreen ? 1.2 : 1.55;
+          gl.toneMappingExposure = isCameraScreen ? 1.2 : lightingPreset.toneExposure;
         }}
       >
         <CameraSetup position={resolvedCameraPosition} target={orbitTarget} fov={resolvedFov} />
@@ -499,12 +597,12 @@ export function OptimizedCoachCanvas({
           <ambientLight intensity={1.0} color="#c8e0ff" />
         ) : (
           <>
-            <ambientLight intensity={0.18} color="#080c1a" />
-            <hemisphereLight color="#1a2050" groundColor="#000000" intensity={0.32} />
+            <ambientLight intensity={lightingPreset.ambientIntensity} color="#080c1a" />
+            <hemisphereLight color="#1a2050" groundColor="#000000" intensity={lightingPreset.hemisphereIntensity} />
             <directionalLight
               castShadow
               position={[-2, 7, 5]}
-              intensity={5.5}
+              intensity={lightingPreset.keyIntensity}
               color="#d0e8ff"
               shadow-mapSize-width={2048}
               shadow-mapSize-height={2048}
@@ -516,10 +614,19 @@ export function OptimizedCoachCanvas({
               shadow-camera-top={5}
               shadow-camera-bottom={-5}
             />
-            <directionalLight position={[-5, 3, -3]} intensity={4.5} color={character.rimColor} />
-            <directionalLight position={[5, 2, -2]} intensity={3.2} color="#7740ff" />
-            <pointLight position={[0, 0.05, 0.3]} intensity={2.8} color={character.rimColor} distance={4.5} decay={2} />
-            <pointLight position={[0, 9, 1]} intensity={1.6} color="#c8e0ff" distance={16} decay={2} />
+            <directionalLight position={[-5, 3, -3]} intensity={lightingPreset.rimIntensity} color={character.rimColor} />
+            <directionalLight position={[5, 2, -2]} intensity={lightingPreset.violetFillIntensity} color="#7740ff" />
+            <pointLight position={[0, 0.05, 0.3]} intensity={lightingPreset.floorBounceIntensity} color={character.rimColor} distance={4.5} decay={2} />
+            <pointLight position={[0, 9, 1]} intensity={lightingPreset.topFillIntensity} color="#c8e0ff" distance={16} decay={2} />
+            {lightingPreset.faceFillIntensity > 0 && (
+              <pointLight
+                position={[0, 1.85, 2.15]}
+                intensity={lightingPreset.faceFillIntensity}
+                color="#ffe7d6"
+                distance={4.2}
+                decay={2}
+              />
+            )}
           </>
         )}
 
@@ -530,7 +637,7 @@ export function OptimizedCoachCanvas({
               workoutPhase={workoutPhase}
               repProgress={repProgress}
             />
-            <ReflectiveFloor accentColor={character.accentColor} />
+            <ReflectiveFloor accentColor={character.accentColor} mixStrength={lightingPreset.floorMixStrength} />
             <ContactShadows
               position={[0, -0.178, 0]}
               opacity={0.18}
@@ -557,7 +664,7 @@ export function OptimizedCoachCanvas({
             <Bloom
               luminanceThreshold={0.75}
               luminanceSmoothing={0.3}
-              intensity={1.2}
+              intensity={lightingPreset.bloomIntensity}
               mipmapBlur
             />
           </EffectComposer>
