@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import type { CoachAvatar, CoachName, Equipment, WorkoutGoal, WorkoutLevel } from "@/types";
 import { saveQuickStartDefaults, markOnboardingDone } from "@/lib/onboardingStorage";
+import { CharacterViewer } from "@/components/CharacterViewer";
+import { CHARACTERS } from "@/lib/characters";
 
 const GOALS: { value: WorkoutGoal; emoji: string; label: string; sub: string }[] = [
   { value: "Lose weight", emoji: "🔥", label: "Lose weight", sub: "Fat burn, conditioning, and calorie-focused sessions" },
@@ -407,14 +409,24 @@ export function OnboardingScreen({ onComplete }: OnboardingScreenProps) {
                 </div>
               </div>
 
-              <div className="rounded-[1.85rem] border border-blue-400/14 bg-blue-500/8 p-5">
-                <p className="text-[11px] font-black uppercase tracking-[0.24em] text-blue-300">What this powers</p>
-                <div className="mt-4 space-y-3 text-sm leading-relaxed text-slate-300">
-                  <p>Your selected goal and level seed the first workout defaults and weekly plan recommendations.</p>
-                  <p>Equipment and duration narrow the routine generator without forcing a new system architecture yet.</p>
-                  <p>The coach choice carries through onboarding, dashboard, and workout surfaces for a more consistent MVP feel.</p>
+              {step === 3 ? (
+                <div className="overflow-hidden rounded-[1.85rem] border border-white/8">
+                  <CharacterViewer
+                    character={CHARACTERS[selectedCoach.avatar === "Atlas" ? "atlas" : "nova"]}
+                    height="h-[340px]"
+                    enableOrbit={false}
+                  />
                 </div>
-              </div>
+              ) : (
+                <div className="rounded-[1.85rem] border border-blue-400/14 bg-blue-500/8 p-5">
+                  <p className="text-[11px] font-black uppercase tracking-[0.24em] text-blue-300">What this powers</p>
+                  <div className="mt-4 space-y-3 text-sm leading-relaxed text-slate-300">
+                    <p>Your selected goal and level seed the first workout defaults and weekly plan recommendations.</p>
+                    <p>Equipment and duration narrow the routine generator without forcing a new system architecture yet.</p>
+                    <p>The coach choice carries through onboarding, dashboard, and workout surfaces for a more consistent MVP feel.</p>
+                  </div>
+                </div>
+              )}
             </aside>
           </div>
         </div>
