@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useCoachStore } from "@/store/useCoachStore";
 import { Coach3D } from "@/components/Coach3D";
 import { FloatingCoachAvatar } from "@/components/FloatingCoachAvatar";
 import { ExerciseDemoCard } from "@/components/ExerciseDemoCard";
@@ -110,6 +111,16 @@ export function WorkoutPlayerScreen({
   const [hintsVisible, setHintsVisible] = useState(isFirstWorkout);
   const [quickSettingsOpen, setQuickSettingsOpen] = useState(false);
   const [coachLinePlaying, setCoachLinePlaying] = useState(false);
+
+  // Sync rep progress + workout phase into global coach store
+  const { setRepProgress, setWorkoutPhase } = useCoachStore();
+  useEffect(() => {
+    const target = activeMovement.baseReps ?? 10;
+    setRepProgress(currentReps / target);
+    setWorkoutPhase(
+      isRestPhase ? "rest" : currentReps >= target ? "peak" : currentReps > 0 ? "active" : "ready"
+    );
+  }, [currentReps, activeMovement.baseReps, isRestPhase, setRepProgress, setWorkoutPhase]);
 
   // Progressive overload tracker
   const [trackerOpen, setTrackerOpen] = useState(false);

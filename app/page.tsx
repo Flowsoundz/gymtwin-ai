@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useEffectEvent, useMemo, useState } from "react";
+import { useCoachStore } from "@/store/useCoachStore";
 import type { User } from "@supabase/supabase-js";
 import type {
   AdaptiveProfile,
@@ -483,6 +484,8 @@ export default function GymTwinApp() {
 
   function initializeTrainingSession() {
     if (!hasAcceptedSafety) return;
+    useCoachStore.getState().setWorkoutPhase("ready");
+    useCoachStore.getState().setRepProgress(0);
 
     // Ensure macrocycle exists — lazy init on first workout
     let currentMacro = macrocycleState ?? readMacrocycle();
@@ -670,6 +673,8 @@ export default function GymTwinApp() {
     if (updatedWeeklyPlan) setWeeklyPlan(updatedWeeklyPlan);
 
     clearActiveSession(); setSessionStartedAt(null);
+    useCoachStore.getState().setWorkoutPhase("celebrating");
+    useCoachStore.getState().setRepProgress(0);
     const line = `Workout complete. ${getCoachQuote(selectedCoach, "outro")}`;
     setDisplayedSpeech(line); speak(line); setCurrentScreen("summary");
   }

@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { OptimizedCoachCanvas } from "@/components/OptimizedCoachCanvas";
 import { getAvatarLabel, getAvatarRole } from "@/lib/avatarAssets";
 import { getAvatarAsset } from "@/lib/avatarAssets";
 import { getCoachAdaptationRecommendation } from "@/lib/coachAdaptationEngine";
@@ -423,26 +424,12 @@ export function LandingScreen({
               {/* Neon glow ring */}
               <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-blue-500/8 via-violet-500/5 to-fuchsia-500/8" />
               <div className="relative">
-                <div className="relative h-[380px] overflow-hidden rounded-[1.5rem] bg-gradient-to-br from-slate-800 via-slate-900 to-[#0f172a] md:h-[min(70vh,640px)]">
+                <div className="relative h-[380px] overflow-hidden rounded-[1.5rem] bg-[#010208] md:h-[min(70vh,640px)]">
                   <div
                     className={`pointer-events-none absolute inset-[8%] z-[1] rounded-[2rem] bg-gradient-to-br blur-3xl hero-aura ${streakAuraClass}`}
                     style={{ animationDuration: heroAuraDuration }}
                   />
-                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.12),_transparent_28%),linear-gradient(180deg,rgba(30,41,59,0.08),rgba(15,23,42,0.34)_100%)]" />
-                  <Image
-                    src={getAvatarAsset(selectedAvatar)}
-                    alt={`${coachName} hero`}
-                    fill
-                    priority
-                    sizes="(min-width: 1024px) 40vw, 100vw"
-                    className={`object-cover transition duration-700 ease-out ${
-                      heroPostureIndex === 0
-                        ? "scale-[1.02] object-[center_16%]"
-                        : heroPostureIndex === 1
-                          ? "scale-[1.05] object-[center_12%]"
-                          : "scale-[1.04] object-[center_20%]"
-                    }`}
-                  />
+                  <OptimizedCoachCanvas height="h-full" fov={30} cameraPosition={[0, 1.1, 3.8]} />
                   <div className="pointer-events-none absolute inset-x-5 top-5 z-[2] max-w-[18rem] rounded-2xl border border-white/10 bg-slate-950/42 px-4 py-3 backdrop-blur-xl">
                     <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-300">
                       {userStats.streak >= 7 ? "Streak Surge" : "Atlas Hero View"}
