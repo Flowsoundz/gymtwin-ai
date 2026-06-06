@@ -5,10 +5,6 @@ import type { CoachAvatar } from "@/types";
 export const GYMTWIN_MALE_MODEL_PATH =
   "/models/gymtwin/male/GymTwin_Male_43K_Rigged_UPRIGHT.glb";
 
-// Legacy male model — Mixamo-rigged, 7.5 MB.
-export const ATLAS_LEGACY_MODEL_PATH =
-  "/models/gymtwin/male/GymTwin_Male_Rigged.glb";
-
 export const ATLAS_RUNTIME_COACH_MODEL_PATH = GYMTWIN_MALE_MODEL_PATH;
 
 // New optimized female model: Blender → Mixamo rig → GLB, 43k triangles.
@@ -17,18 +13,11 @@ export const ATLAS_RUNTIME_COACH_MODEL_PATH = GYMTWIN_MALE_MODEL_PATH;
 export const GYMTWIN_FEMALE_MODEL_PATH =
   "/models/gymtwin/female/GymTwin_Female_43K_Rigged.glb";
 
-// Legacy female model kept as fallback — not actively used by Nova.
-export const NOVA_LEGACY_MODEL_PATH =
-  "/models/GT_Female_40k_RiggedApp_v01.glb";
-
 export const NOVA_RUNTIME_COACH_MODEL_PATH = GYMTWIN_FEMALE_MODEL_PATH;
 
 export function isSharedRuntimeHumanoidModel(modelPath: string): boolean {
   return (
-    modelPath.includes("atlas-coach-mobile") ||
-    modelPath.includes("GymTwin_Male_Rigged") ||
     modelPath.includes("GymTwin_Male_43K_Rigged") ||
-    modelPath.includes("GT_Female_40k_RiggedApp_v01") ||
     modelPath.includes("GymTwin_Female_43K_Rigged")
   );
 }

@@ -15,7 +15,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { ContactShadows, Html, OrbitControls, useGLTF } from "@react-three/drei";
 import { clone as skeletonClone } from "three/examples/jsm/utils/SkeletonUtils.js";
-import { ACESFilmicToneMapping, AnimationClip, AnimationMixer, BufferAttribute, BufferGeometry, CanvasTexture, Color, Line, LineBasicMaterial, LoopOnce, LoopRepeat, Mesh, PCFShadowMap, SkeletonHelper, SRGBColorSpace, Vector3, VectorKeyframeTrack } from "three";
+import { ACESFilmicToneMapping, AnimationClip, AnimationMixer, BackSide, BufferAttribute, BufferGeometry, CanvasTexture, Color, Line, LineBasicMaterial, LoopOnce, LoopRepeat, Mesh, PCFShadowMap, SkeletonHelper, SRGBColorSpace, Vector3, VectorKeyframeTrack } from "three";
 import type { Group, Object3D } from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import {
@@ -387,102 +387,108 @@ function SideOrbitCamera({
   return null;
 }
 
-function Cyclorama({
-  tint,
-  isNeutral,
-  previewFrame,
-}: {
-  tint: string;
-  isNeutral: boolean;
-  previewFrame: Coach3DPreviewFrame;
-}) {
-  // Curved studio back-wall with a deep vertical canvas gradient. The lower band
-  // is tinted toward the active accent so the floor grid reads as one stage.
-  const texture = useMemo(() => {
-    const canvas = document.createElement("canvas");
-    canvas.width = 4;
-    canvas.height = 256;
-    const ctx = canvas.getContext("2d");
-    if (ctx) {
-      const isHeroStage = previewFrame === "full_body";
-      const bottom = new Color(tint).multiplyScalar(isNeutral ? (isHeroStage ? 0.2 : 0.12) : 0.2).getStyle();
-      const grad = ctx.createLinearGradient(0, 0, 0, 256);
-      grad.addColorStop(0, isHeroStage ? "#03050b" : "#05070d");
-      grad.addColorStop(0.42, isHeroStage ? "#09111b" : "#0a1018");
-      grad.addColorStop(0.82, isHeroStage ? "#10192a" : "#0c1422");
-      grad.addColorStop(1, bottom);
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, 4, 256);
-    }
-    const tex = new CanvasTexture(canvas);
-    tex.needsUpdate = true;
-    return tex;
-  }, [tint, isNeutral]);
-
-  useEffect(() => () => texture.dispose(), [texture]);
-
+function ArenaBackdrop({ previewFrame }: { previewFrame: Coach3DPreviewFrame }) {
+  const isFullBody = previewFrame === "full_body";
+  const tex = useMemo(() => {
+    const sz = 256;
+    const cvs = document.createElement("canvas");
+    cvs.width = 4; cvs.height = sz;
+    const ctx = cvs.getContext("2d")!;
+    const g = ctx.createLinearGradient(0, 0, 0, sz);
+    g.addColorStop(0.0, "#000000");
+    g.addColorStop(0.55, "#010208");
+    g.addColorStop(1.0, "#02040e");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 4, sz);
+    const t = new CanvasTexture(cvs);
+    t.needsUpdate = true;
+    return t;
+  }, []);
+  useEffect(() => () => tex.dispose(), [tex]);
+  const r = isFullBody ? 8.3 : 7.5;
+  const h = isFullBody ? 18 : 16;
   return (
-    <mesh position={[0, previewFrame === "full_body" ? 4.35 : 4, previewFrame === "full_body" ? -2.5 : -2.2]} renderOrder={-10}>
-      {/* Back half of an open cylinder → seamless curved wall wrapping behind the model */}
-      <cylinderGeometry args={[previewFrame === "full_body" ? 8.3 : 7.5, previewFrame === "full_body" ? 8.3 : 7.5, previewFrame === "full_body" ? 18 : 16, 48, 1, true, Math.PI / 2, Math.PI]} />
-      <meshBasicMaterial map={texture} side={1 /* BackSide */} depthWrite={false} fog />
+    <mesh position={[0, isFullBody ? 4.35 : 4, isFullBody ? -2.5 : -2.2]} renderOrder={-10}>
+      <cylinderGeometry args={[r, r, h, 48, 1, true, Math.PI / 2, Math.PI]} />
+      <meshBasicMaterial map={tex} side={BackSide} depthWrite={false} fog={false} />
     </mesh>
   );
 }
 
-function NeonFloorGrid({
-  rimColor,
-  isNeutral,
+function FortnitePlatform({
+  accentColor,
   previewFrame,
 }: {
-  rimColor: string;
-  isNeutral: boolean;
+  accentColor: string;
   previewFrame: Coach3DPreviewFrame;
 }) {
-  const SPOKE_COUNT = 12;
-  const isHeroStage = previewFrame === "full_body";
-  const outerRadius = isHeroStage ? 2.7 : 2.15;
-  const midRadius = isHeroStage ? 1.7 : 1.3;
+  const isFullBody = previewFrame === "full_body";
+  const radius = isFullBody ? 2.8 : 2.2;
 
-  const spokePositions = useMemo(() => {
-    const arr = new Float32Array(SPOKE_COUNT * 6);
-    for (let i = 0; i < SPOKE_COUNT; i++) {
-      const angle = (i / SPOKE_COUNT) * Math.PI * 2;
-      const cos = Math.cos(angle);
-      const sin = Math.sin(angle);
-      const base = i * 6;
-      arr[base] = 0; arr[base + 1] = 0; arr[base + 2] = 0;
-      arr[base + 3] = cos * outerRadius; arr[base + 4] = 0; arr[base + 5] = sin * outerRadius;
+  const hexTex = useMemo(() => {
+    const sz = 512;
+    const cvs = document.createElement("canvas");
+    cvs.width = cvs.height = sz;
+    const ctx = cvs.getContext("2d")!;
+    const r = 20;
+    const w = Math.sqrt(3) * r;
+    const hStep = 1.5 * r;
+    ctx.strokeStyle = accentColor;
+    ctx.lineWidth = 1.0;
+    ctx.globalAlpha = 0.55;
+    for (let row = -2; row < sz / hStep + 2; row++) {
+      for (let col = -1; col < sz / w + 2; col++) {
+        const cx = col * w + (row % 2 !== 0 ? w / 2 : 0);
+        const cy = row * hStep;
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const a = Math.PI / 6 + (Math.PI / 3) * i;
+          const px = cx + r * Math.cos(a);
+          const py = cy + r * Math.sin(a);
+          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.stroke();
+      }
     }
-    return arr;
-  }, []);
+    const grd = ctx.createRadialGradient(sz / 2, sz / 2, sz * 0.18, sz / 2, sz / 2, sz * 0.52);
+    grd.addColorStop(0, "rgba(0,0,0,0)");
+    grd.addColorStop(1, "rgba(0,0,0,1)");
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, 0, sz, sz);
+    return new CanvasTexture(cvs);
+  }, [accentColor]);
+  useEffect(() => () => hexTex.dispose(), [hexTex]);
+
+  const outerRingRef = React.useRef<Mesh>(null);
+  const platformElapsed = React.useRef(0);
+  useFrame((_, delta) => {
+    platformElapsed.current += delta;
+    if (outerRingRef.current) {
+      const mat = outerRingRef.current.material as { opacity: number };
+      mat.opacity = 0.48 + Math.sin(platformElapsed.current * 2.4) * 0.38;
+    }
+  });
 
   return (
-    <group position={[0, -0.175, 0]}>
-      {/* Subtle floor glow fill */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[outerRadius, 60]} />
-        <meshBasicMaterial color={rimColor} transparent opacity={isNeutral ? (isHeroStage ? 0.1 : 0.06) : 0.04} depthWrite={false} />
+    <group position={[0, -0.175, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh renderOrder={-5}>
+        <circleGeometry args={[radius, 64]} />
+        <meshBasicMaterial map={hexTex} transparent depthWrite={false} />
       </mesh>
-
-      {/* Radial spokes */}
-      <lineSegments>
-        <bufferGeometry>
-          <bufferAttribute attach="attributes-position" args={[spokePositions, 3]} />
-        </bufferGeometry>
-        <lineBasicMaterial color={rimColor} transparent opacity={isNeutral ? (isHeroStage ? 0.16 : 0.1) : 0.13} />
-      </lineSegments>
-
-      {/* Inner concentric ring */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[midRadius, 0.011, 4, 56]} />
-        <meshBasicMaterial color={rimColor} transparent opacity={isNeutral ? 0.22 : 0.28} depthWrite={false} />
+      <mesh renderOrder={-4}>
+        <circleGeometry args={[radius * 0.5, 48]} />
+        <meshBasicMaterial color={accentColor} transparent opacity={0.06} depthWrite={false} />
       </mesh>
-
-      {/* Outer neon boundary ring */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[outerRadius, 0.028, 6, 80]} />
-        <meshBasicMaterial color={rimColor} transparent opacity={isNeutral ? 0.52 : 0.70} depthWrite={false} />
+      <mesh renderOrder={-3}>
+        <ringGeometry args={[radius * 0.52, radius * 0.555, 64]} />
+        <meshBasicMaterial color={accentColor} transparent opacity={0.52} depthWrite={false} />
+      </mesh>
+      <mesh ref={outerRingRef} renderOrder={-2}>
+        <ringGeometry args={[radius * 0.92, radius, 64]} />
+        <meshBasicMaterial color={accentColor} transparent opacity={0.8} depthWrite={false} />
       </mesh>
     </group>
   );
@@ -1002,11 +1008,11 @@ function getMoodSceneMeta(mood: Coach3DMood): MoodSceneMeta {
       return {
         gradient: "from-cyan-500/22 via-blue-500/18 to-slate-950",
         border: "border-cyan-400/28",
-        glow: "shadow-[0_0_44px_rgba(34,211,238,0.18)]",
+        glow: "shadow-[0_0_56px_rgba(0,212,255,0.22)]",
         accentText: "text-cyan-100",
         pill: "border-cyan-400/24 bg-cyan-500/12 text-cyan-100",
-        lightA: "#22d3ee",
-        lightB: "#818cf8",
+        lightA: "#00d4ff",
+        lightB: "#7740ff",
         modelScale: 1.62,
         lightIntensityA: 1.4,
         lightIntensityB: 16,
@@ -1015,24 +1021,24 @@ function getMoodSceneMeta(mood: Coach3DMood): MoodSceneMeta {
       return {
         gradient: "from-emerald-500/22 via-blue-500/18 to-slate-950",
         border: "border-emerald-400/28",
-        glow: "shadow-[0_0_44px_rgba(16,185,129,0.18)]",
+        glow: "shadow-[0_0_56px_rgba(0,255,136,0.2)]",
         accentText: "text-emerald-100",
         pill: "border-emerald-400/24 bg-emerald-500/12 text-emerald-100",
-        lightA: "#34d399",
-        lightB: "#60a5fa",
+        lightA: "#00ff88",
+        lightB: "#00aaff",
         modelScale: 1.64,
         lightIntensityA: 1.35,
         lightIntensityB: 15,
       };
     case "warning":
       return {
-        gradient: "from-cyan-500/22 via-fuchsia-500/16 to-slate-950",
-        border: "border-cyan-400/28",
-        glow: "shadow-[0_0_44px_rgba(34,211,238,0.18)]",
-        accentText: "text-cyan-100",
-        pill: "border-cyan-400/24 bg-cyan-500/12 text-cyan-100",
-        lightA: "#22d3ee",
-        lightB: "#c084fc",
+        gradient: "from-amber-500/22 via-fuchsia-500/16 to-slate-950",
+        border: "border-amber-400/28",
+        glow: "shadow-[0_0_56px_rgba(255,140,0,0.22)]",
+        accentText: "text-amber-100",
+        pill: "border-amber-400/24 bg-amber-500/12 text-amber-100",
+        lightA: "#ff8c00",
+        lightB: "#ff4400",
         modelScale: 1.63,
         lightIntensityA: 1.45,
         lightIntensityB: 15,
@@ -1041,11 +1047,11 @@ function getMoodSceneMeta(mood: Coach3DMood): MoodSceneMeta {
       return {
         gradient: "from-red-500/22 via-fuchsia-500/14 to-slate-950",
         border: "border-red-400/28",
-        glow: "shadow-[0_0_44px_rgba(239,68,68,0.18)]",
+        glow: "shadow-[0_0_56px_rgba(255,34,68,0.22)]",
         accentText: "text-red-100",
         pill: "border-red-400/24 bg-red-500/12 text-red-100",
-        lightA: "#ef4444",
-        lightB: "#fb7185",
+        lightA: "#ff2244",
+        lightB: "#ff6600",
         modelScale: 1.6,
         lightIntensityA: 1.5,
         lightIntensityB: 16,
@@ -1054,11 +1060,11 @@ function getMoodSceneMeta(mood: Coach3DMood): MoodSceneMeta {
       return {
         gradient: "from-fuchsia-500/24 via-cyan-400/16 to-slate-950",
         border: "border-fuchsia-400/28",
-        glow: "shadow-[0_0_48px_rgba(217,70,239,0.2)]",
+        glow: "shadow-[0_0_64px_rgba(255,0,221,0.26)]",
         accentText: "text-fuchsia-100",
         pill: "border-fuchsia-400/24 bg-fuchsia-500/12 text-fuchsia-100",
-        lightA: "#d946ef",
-        lightB: "#22d3ee",
+        lightA: "#ff00dd",
+        lightB: "#00d4ff",
         modelScale: 1.68,
         lightIntensityA: 1.55,
         lightIntensityB: 17,
@@ -1067,11 +1073,11 @@ function getMoodSceneMeta(mood: Coach3DMood): MoodSceneMeta {
       return {
         gradient: "from-blue-500/22 via-violet-500/16 to-slate-950",
         border: "border-blue-400/28",
-        glow: "shadow-[0_0_44px_rgba(59,130,246,0.18)]",
+        glow: "shadow-[0_0_56px_rgba(0,170,255,0.22)]",
         accentText: "text-blue-100",
         pill: "border-blue-400/24 bg-blue-500/12 text-blue-100",
-        lightA: "#60a5fa",
-        lightB: "#8b5cf6",
+        lightA: "#00aaff",
+        lightB: "#7740ff",
         modelScale: 1.66,
         lightIntensityA: 1.45,
         lightIntensityB: 16,
@@ -1080,11 +1086,11 @@ function getMoodSceneMeta(mood: Coach3DMood): MoodSceneMeta {
       return {
         gradient: "from-blue-500/20 via-fuchsia-500/14 to-slate-950",
         border: "border-purple-500/28",
-        glow: "shadow-[0_0_42px_rgba(99,102,241,0.18)]",
+        glow: "shadow-[0_0_52px_rgba(0,170,255,0.2)]",
         accentText: "text-slate-100",
         pill: "border-white/10 bg-white/5 text-slate-200",
-        lightA: "#60a5fa",
-        lightB: "#a855f7",
+        lightA: "#00aaff",
+        lightB: "#7740ff",
         modelScale: 1.6,
         lightIntensityA: 1.3,
         lightIntensityB: 14,
@@ -1426,8 +1432,8 @@ export function Coach3D({
       ? "from-slate-700/95 via-[#131e33] to-[#050914]"
       : "from-slate-700/95 via-slate-800/92 to-[#0f172a]"
     : meta.gradient;
-  const backgroundColor = isNeutralLighting ? (isHeroFullBody ? "#0a1020" : "#1f2937") : "#0b1220";
-  const fogColor = isNeutralLighting ? (isHeroFullBody ? "#0b1220" : "#1f2937") : "#0b1220";
+  const backgroundColor = isNeutralLighting ? (isHeroFullBody ? "#020510" : "#07111e") : "#010208";
+  const fogColor = isNeutralLighting ? (isHeroFullBody ? "#010208" : "#07111e") : "#010208";
   const rimColor = isNeutralLighting ? "#94a3b8" : meta.lightA;
   const activeFov = compact ? modelTransform.fovCompact : modelTransform.fovDefault;
   const usePresetCamera = previewFrame === "bust" || previewFrame === "full_body" || manualTuning;
@@ -1540,66 +1546,50 @@ export function Coach3D({
               onCreated={({ gl }) => {
                 gl.outputColorSpace = SRGBColorSpace;
                 gl.toneMapping = ACESFilmicToneMapping;
-                gl.toneMappingExposure = 1.25;
+                gl.toneMappingExposure = 1.55;
               }}
             >
               <CanvasDebugRegistration />
               <CameraReset position={initialCameraPosition} fov={resolvedFov} target={resolvedOrbitTarget} />
               <color attach="background" args={[backgroundColor]} />
-              <fog attach="fog" args={[fogColor, 8, 18]} />
+              <fog attach="fog" args={[fogColor, 5, 14]} />
 
-              {/* Curved cyclorama studio wall */}
-              <Cyclorama tint={rimColor} isNeutral={isNeutralLighting} previewFrame={previewFrame} />
+              <ArenaBackdrop previewFrame={previewFrame} />
 
-              {/* Balanced preview lighting tuned for imported GLBs so skin, cloth detail,
-                  and logos stay visible without editing the source model. */}
-              <ambientLight intensity={1.55} color="#f8fafc" />
-              <hemisphereLight
-                color="#ffffff"
-                groundColor="#2b2450"
-                intensity={1.3}
-              />
+              {/* Deep dark ambient — keeps shadows dramatic like Fortnite lobby */}
+              <ambientLight intensity={0.18} color="#080c1a" />
+              <hemisphereLight color="#1a2050" groundColor="#000000" intensity={0.32} />
 
-              {/* Key light — front-left and above the camera, warm enough to keep skin tones alive. */}
+              {/* Key — sharp front-top, hard shadow for depth */}
               <directionalLight
                 castShadow
-                position={[-3.2, 5.2, 5.6]}
-                intensity={2.7}
-                color="#fff6e8"
+                position={[-2, 7, 5]}
+                intensity={5.5}
+                color="#d0e8ff"
                 shadow-mapSize-width={2048}
                 shadow-mapSize-height={2048}
                 shadow-bias={-0.0002}
                 shadow-camera-near={0.5}
                 shadow-camera-far={20}
-                shadow-camera-left={-6}
-                shadow-camera-right={6}
-                shadow-camera-top={6}
-                shadow-camera-bottom={-6}
+                shadow-camera-left={-5}
+                shadow-camera-right={5}
+                shadow-camera-top={5}
+                shadow-camera-bottom={-5}
               />
 
-              {/* Fill light — front-right to open the face and torso without flattening the suit. */}
-              <directionalLight
-                position={[3.4, 2.8, 4.2]}
-                intensity={1.12}
-                color="#dbeafe"
-              />
+              {/* Left rim — electric blue (signature Fortnite color) */}
+              <directionalLight position={[-5, 3, -3]} intensity={4.5} color={rimColor} />
 
-              {/* Soft frontal lift to keep the GT logo and torso from collapsing into shadow. */}
-              <pointLight
-                position={[0, 1.6, 4.8]}
-                intensity={1.05}
-                color="#ffffff"
-                distance={11}
-              />
+              {/* Right counter-rim — vivid violet */}
+              <directionalLight position={[5, 2, -2]} intensity={3.2} color="#7740ff" />
 
-              {/* Rim light — restrained edge separation so dark clothing still reads cleanly. */}
-              <directionalLight
-                position={[0.4, 3.4, -4.6]}
-                intensity={1.22}
-                color={rimColor}
-              />
+              {/* Platform upward glow — lifts feet/legs off the dark floor */}
+              <pointLight position={[0, 0.05, 0.3]} intensity={2.8} color={rimColor} distance={4.5} decay={2} />
 
-              <NeonFloorGrid rimColor={rimColor} isNeutral={isNeutralLighting} previewFrame={previewFrame} />
+              {/* Top fill — prevents crown of head going fully dark */}
+              <pointLight position={[0, 9, 1]} intensity={1.6} color="#c8e0ff" distance={16} decay={2} />
+
+              <FortnitePlatform accentColor={rimColor} previewFrame={previewFrame} />
               <ContactShadows
                 position={[0, -0.178, 0]}
                 opacity={isHeroFullBody ? 0.18 : 0.24}

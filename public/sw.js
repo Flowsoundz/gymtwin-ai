@@ -1,6 +1,6 @@
 // GymTwin AI — Service Worker
 // Bump CACHE_VERSION on each deploy to invalidate stale precaches.
-const CACHE_VERSION = "v4";
+const CACHE_VERSION = "v5";
 const PRECACHE = `gt-static-${CACHE_VERSION}`;
 const RUNTIME_MODELS = `gt-models-${CACHE_VERSION}`;
 const RUNTIME_NEXT = `gt-next-${CACHE_VERSION}`;
