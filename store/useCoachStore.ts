@@ -4,6 +4,7 @@ import type { CharacterId } from "@/lib/characters";
 import type { AvatarDisplayMode } from "@/types";
 
 export type CoachSize = "compact" | "balanced" | "immersive";
+export type WorkoutPhase = "ready" | "active" | "peak" | "rest" | "celebrating";
 
 type CoachStore = {
   // Identity
@@ -11,9 +12,12 @@ type CoachStore = {
   // Animation
   currentAnimation: string;
   isModelLoaded: boolean;
-  // Layout (mirrors AvatarDisplaySettings)
+  // Layout
   displayLayout: AvatarDisplayMode;
   coachSize: CoachSize;
+  // Workout pulse — drives dynamic environment
+  workoutPhase: WorkoutPhase;
+  repProgress: number; // 0–1 within the current set
 
   // Actions
   setCharacter: (id: CharacterId) => void;
@@ -21,6 +25,8 @@ type CoachStore = {
   setLoaded: (loaded: boolean) => void;
   setDisplayLayout: (layout: AvatarDisplayMode) => void;
   setCoachSize: (size: CoachSize) => void;
+  setWorkoutPhase: (phase: WorkoutPhase) => void;
+  setRepProgress: (progress: number) => void;
 };
 
 export const useCoachStore = create<CoachStore>()((set) => ({
@@ -29,6 +35,8 @@ export const useCoachStore = create<CoachStore>()((set) => ({
   isModelLoaded: false,
   displayLayout: "coach_card",
   coachSize: "balanced",
+  workoutPhase: "ready",
+  repProgress: 0,
 
   setCharacter: (id) => {
     if (!CHARACTERS[id]?.available) return;
@@ -38,4 +46,6 @@ export const useCoachStore = create<CoachStore>()((set) => ({
   setLoaded: (loaded) => set({ isModelLoaded: loaded }),
   setDisplayLayout: (layout) => set({ displayLayout: layout }),
   setCoachSize: (size) => set({ coachSize: size }),
+  setWorkoutPhase: (phase) => set({ workoutPhase: phase }),
+  setRepProgress: (repProgress) => set({ repProgress: Math.max(0, Math.min(1, repProgress)) }),
 }));
