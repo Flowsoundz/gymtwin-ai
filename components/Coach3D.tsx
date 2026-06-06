@@ -1363,7 +1363,11 @@ export function Coach3D({
           const response = await fetch(candidatePath, { method: "HEAD" });
           if (cancelled) return;
 
-          if (response.ok) {
+          // 401/403 means the server has the file but Vercel deployment protection
+          // is active. The browser's auth cookie will be sent on the actual GLB
+          // fetch, so treat auth responses as "model is present".
+          const modelPresent = response.ok || response.status === 401 || response.status === 403;
+          if (modelPresent) {
             verifiedModelAvailability.set(candidatePath, true);
             setResolvedModelPath(candidatePath);
             setModelStatus("available");

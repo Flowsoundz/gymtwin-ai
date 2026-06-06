@@ -502,7 +502,9 @@ export function ModelLabScreen({
         modelOptions.map(async ({ path }) => {
           try {
             const response = await fetch(path, { method: "HEAD" });
-            return [path, response.ok ? "found" : "missing"] as const;
+            // 401/403 = Vercel deployment protection; file exists, browser auth cookie handles it
+            const found = response.ok || response.status === 401 || response.status === 403;
+            return [path, found ? "found" : "missing"] as const;
           } catch {
             return [path, "error"] as const;
           }
