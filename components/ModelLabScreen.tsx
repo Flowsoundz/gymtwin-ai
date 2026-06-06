@@ -634,7 +634,6 @@ export function ModelLabScreen({
                       type="button"
                       onClick={() => {
                         setPreviewFrame(option.id);
-                        setViewResetKey((value) => value + 1);
                       }}
                       className={`rounded-[1.3rem] border px-4 py-4 text-left transition ${
                         previewFrame === option.id

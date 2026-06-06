@@ -330,26 +330,28 @@ function sanitizeAnimationClips(
 // settle onto the concentric target ring instead of floating above it.
 const FLOOR_ANCHOR_OFFSET = -0.85;
 
-// Imperatively resets camera position and OrbitControls target whenever the
-// model or frame changes — without destroying and recreating the WebGL context.
+// Imperatively syncs camera position, FOV, and OrbitControls target whenever
+// the model or frame changes — without destroying and recreating the WebGL context.
 function CameraReset({
   position,
+  fov,
   target,
 }: {
   position: [number, number, number];
+  fov: number;
   target: readonly [number, number, number];
 }) {
   const { camera, controls } = useThree();
   useEffect(() => {
     camera.position.set(...position);
+    (camera as { fov?: number }).fov = fov;
     camera.updateProjectionMatrix();
     if (controls) {
-      // OrbitControls exposes target as a Vector3 and needs update() after mutation.
       const c = controls as unknown as { target: { set: (...a: number[]) => void }; update: () => void };
       c.target.set(...target);
       c.update();
     }
-  }, [camera, controls, position, target]);
+  }, [camera, controls, fov, position, target]);
   return null;
 }
 
@@ -1431,15 +1433,11 @@ export function Coach3D({
   const resolvedOrbitTarget = cameraTargetOverride ?? modelTransform.orbitTarget;
   const resolvedFov = fovOverride ?? (usePresetCamera ? activeFov : 50);
   const showMeshyViewerHud = manualTuning;
-  // Model path is intentionally excluded: swapping the model must NOT destroy
-  // the WebGL context. CoachModel handles hot-swapping internally; camera is
-  // reset by CameraReset below. Context loss was caused by the old unmount→mount
-  // cycle releasing GPU memory too slowly before the new context was allocated.
-  const canvasInstanceKey = [
-    previewFrame,
-    manualTuning ? "manual" : "auto",
-    compact ? "compact" : "full",
-  ].join(":");
+  // The canvas key is intentionally static for the lifetime of this Coach3D
+  // instance. Model, frame, and FOV changes are all handled imperatively inside
+  // the canvas via CameraReset — destroying and recreating the WebGL context
+  // causes GPU memory pressure and context loss on low-VRAM devices.
+  const canvasInstanceKey = instanceIdRef.current;
   const stageSizingClass =
     viewportClassName ??
     (compact
@@ -1542,7 +1540,7 @@ export function Coach3D({
               }}
             >
               <CanvasDebugRegistration />
-              <CameraReset position={initialCameraPosition} target={resolvedOrbitTarget} />
+              <CameraReset position={initialCameraPosition} fov={resolvedFov} target={resolvedOrbitTarget} />
               <color attach="background" args={[backgroundColor]} />
               <fog attach="fog" args={[fogColor, 8, 18]} />
 
