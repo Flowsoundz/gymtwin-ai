@@ -18,6 +18,8 @@ type CoachStore = {
   // Workout pulse — drives dynamic environment
   workoutPhase: WorkoutPhase;
   repProgress: number; // 0–1 within the current set
+  // External animation GLB — null = use embedded idle
+  animationGLBPath: string | null;
 
   // Actions
   setCharacter: (id: CharacterId) => void;
@@ -27,6 +29,7 @@ type CoachStore = {
   setCoachSize: (size: CoachSize) => void;
   setWorkoutPhase: (phase: WorkoutPhase) => void;
   setRepProgress: (progress: number) => void;
+  setAnimationGLBPath: (path: string | null) => void;
 };
 
 export const useCoachStore = create<CoachStore>()((set) => ({
@@ -37,6 +40,7 @@ export const useCoachStore = create<CoachStore>()((set) => ({
   coachSize: "balanced",
   workoutPhase: "ready",
   repProgress: 0,
+  animationGLBPath: null,
 
   setCharacter: (id) => {
     if (!CHARACTERS[id]?.available) return;
@@ -48,4 +52,5 @@ export const useCoachStore = create<CoachStore>()((set) => ({
   setCoachSize: (size) => set({ coachSize: size }),
   setWorkoutPhase: (phase) => set({ workoutPhase: phase }),
   setRepProgress: (repProgress) => set({ repProgress: Math.max(0, Math.min(1, repProgress)) }),
+  setAnimationGLBPath: (path) => set({ animationGLBPath: path }),
 }));

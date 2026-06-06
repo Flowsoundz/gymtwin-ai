@@ -1,6 +1,6 @@
 "use client";
 
-import { Coach3D } from "@/components/Coach3D";
+import { OptimizedCoachCanvas } from "@/components/OptimizedCoachCanvas";
 import { MetricRow } from "@/components/ui/MetricRow";
 import { StatCard } from "@/components/ui/StatCard";
 import { buildFeedbackPreview } from "@/lib/adaptiveProfileEngine";
@@ -188,14 +188,7 @@ export function WorkoutSummaryScreen({
           </header>
 
           <section className="mb-6">
-            <Coach3D
-              selectedAvatar={selectedAvatar}
-              animationHint="idle"
-              previewFrame="bust"
-              freezeAnimation
-              compact
-              lightingMode="neutral"
-            />
+            <OptimizedCoachCanvas height="h-[280px]" fov={32} cameraPosition={[0, 1.25, 3.6]} />
           </section>
 
           <section className="mb-6 rounded-[1.7rem] border border-blue-400/14 bg-blue-950/12 p-4 text-left shadow-inner">
@@ -369,14 +362,7 @@ export function WorkoutSummaryScreen({
                 Strong output this round. Sessions with elite score or major XP gains can push badge progress forward.
               </p>
               <div className="mt-4">
-                <Coach3D
-                  selectedAvatar={selectedAvatar}
-                  animationHint="idle"
-                  previewFrame="bust"
-                  freezeAnimation
-                  compact
-                  lightingMode="neutral"
-                />
+                <OptimizedCoachCanvas height="h-[200px]" fov={32} cameraPosition={[0, 1.25, 3.6]} />
               </div>
             </section>
           ) : null}

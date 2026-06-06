@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useCoachStore } from "@/store/useCoachStore";
 import { Coach3D } from "@/components/Coach3D";
+import { OptimizedCoachCanvas } from "@/components/OptimizedCoachCanvas";
 import { FloatingCoachAvatar } from "@/components/FloatingCoachAvatar";
 import { ExerciseDemoCard } from "@/components/ExerciseDemoCard";
 import { useCameraCoach } from "@/hooks/useCameraCoach";
@@ -13,7 +14,7 @@ import { playCountdownCue, playSetStartCue } from "@/lib/audioCues";
 import { getCameraCoachHint, getCameraCoachLabel, getCameraCoachModeForMovementName } from "@/lib/cameraCoachMapping";
 import { getCoachBrainResponse } from "@/lib/coachBrain";
 import type { CoachAnimationHint } from "@/lib/coachBrain";
-import { getExerciseClipName, isFloorMovementName } from "@/lib/exerciseAnimationMap";
+import { getExerciseClipName, getExerciseAnimationGLBPath, isFloorMovementName } from "@/lib/exerciseAnimationMap";
 import {
   ENABLE_CAMERA_TRACKING,
   ENABLE_EXERCISE_DEMOS,
@@ -113,7 +114,7 @@ export function WorkoutPlayerScreen({
   const [coachLinePlaying, setCoachLinePlaying] = useState(false);
 
   // Sync rep progress + workout phase into global coach store
-  const { setRepProgress, setWorkoutPhase } = useCoachStore();
+  const { setRepProgress, setWorkoutPhase, setAnimationGLBPath } = useCoachStore();
   useEffect(() => {
     const target = activeMovement.baseReps ?? 10;
     setRepProgress(currentReps / target);
@@ -121,6 +122,12 @@ export function WorkoutPlayerScreen({
       isRestPhase ? "rest" : currentReps >= target ? "peak" : currentReps > 0 ? "active" : "ready"
     );
   }, [currentReps, activeMovement.baseReps, isRestPhase, setRepProgress, setWorkoutPhase]);
+
+  // Drive OptimizedCoachCanvas animation from active exercise
+  useEffect(() => {
+    setAnimationGLBPath(getExerciseAnimationGLBPath(activeMovement));
+    return () => setAnimationGLBPath(null);
+  }, [activeMovement.id, activeMovement.name, setAnimationGLBPath]);
 
   // Progressive overload tracker
   const [trackerOpen, setTrackerOpen] = useState(false);
@@ -1216,16 +1223,8 @@ export function WorkoutPlayerScreen({
                   </div>
                 </div>
 
-                {/* Coach3D demo — always shown; demo clip layered on top of idle when available */}
-                <Coach3D
-                  selectedAvatar={selectedAvatar}
-                  animationHint="idle"
-                  demoClipName={demoClipName}
-                  compact
-                  previewFrame="full_body"
-                  lightingMode="neutral"
-                  isFloorMovement={isFloorDemo}
-                />
+                {/* Coach demo — exercise animation from store's animationGLBPath */}
+                <OptimizedCoachCanvas height="h-[320px]" fov={32} cameraPosition={[0, 1.1, 3.8]} bloom={false} forceShow />
 
                 {/* Coach label strip at bottom */}
                 <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950 to-transparent px-3 pb-3 pt-8">
@@ -1253,14 +1252,7 @@ export function WorkoutPlayerScreen({
                       </span>
                     </div>
                     <div className="coach-float">
-                      <Coach3D
-                        selectedAvatar={selectedAvatar}
-                        animationHint="idle"
-                        demoClipName={demoClipName}
-                        previewFrame="full_body"
-                        lightingMode="neutral"
-                        isFloorMovement={isFloorDemo}
-                      />
+                      <OptimizedCoachCanvas height="h-[300px]" fov={32} cameraPosition={[0, 1.1, 3.8]} bloom={false} forceShow />
                     </div>
                     <div className="pointer-events-none -mt-3 flex justify-center pb-4">
                       <div className="h-3 w-28 rounded-full bg-emerald-500/40 blur-md rim-pulse" />
@@ -1680,15 +1672,7 @@ export function WorkoutPlayerScreen({
                   <p className="mt-1 text-sm font-black tracking-tight text-white">{cleanMovementName(activeMovement.name)}</p>
                 </div>
                 <div className="coach-float">
-                  <Coach3D
-                    selectedAvatar={selectedAvatar}
-                    animationHint="idle"
-                    demoClipName={demoClipName}
-                    compact
-                    previewFrame="full_body"
-                    lightingMode="neutral"
-                    isFloorMovement={isFloorDemo}
-                  />
+                  <OptimizedCoachCanvas height="h-[260px]" fov={32} cameraPosition={[0, 1.1, 3.8]} bloom={false} forceShow />
                 </div>
                 {/* Neon floor rim light — tracks live form feedback state */}
                 <div className="pointer-events-none -mt-3 flex justify-center pb-4">

@@ -245,16 +245,24 @@ function CoachModelEngine({
   modelPath,
   animationName,
   scale,
+  animationGLBPath,
 }: {
   modelPath: string;
   animationName: string;
   scale: number;
+  animationGLBPath: string | null;
 }) {
   const { setLoaded } = useCoachStore();
-  const { scene, animations } = useGLTF(modelPath) as {
+  const { scene, animations: charAnimations } = useGLTF(modelPath) as {
     scene: Object3D;
     animations: AnimationClip[];
   };
+  // Always call useGLTF to keep hook count stable — falls back to modelPath (cached) when no external anim
+  const { animations: extAnimations } = useGLTF(animationGLBPath ?? modelPath) as {
+    animations: AnimationClip[];
+  };
+  const animations = animationGLBPath ? extAnimations : charAnimations;
+
   const cloned = useMemo(() => skeletonClone(scene), [scene]);
   const groupRef = useRef<Group>(null);
   const mixerRef = useRef<AnimationMixer | null>(null);
@@ -287,10 +295,12 @@ function CoachModelEngine({
   useEffect(() => {
     const mixer = mixerRef.current;
     if (!mixer || !animations.length) return;
-    const clip =
-      animations.find((c) => c.name === animationName) ??
-      animations.find((c) => c.duration > 0) ??
-      null;
+    // External GLBs: always use first valid clip (Blender FBX→GLB produces one clip)
+    const clip = animationGLBPath
+      ? (animations.find((c) => c.duration > 0) ?? null)
+      : (animations.find((c) => c.name === animationName) ??
+         animations.find((c) => c.duration > 0) ??
+         null);
     if (!clip) return;
     const next = mixer.clipAction(clip);
     next.setLoop(LoopRepeat, Infinity);
@@ -302,7 +312,7 @@ function CoachModelEngine({
       next.reset().fadeIn(0.3).play();
     }
     currentActionRef.current = next;
-  }, [animations, animationName]);
+  }, [animations, animationName, animationGLBPath]);
 
   useFrame((_, delta) => mixerRef.current?.update(delta));
 
@@ -334,6 +344,8 @@ type OptimizedCoachCanvasProps = {
   cameraPosition?: [number, number, number];
   fov?: number;
   bloom?: boolean;
+  /** Bypass "hidden" layout — use for in-workout demo panels where coach must always show */
+  forceShow?: boolean;
 };
 
 export function OptimizedCoachCanvas({
@@ -341,13 +353,14 @@ export function OptimizedCoachCanvas({
   cameraPosition = [0, 1.3, 4.2],
   fov = 34,
   bloom = true,
+  forceShow = false,
 }: OptimizedCoachCanvasProps) {
-  const { characterId, currentAnimation, displayLayout, coachSize, workoutPhase, repProgress } =
+  const { characterId, currentAnimation, displayLayout, coachSize, workoutPhase, repProgress, animationGLBPath } =
     useCoachStore();
   const character = CHARACTERS[characterId];
 
   const isCameraScreen = displayLayout === "camera_corner";
-  if (displayLayout === "hidden") return null;
+  if (!forceShow && displayLayout === "hidden") return null;
   if (!character.available || !character.modelPath) return null;
 
   const pixelRatio: [number, number] = isCameraScreen
@@ -432,6 +445,7 @@ export function OptimizedCoachCanvas({
             modelPath={character.modelPath}
             animationName={currentAnimation}
             scale={scale}
+            animationGLBPath={animationGLBPath}
           />
         </Suspense>
 

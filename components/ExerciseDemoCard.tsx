@@ -1,4 +1,4 @@
-import { Coach3D } from "@/components/Coach3D";
+import { OptimizedCoachCanvas } from "@/components/OptimizedCoachCanvas";
 import { getAvatarLabel } from "@/lib/avatarAssets";
 import { getExerciseDemoDescriptor } from "@/lib/exerciseDemoLibrary";
 import { getCameraCoachLabel, getCameraCoachModeForMovementName } from "@/lib/cameraCoachMapping";
@@ -146,15 +146,7 @@ export function ExerciseDemoCard({
                 </p>
               </div>
             </div>
-            <Coach3D
-              selectedAvatar={selectedAvatar}
-              animationHint="idle"
-              demoClipName={demoClipName}
-              compact={false}
-              previewFrame="full_body"
-              lightingMode="neutral"
-              isFloorMovement={isFloorDemo}
-            />
+            <OptimizedCoachCanvas height="h-[300px]" fov={32} cameraPosition={[0, 1.1, 3.8]} bloom={false} forceShow />
             <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950 via-slate-950/75 to-transparent px-4 pb-4 pt-12">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>

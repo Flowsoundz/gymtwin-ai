@@ -114,3 +114,78 @@ export function getEmbeddedClipNameForExerciseName(exerciseName: string): string
 }
 
 export const FITNESS_ANIMATION_PACK = "/models/animations/fitness-animations.glb";
+
+// ─── External GLB map for OptimizedCoachCanvas ────────────────────────────────
+// Maps exercise name keywords → individual animation GLB paths
+
+const FITNESS_GLB_ROOT = "/models/animations/fitness";
+
+const NAME_GLB: Array<[string, string]> = [
+  // Multi-word first (most specific)
+  ["jumping jack",    `${FITNESS_GLB_ROOT}/Jumping_Jacks_1.glb`],
+  ["seal jack",       `${FITNESS_GLB_ROOT}/Jumping_Jacks_1.glb`],
+  ["shadow box",      `${FITNESS_GLB_ROOT}/Burpee_1.glb`],
+  ["air squat",       `${FITNESS_GLB_ROOT}/Air_Squat_Bent_Arms.glb`],
+  ["back squat",      `${FITNESS_GLB_ROOT}/Back_Squat.glb`],
+  ["goblet squat",    `${FITNESS_GLB_ROOT}/GT_Squat_Demo.glb`],
+  ["overhead squat",  `${FITNESS_GLB_ROOT}/Overhead_Squat_1.glb`],
+  ["overhead press",  `${FITNESS_GLB_ROOT}/Overhead_Squat_1.glb`],
+  ["split squat",     `${FITNESS_GLB_ROOT}/Pistol_Start_1.glb`],
+  ["push-up",         `${FITNESS_GLB_ROOT}/Push_Up.glb`],
+  ["push up",         `${FITNESS_GLB_ROOT}/Push_Up.glb`],
+  ["sit-up",          `${FITNESS_GLB_ROOT}/Situp_To_Idle_1.glb`],
+  ["sit up",          `${FITNESS_GLB_ROOT}/Situp_To_Idle_1.glb`],
+  ["glute bridge",    `${FITNESS_GLB_ROOT}/Situp_To_Idle_1.glb`],
+  ["dead bug",        `${FITNESS_GLB_ROOT}/Situp_To_Idle_1.glb`],
+  ["bicycle crunch",  `${FITNESS_GLB_ROOT}/Start_Bicycle_Sit_Up_1.glb`],
+  ["knee tuck",       `${FITNESS_GLB_ROOT}/Circle_Crunch_1.glb`],
+  ["front raise",     `${FITNESS_GLB_ROOT}/Front_Raises_1.glb`],
+  ["sumo pull",       `${FITNESS_GLB_ROOT}/Sumo_High_Pull_2.glb`],
+  ["sumo high pull",  `${FITNESS_GLB_ROOT}/Sumo_High_Pull_2.glb`],
+  ["clean and jerk",  `${FITNESS_GLB_ROOT}/Clean_And_Jerk_1.glb`],
+  ["kettlebell swing",`${FITNESS_GLB_ROOT}/Kettlebell_Swing_3.glb`],
+  ["bicep curl",      `${FITNESS_GLB_ROOT}/Bicep_Curl_1.glb`],
+  ["pike walk",       `${FITNESS_GLB_ROOT}/Pike_Walk.glb`],
+  // Single keywords
+  ["bulgarian",       `${FITNESS_GLB_ROOT}/Pistol_Start_1.glb`],
+  ["pistol",          `${FITNESS_GLB_ROOT}/Pistol_Start_1.glb`],
+  ["plank",           `${FITNESS_GLB_ROOT}/Plank.glb`],
+  ["burpee",          `${FITNESS_GLB_ROOT}/Burpee_1.glb`],
+  ["snatch",          `${FITNESS_GLB_ROOT}/Snatch_2.glb`],
+  ["kettlebell",      `${FITNESS_GLB_ROOT}/Kettlebell_Swing_3.glb`],
+  ["swing",           `${FITNESS_GLB_ROOT}/Kettlebell_Swing_3.glb`],
+  ["pike",            `${FITNESS_GLB_ROOT}/Pike_Walk.glb`],
+  ["bicycle",         `${FITNESS_GLB_ROOT}/Start_Bicycle_Sit_Up_1.glb`],
+  ["crunch",          `${FITNESS_GLB_ROOT}/Circle_Crunch_1.glb`],
+  ["situp",           `${FITNESS_GLB_ROOT}/Situp_To_Idle_1.glb`],
+  ["pushup",          `${FITNESS_GLB_ROOT}/Push_Up.glb`],
+  ["curl",            `${FITNESS_GLB_ROOT}/Bicep_Curl_1.glb`],
+  ["raise",           `${FITNESS_GLB_ROOT}/Front_Raises_1.glb`],
+  ["squat",           `${FITNESS_GLB_ROOT}/Back_Squat.glb`],
+  ["overhead",        `${FITNESS_GLB_ROOT}/Overhead_Squat_1.glb`],
+  ["push",            `${FITNESS_GLB_ROOT}/Push_Up.glb`],
+  ["press",           `${FITNESS_GLB_ROOT}/Push_Up.glb`],
+  ["jack",            `${FITNESS_GLB_ROOT}/Jumping_Jacks_1.glb`],
+  ["jump",            `${FITNESS_GLB_ROOT}/Jumping_Jacks_1.glb`],
+  ["lunge",           `${FITNESS_GLB_ROOT}/GT_Squat_Demo.glb`],
+  ["sumo",            `${FITNESS_GLB_ROOT}/Sumo_High_Pull_2.glb`],
+  ["row",             `${FITNESS_GLB_ROOT}/Bicep_Curl_1.glb`],
+];
+
+const CATEGORY_GLB: Record<string, string> = {
+  legs:         `${FITNESS_GLB_ROOT}/Back_Squat.glb`,
+  core:         `${FITNESS_GLB_ROOT}/Situp_To_Idle_1.glb`,
+  cardio:       `${FITNESS_GLB_ROOT}/Jumping_Jacks_1.glb`,
+  warmup:       `${FITNESS_GLB_ROOT}/Front_Raises_1.glb`,
+  mobility:     `${FITNESS_GLB_ROOT}/GT_Squat_Demo.glb`,
+  cooldown:     `${FITNESS_GLB_ROOT}/Situp_To_Idle_1.glb`,
+  "upper body": `${FITNESS_GLB_ROOT}/Push_Up.glb`,
+};
+
+export function getExerciseAnimationGLBPath(movement: WorkoutMovement): string | null {
+  const lower = movement.name.toLowerCase();
+  for (const [keyword, path] of NAME_GLB) {
+    if (lower.includes(keyword)) return path;
+  }
+  return CATEGORY_GLB[movement.category] ?? null;
+}
