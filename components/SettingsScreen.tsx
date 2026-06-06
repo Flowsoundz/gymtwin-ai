@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import type { User } from "@supabase/supabase-js";
-import { Coach3D } from "@/components/Coach3D";
+import { CharacterViewer } from "@/components/CharacterViewer";
+import { CHARACTERS } from "@/lib/characters";
 import Image from "next/image";
 import { getAvatarAsset, getAvatarLabel, getAvatarPersonality, getAvatarRole, getAvatarSubtitle } from "@/lib/avatarAssets";
 import { clearBodyProfile, saveBodyProfile } from "@/lib/bodyProfileStorage";
@@ -278,13 +279,9 @@ export function SettingsScreen({
             <div className="lg:col-span-2">
             <SettingsCard title="Avatar System">
               <div className="space-y-4">
-                <Coach3D
-                  selectedAvatar={selectedAvatar}
-                  animationHint="idle"
-                  previewFrame="full_body"
-                  freezeAnimation
-                  compact
-                  lightingMode="neutral"
+                <CharacterViewer
+                  character={CHARACTERS[selectedAvatar === "Atlas" ? "atlas" : "nova"]}
+                  height="h-[380px]"
                 />
                 <p className="text-xs text-slate-400">Current coach: {getAvatarLabel(selectedAvatar)}. 3D preview loads when model files are available.</p>
                 <p className="text-slate-400">Nova and Atlas stay visually consistent across workouts, camera coaching, summaries, and progress screens.</p>
