@@ -11,6 +11,7 @@ import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import {
   ATLAS_RUNTIME_COACH_MODEL_PATH,
   GYMTWIN_FEMALE_MODEL_PATH,
+  GYMTWIN_MALE_MODEL_PATH,
   getAvatarLabel,
   getAvatarModelPaths,
   NOVA_RUNTIME_COACH_MODEL_PATH,
@@ -925,8 +926,12 @@ function CoachModel({
           </AnimPackErrorBoundary>
         </Suspense>
       )}
-      {/* Z-up correction wrapper for models exported from Blender without Y-up conversion. */}
-      <group rotation={modelPath === GYMTWIN_FEMALE_MODEL_PATH ? [-Math.PI / 2, 0, 0] : [0, 0, 0]}>
+      {/* Z-up correction wrapper for Blender-exported models without Y-up conversion. */}
+      <group rotation={
+        (modelPath === GYMTWIN_FEMALE_MODEL_PATH || modelPath === GYMTWIN_MALE_MODEL_PATH)
+          ? [-Math.PI / 2, 0, 0]
+          : [0, 0, 0]
+      }>
         <primitive
           object={clonedScene}
           scale={transform.scale}
@@ -1052,6 +1057,23 @@ export function getCoachModelTransformPreset(
   modelPath: string,
   previewFrame: Coach3DPreviewFrame = "in_frame"
 ): ModelTransform {
+  // New 43K male model: Z-up from Blender. Rotation wrapper corrects to Y-up (1.80m).
+  // Feet at Y=0 naturally after rotation — no position offset needed.
+  if (modelPath === GYMTWIN_MALE_MODEL_PATH) {
+    const base = {
+      position: [0, 0, 0] as [number, number, number],
+      rotation: [0, 0, 0] as [number, number, number],
+      scale: 1.15,
+    };
+    if (previewFrame === "bust") {
+      return { ...base, cameraPosition: [0, 1.55, 4.8], fovCompact: 32, fovDefault: 28, orbitTarget: [0, 1.50, 0] };
+    }
+    if (previewFrame === "full_body") {
+      return { ...base, scale: 1.2, cameraPosition: [0, 1.15, 3.2], fovCompact: 44, fovDefault: 37, orbitTarget: [0, 1.0, 0] };
+    }
+    return { ...base, cameraPosition: [0, 1.38, 4.2], fovCompact: 36, fovDefault: 32, orbitTarget: [0, 1.26, 0] };
+  }
+
   // New female model: exported from Blender with Z-up. A -π/2 X-rotation wrapper in
   // CoachModel corrects the orientation so the character stands upright (1.70m, Y-up).
   // Feet land at Y=0 naturally after the rotation — no position offset needed.

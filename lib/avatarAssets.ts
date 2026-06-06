@@ -1,7 +1,15 @@
 import type { CoachAvatar } from "@/types";
 
-export const ATLAS_RUNTIME_COACH_MODEL_PATH =
+// New 43K-tri male model: Blender → Mixamo rig → GLB.
+// Exported Z-up (Blender default); Coach3D applies a -π/2 X-rotation wrapper.
+export const GYMTWIN_MALE_MODEL_PATH =
+  "/models/gymtwin/male/GymTwin_Male_43K_Rigged_UPRIGHT.glb";
+
+// Legacy male model — Mixamo-rigged, 7.5 MB.
+export const ATLAS_LEGACY_MODEL_PATH =
   "/models/gymtwin/male/GymTwin_Male_Rigged.glb";
+
+export const ATLAS_RUNTIME_COACH_MODEL_PATH = GYMTWIN_MALE_MODEL_PATH;
 
 // New optimized female model: Blender → Mixamo rig → GLB, 43k triangles.
 // Exported with Z-up (Blender default without Y-up conversion); Coach3D
@@ -19,6 +27,7 @@ export function isSharedRuntimeHumanoidModel(modelPath: string): boolean {
   return (
     modelPath.includes("atlas-coach-mobile") ||
     modelPath.includes("GymTwin_Male_Rigged") ||
+    modelPath.includes("GymTwin_Male_43K_Rigged") ||
     modelPath.includes("GT_Female_40k_RiggedApp_v01") ||
     modelPath.includes("GymTwin_Female_43K_Rigged")
   );
