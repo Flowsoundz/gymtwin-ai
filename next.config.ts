@@ -52,8 +52,8 @@ const nextConfig: NextConfig = {
         source: "/(.*)",
         headers: securityHeaders,
       },
-      // Explicit MIME types for 3D assets — required with nosniff header so
-      // the browser doesn't reject GLB/WASM files as octet-stream.
+      // Explicit MIME types for 3D assets and PWA manifest — required with
+      // nosniff header so the browser doesn't reject these as octet-stream.
       {
         source: "/models/:path*.glb",
         headers: [{ key: "Content-Type", value: "model/gltf-binary" }],
@@ -61,6 +61,10 @@ const nextConfig: NextConfig = {
       {
         source: "/mediapipe/:path*",
         headers: [{ key: "Content-Type", value: "application/wasm" }],
+      },
+      {
+        source: "/manifest.json",
+        headers: [{ key: "Content-Type", value: "application/manifest+json" }],
       },
     ];
   },

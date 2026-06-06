@@ -1,6 +1,6 @@
 // GymTwin AI — Service Worker
 // Bump CACHE_VERSION on each deploy to invalidate stale precaches.
-const CACHE_VERSION = "v3";
+const CACHE_VERSION = "v4";
 const PRECACHE = `gt-static-${CACHE_VERSION}`;
 const RUNTIME_MODELS = `gt-models-${CACHE_VERSION}`;
 const RUNTIME_NEXT = `gt-next-${CACHE_VERSION}`;
@@ -98,7 +98,13 @@ async function cacheFirst(request, cacheName) {
   if (cached) return cached;
   try {
     const response = await fetch(request);
+    // Only cache successful responses — 401 (auth) / 404 / 5xx must not be stored.
     if (response.ok) cache.put(request, response.clone());
+    // If auth-blocked and we have a cached copy, serve it (handles Vercel protection).
+    if (response.status === 401 || response.status === 403) {
+      const fallback = await cache.match(request);
+      if (fallback) return fallback;
+    }
     return response;
   } catch {
     return new Response("Offline — resource not cached", { status: 503 });

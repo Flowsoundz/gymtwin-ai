@@ -1,5 +1,15 @@
 "use client";
 
+// THREE.Clock is deprecated in Three.js r176+ — R3F still uses it internally.
+// Suppress the warning until R3F migrates to THREE.Timer.
+if (typeof window !== "undefined") {
+  const _warn = console.warn.bind(console);
+  console.warn = (...args: unknown[]) => {
+    if (typeof args[0] === "string" && args[0].startsWith("THREE.Clock")) return;
+    _warn(...args);
+  };
+}
+
 import * as React from "react";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
