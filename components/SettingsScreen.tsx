@@ -367,26 +367,26 @@ export function SettingsScreen({
                 />
 
                 <div className="rounded-[1.35rem] border border-white/8 bg-slate-900/72 px-4 py-4">
-                  <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Avatar Presence</p>
+                  <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Coach Size</p>
                   <p className="mt-2 text-xs leading-relaxed text-slate-400">
-                    Choose how large and prominent the coach should feel during workouts.
+                    How large and prominent the coach appears on screen during workouts.
                   </p>
                   <div className="mt-4 grid gap-2 sm:grid-cols-3">
                     {[
                       {
                         key: "compact" as const,
                         title: "Compact",
-                        description: "Smallest footprint. Keeps more space for controls and tracking.",
+                        description: "Smallest footprint. More space for controls and camera tracking.",
                       },
                       {
                         key: "balanced" as const,
                         title: "Balanced",
-                        description: "Default MVP feel. Clear presence without taking over the screen.",
+                        description: "Default feel. Clear presence without taking over the screen.",
                       },
                       {
                         key: "immersive" as const,
                         title: "Immersive",
-                        description: "Largest, most present coach view with a fuller HUD stage.",
+                        description: "Largest coach view with a fuller HUD stage.",
                       },
                     ].map((option) => {
                       const isActive = avatarPresenceMode === option.key;
@@ -404,7 +404,7 @@ export function SettingsScreen({
                           <p className="text-sm font-black">{option.title}</p>
                           <p className="mt-2 text-xs leading-relaxed text-slate-400">{option.description}</p>
                           {isActive ? (
-                            <p className="mt-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">Current View</p>
+                            <p className="mt-2 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">Selected Size</p>
                           ) : null}
                         </button>
                       );
@@ -412,7 +412,12 @@ export function SettingsScreen({
                   </div>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-[1.35rem] border border-white/8 bg-slate-900/72 px-4 py-4">
+                  <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Display Layout</p>
+                  <p className="mt-2 text-xs leading-relaxed text-slate-400">
+                    Where and how the coach card is positioned during your workout.
+                  </p>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   {avatarModeOptions.map((option) => {
                     const isActive = avatarDisplaySettings.mode === option.mode;
                     return (
@@ -420,10 +425,10 @@ export function SettingsScreen({
                         key={option.mode}
                         type="button"
                         onClick={() => updateAvatarDisplaySettings({ mode: option.mode })}
-                        className={`rounded-[1.35rem] border px-4 py-4 text-left transition active:scale-95 ${
+                        className={`rounded-[1.15rem] border px-4 py-4 text-left transition active:scale-95 ${
                           isActive
                             ? "border-blue-400/28 bg-gradient-to-br from-blue-500/14 via-slate-950/72 to-fuchsia-500/14 text-white shadow-[0_0_24px_rgba(99,102,241,0.18)]"
-                            : "border-white/8 bg-slate-900/72 text-slate-300 hover:border-white/15 hover:text-white"
+                            : "border-white/8 bg-slate-950/55 text-slate-300 hover:border-white/15 hover:text-white"
                         }`}
                       >
                         <div className="flex items-center justify-between">
@@ -432,19 +437,20 @@ export function SettingsScreen({
                         </div>
                         <p className="mt-2 text-xs leading-relaxed text-slate-400">{option.description}</p>
                         {isActive && (
-                          <p className="mt-2 text-[10px] font-black uppercase tracking-[0.2em] text-blue-400">Active ✓</p>
+                          <p className="mt-2 text-[10px] font-black uppercase tracking-[0.2em] text-blue-400">Active Layout</p>
                         )}
                       </button>
                     );
                   })}
+                  </div>
+                  <p className="mt-3 text-xs text-slate-500">
+                    {avatarDisplaySettings.mode === "floating_overlay"
+                      ? "Floating overlay is active — drag the coach card anywhere on screen."
+                      : avatarDisplaySettings.mode === "hidden"
+                      ? "Avatar hidden — you'll still get voice coaching and text feedback."
+                      : "This layout takes effect during workouts."}
+                  </p>
                 </div>
-                <p className="text-xs text-slate-500">
-                  {avatarDisplaySettings.mode === "floating_overlay"
-                    ? "Floating overlay is active — drag the coach card anywhere on screen."
-                    : avatarDisplaySettings.mode === "hidden"
-                    ? "Avatar hidden — you'll still get voice coaching and text feedback."
-                    : "This mode takes effect during workouts."}
-                </p>
 
                 <div className="space-y-3">
                   {[

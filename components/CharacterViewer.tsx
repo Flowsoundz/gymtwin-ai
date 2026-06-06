@@ -169,12 +169,9 @@ function CharacterModel({
     mixerRef.current?.update(delta);
   });
 
-  // Z-up correction (Blender/FBX export default)
   return (
     <group ref={groupRef} position={[0, 0, 0]} scale={1.15}>
-      <group rotation={[-Math.PI / 2, 0, 0]}>
-        <primitive object={cloned} />
-      </group>
+      <primitive object={cloned} />
     </group>
   );
 }

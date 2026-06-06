@@ -971,18 +971,12 @@ function CoachModel({
           </AnimPackErrorBoundary>
         </Suspense>
       )}
-      {/* Z-up correction wrapper for Blender-exported models without Y-up conversion. */}
-      <group rotation={
-        (modelPath === GYMTWIN_FEMALE_MODEL_PATH || modelPath === GYMTWIN_MALE_MODEL_PATH)
-          ? [-Math.PI / 2, 0, 0]
-          : [0, 0, 0]
-      }>
-        <primitive
-          object={clonedScene}
-          scale={transform.scale}
-          position={[0, isFloorMovement ? FLOOR_ANCHOR_OFFSET : 0, 0]}
-        />
-      </group>
+      {/* Blender GLB exporter converts Z-up→Y-up by default; no rotation correction needed. */}
+      <primitive
+        object={clonedScene}
+        scale={transform.scale}
+        position={[0, isFloorMovement ? FLOOR_ANCHOR_OFFSET : 0, 0]}
+      />
       {/* Neon spine path overlay — hips→head, color reacts to spinal curvature */}
       <primitive object={spineLine} />
       {skeletonHelper ? (
