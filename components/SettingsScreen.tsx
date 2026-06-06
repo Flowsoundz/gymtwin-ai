@@ -4,6 +4,8 @@ import { useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { CharacterViewer } from "@/components/CharacterViewer";
 import { CHARACTERS } from "@/lib/characters";
+import { useCoachStore } from "@/store/useCoachStore";
+import type { CoachSize } from "@/store/useCoachStore";
 import Image from "next/image";
 import { getAvatarAsset, getAvatarLabel, getAvatarPersonality, getAvatarRole, getAvatarSubtitle } from "@/lib/avatarAssets";
 import { clearBodyProfile, saveBodyProfile } from "@/lib/bodyProfileStorage";
@@ -220,14 +222,17 @@ export function SettingsScreen({
     onBodyProfileChange?.(null);
   }
 
+  const { setCharacter, setDisplayLayout, setCoachSize } = useCoachStore();
+
   function updateAvatarDisplaySettings(patch: Partial<AvatarDisplaySettings>) {
-    onAvatarDisplaySettingsChange({
-      ...avatarDisplaySettings,
-      ...patch,
-    });
+    const next = { ...avatarDisplaySettings, ...patch };
+    onAvatarDisplaySettingsChange(next);
+    // Keep global store in sync with display layout
+    if (patch.mode) setDisplayLayout(patch.mode);
   }
 
   function applyAvatarPresenceMode(mode: "compact" | "balanced" | "immersive") {
+    setCoachSize(mode as CoachSize);
     if (mode === "compact") {
       updateAvatarDisplaySettings({
         show3DCoach: true,
@@ -292,7 +297,10 @@ export function SettingsScreen({
                       <button
                         key={avatar}
                         type="button"
-                        onClick={() => onSelectedAvatarChange?.(avatar)}
+                        onClick={() => {
+                          onSelectedAvatarChange?.(avatar);
+                          setCharacter(avatar === "Atlas" ? "atlas" : "nova");
+                        }}
                         className={`group relative overflow-hidden rounded-[1.45rem] border p-4 text-left transition ${
                           active
                             ? "border-fuchsia-400/35 bg-gradient-to-br from-blue-500/16 via-slate-950/78 to-fuchsia-500/14 text-white shadow-[0_0_28px_rgba(99,102,241,0.18)]"
