@@ -320,6 +320,29 @@ function sanitizeAnimationClips(
 // settle onto the concentric target ring instead of floating above it.
 const FLOOR_ANCHOR_OFFSET = -0.85;
 
+// Imperatively resets camera position and OrbitControls target whenever the
+// model or frame changes — without destroying and recreating the WebGL context.
+function CameraReset({
+  position,
+  target,
+}: {
+  position: [number, number, number];
+  target: readonly [number, number, number];
+}) {
+  const { camera, controls } = useThree();
+  useEffect(() => {
+    camera.position.set(...position);
+    camera.updateProjectionMatrix();
+    if (controls) {
+      // OrbitControls exposes target as a Vector3 and needs update() after mutation.
+      const c = controls as unknown as { target: { set: (...a: number[]) => void }; update: () => void };
+      c.target.set(...target);
+      c.update();
+    }
+  }, [camera, controls, position, target]);
+  return null;
+}
+
 function SideOrbitCamera({
   enabled,
   orbitRadius,
@@ -550,6 +573,9 @@ function CoachModel({
   // Own the mixer directly — bound to clonedScene so Three.js finds bones immediately.
   const mixerRef = React.useRef<AnimationMixer | null>(null);
   const activeActionRef = React.useRef<string | null>(null);
+  // Accumulated elapsed time driven by useFrame delta — avoids accessing state.clock
+  // directly (THREE.Clock is deprecated in Three.js r176+; R3F provides delta instead).
+  const elapsedRef = React.useRef(0);
 
   useEffect(() => {
     if (!sessionLoadedModelPaths.has(modelPath)) {
@@ -740,13 +766,14 @@ function CoachModel({
     mat.opacity = 0.55 + Math.sin(elapsed * 4.2) * 0.35;
   };
 
-  useFrame((state, delta) => {
+  useFrame((_state, delta) => {
     mixerRef.current?.update(delta);
+    elapsedRef.current += delta;
 
     const group = modelGroupRef.current;
     if (!group) return;
 
-    const elapsed = state.clock.getElapsedTime();
+    const elapsed = elapsedRef.current;
     const hasRealAnimations = animations.length > 0;
 
     if (hasRealAnimations) {
@@ -1394,12 +1421,15 @@ export function Coach3D({
   const resolvedOrbitTarget = cameraTargetOverride ?? modelTransform.orbitTarget;
   const resolvedFov = fovOverride ?? (usePresetCamera ? activeFov : 50);
   const showMeshyViewerHud = manualTuning;
+  // Model path is intentionally excluded: swapping the model must NOT destroy
+  // the WebGL context. CoachModel handles hot-swapping internally; camera is
+  // reset by CameraReset below. Context loss was caused by the old unmount→mount
+  // cycle releasing GPU memory too slowly before the new context was allocated.
   const canvasInstanceKey = [
-    resolvedModelPath,
     previewFrame,
     manualTuning ? "manual" : "auto",
     compact ? "compact" : "full",
-    ].join(":");
+  ].join(":");
   const stageSizingClass =
     viewportClassName ??
     (compact
@@ -1502,6 +1532,7 @@ export function Coach3D({
               }}
             >
               <CanvasDebugRegistration />
+              <CameraReset position={initialCameraPosition} target={resolvedOrbitTarget} />
               <color attach="background" args={[backgroundColor]} />
               <fog attach="fog" args={[fogColor, 8, 18]} />
 
