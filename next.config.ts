@@ -13,8 +13,10 @@ const CSP = [
   "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'",
   // Tailwind injects inline styles at runtime
   "style-src 'self' 'unsafe-inline'",
-  // Supabase REST + realtime WebSocket; no external image CDNs needed
-  `connect-src 'self' https://${SUPABASE_HOST} wss://${SUPABASE_HOST}`,
+  // Supabase REST + realtime WebSocket.
+  // blob: required for Three.js GLTFLoader — it unpacks embedded textures into
+  // blob: URLs then fetch()es them to create ImageBitmaps for the GPU.
+  `connect-src 'self' blob: https://${SUPABASE_HOST} wss://${SUPABASE_HOST}`,
   // Canvas toDataURL() and video frame capture use blob: / data: internally
   "img-src 'self' data: blob:",
   // Camera stream objects
