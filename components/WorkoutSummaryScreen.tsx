@@ -56,6 +56,14 @@ export function WorkoutSummaryScreen({
   primaryButton,
   secondaryButton,
 }: WorkoutSummaryScreenProps) {
+  const unlockedBadges = getAchievementBadges({ userStats, workoutHistory, lastWorkoutSummary })
+    .filter((badge) => badge.unlocked);
+  const initialNewBadges = (() => {
+    if (typeof window === "undefined") return [] as AchievementBadge[];
+    const stored: string[] = JSON.parse(localStorage.getItem(EARNED_BADGE_IDS_KEY) ?? "[]");
+    return unlockedBadges.filter((badge) => !stored.includes(badge.id));
+  })();
+
   // ── Adaptive feedback local state ─────────────────────────────────────────
   const [feedbackStep, setFeedbackStep] = useState<0 | 1 | 2 | 3>(0);
   const [difficultyPick, setDifficultyPick] = useState<"too_easy" | "perfect" | "too_hard" | null>(null);
@@ -63,18 +71,16 @@ export function WorkoutSummaryScreen({
   const [sorenessPick, setSorenessPick] = useState<SorenessRating>("none");
   const [sorenessAreas, setSorenessAreas] = useState<string[]>([]);
   const [submittedFeedback, setSubmittedFeedback] = useState<PostWorkoutFeedback | null>(null);
-  const [newBadges, setNewBadges] = useState<AchievementBadge[]>([]);
+  const [newBadges] = useState<AchievementBadge[]>(initialNewBadges);
 
   // Detect badges unlocked by this session and persist the updated earned set
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const all = getAchievementBadges({ userStats, workoutHistory, lastWorkoutSummary });
-    const unlocked = all.filter((b) => b.unlocked);
-    const stored: string[] = JSON.parse(localStorage.getItem(EARNED_BADGE_IDS_KEY) ?? "[]");
-    const fresh = unlocked.filter((b) => !stored.includes(b.id));
-    if (fresh.length > 0) {
-      setNewBadges(fresh);
-      localStorage.setItem(EARNED_BADGE_IDS_KEY, JSON.stringify(unlocked.map((b) => b.id)));
+    if (initialNewBadges.length > 0) {
+      localStorage.setItem(
+        EARNED_BADGE_IDS_KEY,
+        JSON.stringify(unlockedBadges.map((badge) => badge.id))
+      );
     }
   // Run once on mount — intentional empty deps
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -188,7 +194,7 @@ export function WorkoutSummaryScreen({
           </header>
 
           <section className="mb-6">
-            <OptimizedCoachCanvas height="h-[280px]" fov={32} cameraPosition={[0, 1.25, 3.6]} />
+            <OptimizedCoachCanvas height="h-[280px]" surface="summary" />
           </section>
 
           <section className="mb-6 rounded-[1.7rem] border border-blue-400/14 bg-blue-950/12 p-4 text-left shadow-inner">
@@ -362,7 +368,7 @@ export function WorkoutSummaryScreen({
                 Strong output this round. Sessions with elite score or major XP gains can push badge progress forward.
               </p>
               <div className="mt-4">
-                <OptimizedCoachCanvas height="h-[200px]" fov={32} cameraPosition={[0, 1.25, 3.6]} />
+                <OptimizedCoachCanvas height="h-[200px]" surface="summary" />
               </div>
             </section>
           ) : null}

@@ -14,6 +14,9 @@ const CATEGORY_CLIP: Record<string, string> = {
 // Name overrides — longest/most-specific match wins, checked in order
 const NAME_CLIP: Array<[string, string]> = [
   // ── Multi-word exact phrases first ────────────────────────────────────────
+  ["march in place",   "GT_MaximoAnimFitnessFrontraises02"],
+  ["knee raise march", "GT_MaximoAnimFitnessFrontraises02"],
+  ["high knees",       "GT_MaximoAnimFitnessFrontraises02"],
   ["shadow box",        "GT_Burpee_Demo"],
   ["seal jack",         "GT_MaximoAnimFitnessJumpingjacks02"],
   ["jumping jack",      "GT_MaximoAnimFitnessJumpingjacks02"],
@@ -77,7 +80,7 @@ const NAME_CLIP: Array<[string, string]> = [
   ["opener",            "GT_MaximoAnimFitnessFrontraises02"],
   ["jack",              "GT_MaximoAnimFitnessJumpingjacks02"],
   ["jump",              "GT_MaximoAnimFitnessJumpingjacks02"],
-  ["march",             "GT_MaximoAnimFitnessJumpingjacks02"],
+  ["march",             "GT_MaximoAnimFitnessFrontraises02"],
   ["shuffle",           "GT_MaximoAnimFitnessJumpingjacks02"],
   ["tap",               "GT_MaximoAnimFitnessJumpingjacks02"],
   ["box",               "GT_Burpee_Demo"],
@@ -122,6 +125,9 @@ const FITNESS_GLB_ROOT = "/models/animations/fitness";
 
 const NAME_GLB: Array<[string, string]> = [
   // Multi-word first (most specific)
+  ["march in place",   `${FITNESS_GLB_ROOT}/Front_Raises_1.glb`],
+  ["knee raise march", `${FITNESS_GLB_ROOT}/Front_Raises_1.glb`],
+  ["high knees",       `${FITNESS_GLB_ROOT}/Front_Raises_1.glb`],
   ["jumping jack",    `${FITNESS_GLB_ROOT}/Jumping_Jacks_1.glb`],
   ["seal jack",       `${FITNESS_GLB_ROOT}/Jumping_Jacks_1.glb`],
   ["shadow box",      `${FITNESS_GLB_ROOT}/Burpee_1.glb`],
@@ -167,6 +173,7 @@ const NAME_GLB: Array<[string, string]> = [
   ["press",           `${FITNESS_GLB_ROOT}/Push_Up.glb`],
   ["jack",            `${FITNESS_GLB_ROOT}/Jumping_Jacks_1.glb`],
   ["jump",            `${FITNESS_GLB_ROOT}/Jumping_Jacks_1.glb`],
+  ["march",           `${FITNESS_GLB_ROOT}/Front_Raises_1.glb`],
   ["lunge",           `${FITNESS_GLB_ROOT}/GT_Squat_Demo.glb`],
   ["sumo",            `${FITNESS_GLB_ROOT}/Sumo_High_Pull_2.glb`],
   ["row",             `${FITNESS_GLB_ROOT}/Bicep_Curl_1.glb`],

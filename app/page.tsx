@@ -304,6 +304,12 @@ export default function GymTwinApp() {
   }
 
   useEffect(() => {
+    useCoachStore
+      .getState()
+      .setCharacter(selectedAvatar === "Atlas" ? "atlas" : "nova");
+  }, [selectedAvatar]);
+
+  useEffect(() => {
     const savedStats = readUserStats();
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (savedStats) setUserStats(savedStats);

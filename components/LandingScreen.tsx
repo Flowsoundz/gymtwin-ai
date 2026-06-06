@@ -15,11 +15,19 @@ import {
 import { getAchievementBadges } from "@/lib/achievementEngine";
 import { getTopLoggedExercises } from "@/lib/progressiveOverloadEngine";
 import { deriveProgressTrends } from "@/lib/progressTrends";
-import { todayString, yesterdayString } from "@/lib/time";
 import { getTodayWeeklyPlanLabel } from "@/lib/weeklyPlanEngine";
 import { useEffect, useMemo, useState } from "react";
 import type { AdaptiveProfile, BodyProfile, CoachAvatar, TraineeStats, WeeklyPlan, WeeklyPlanDayConfig, WorkoutSummaryData } from "@/types";
 import type { Macrocycle } from "@/types/macrocycle";
+
+const FIRST_SESSION_GREETING = {
+  headline: "Your AI coach is ready.",
+  sub: "Adaptive plans, voice coaching, and camera form tracking — on-device.",
+};
+
+function getDayKey(timestamp: number) {
+  return new Date(timestamp).toDateString();
+}
 
 type LandingScreenProps = {
   userStats: TraineeStats;
@@ -52,19 +60,23 @@ type LandingScreenProps = {
 function buildGreeting(
   userStats: TraineeStats,
   latestWorkoutSummary: WorkoutSummaryData | null | undefined,
-  isFirstSession: boolean
+  isFirstSession: boolean,
+  now: number
 ) {
-  const hour = new Date().getHours();
+  const currentDate = new Date(now);
+  const hour = currentDate.getHours();
   const timeOfDay = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
   if (isFirstSession) {
-    return { headline: "Your AI coach is ready.", sub: "Adaptive plans, voice coaching, and camera form tracking — on-device." };
+    return FIRST_SESSION_GREETING;
   }
 
-  const today = todayString();
-  const yesterday = yesterdayString();
+  const today = getDayKey(now);
+  const yesterdayDate = new Date(now);
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+  const yesterday = yesterdayDate.toDateString();
   const last = userStats.lastWorkoutDate;
-  const daysSince = last ? Math.round((Date.now() - new Date(last + "T12:00:00").getTime()) / 86400000) : null;
+  const daysSince = last ? Math.round((now - new Date(last + "T12:00:00").getTime()) / 86400000) : null;
   const trainedToday = last === today;
   const trainedYesterday = last === yesterday;
 
@@ -212,9 +224,14 @@ export function LandingScreen({
   const [activeTab, setActiveTab] = useState<NavTab>("home");
   const [heroInteractive, setHeroInteractive] = useState(false);
   const [heroPostureIndex, setHeroPostureIndex] = useState(0);
+  const [hasMounted, setHasMounted] = useState(false);
+  const [hydratedNow, setHydratedNow] = useState<number | null>(null);
+  const displayedHeroPostureIndex = heroInteractive ? heroPostureIndex : 0;
 
   const coachName = getAvatarLabel(selectedAvatar);
   const coachRole = getAvatarRole(selectedAvatar);
+  const landingCoachName = hasMounted ? coachName : "Coach";
+  const landingCoachRole = hasMounted ? coachRole : "AI Coach";
   const todayPlan = weeklyPlan?.days.find((d) => d.dayLabel === getTodayWeeklyPlanLabel()) ?? weeklyPlan?.days[0] ?? null;
   const completedWeeklyDays = weeklyPlan?.days.filter((d) => d.completed).length ?? 0;
   const weeklyCompletionRatio = weeklyPlan ? completedWeeklyDays / Math.max(weeklyPlan.days.length, 1) : 0;
@@ -236,10 +253,14 @@ export function LandingScreen({
   ];
 
   useEffect(() => {
-    if (!heroInteractive) {
-      setHeroPostureIndex(0);
-      return;
-    }
+    const timeoutId = window.setTimeout(() => {
+      setHasMounted(true);
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, []);
+
+  useEffect(() => {
+    if (!heroInteractive) return;
 
     const intervalId = window.setInterval(() => {
       setHeroPostureIndex((current) => (current + 1) % 3);
@@ -247,6 +268,13 @@ export function LandingScreen({
 
     return () => window.clearInterval(intervalId);
   }, [heroInteractive]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setHydratedNow(Date.now());
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, []);
 
   const progressTrends = useMemo(
     () => deriveProgressTrends({ workoutHistory, weeklyPlan, bodyProfile, userStats }),
@@ -265,6 +293,17 @@ export function LandingScreen({
   const isDeloadWeek = macrocycle?.currentPhase === "deload";
   const isHeavyWeek = macrocycle?.currentPhase === "loaded warning";
   const novaDeloadMessage = isDeloadWeek && macrocycle ? generateNovaDeloadNote(macrocycle) : null;
+  const greeting = useMemo(() => {
+    if (!hasMounted || hydratedNow === null) {
+      return isFirstSession
+        ? FIRST_SESSION_GREETING
+        : {
+            headline: `${userStats.workoutsCompleted} sessions in.`,
+            sub: `${userStats.totalMinutes} min trained${userStats.streak > 0 ? ` · ${userStats.streak} day streak` : ""}`,
+          };
+    }
+    return buildGreeting(userStats, latestWorkoutSummary, isFirstSession, hydratedNow);
+  }, [hasMounted, hydratedNow, isFirstSession, latestWorkoutSummary, userStats]);
 
   // Progressive overload — last 3 logged exercises
   const topLogged = useMemo(() => getTopLoggedExercises(3), [workoutHistory.length]);
@@ -274,11 +313,6 @@ export function LandingScreen({
     const next = all.find((b) => !b.unlocked) ?? null;
     return { unlocked, total: all.length, next };
   }, [userStats, workoutHistory, latestWorkoutSummary]);
-  const greeting = useMemo(
-    () => buildGreeting(userStats, latestWorkoutSummary, isFirstSession),
-    [userStats, latestWorkoutSummary, isFirstSession]
-  );
-
   const handleNavTab = (tab: NavTab) => {
     setActiveTab(tab);
     if (tab === "progress")  onViewProgress();
@@ -429,20 +463,20 @@ export function LandingScreen({
                     className={`pointer-events-none absolute inset-[8%] z-[1] rounded-[2rem] bg-gradient-to-br blur-3xl hero-aura ${streakAuraClass}`}
                     style={{ animationDuration: heroAuraDuration }}
                   />
-                  <OptimizedCoachCanvas height="h-full" fov={30} cameraPosition={[0, 1.1, 3.8]} />
+                  <OptimizedCoachCanvas height="h-full" surface="hero" />
                   <div className="pointer-events-none absolute inset-x-5 top-5 z-[2] max-w-[18rem] rounded-2xl border border-white/10 bg-slate-950/42 px-4 py-3 backdrop-blur-xl">
                     <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-300">
-                      {userStats.streak >= 7 ? "Streak Surge" : "Atlas Hero View"}
+                      {userStats.streak >= 7 ? "Streak Surge" : `${landingCoachName} Hero View`}
                     </p>
                     <p className="mt-2 text-sm font-bold leading-relaxed text-white ticker-fade">
-                      {heroInteractive ? focusLines[heroPostureIndex] : focusLines[0]}
+                      {focusLines[displayedHeroPostureIndex]}
                     </p>
                   </div>
                 </div>
                 {/* Coach identity overlay */}
                 <div className="absolute bottom-0 left-0 right-0 rounded-b-[1.4rem] bg-gradient-to-t from-slate-950/90 via-slate-950/40 to-transparent px-4 pb-4 pt-8">
-                  <p className="text-lg font-black italic text-white">{coachName}</p>
-                  <p className="mt-0.5 text-[10px] font-black uppercase tracking-[0.26em] text-slate-400">{coachRole}</p>
+                  <p className="text-lg font-black italic text-white">{landingCoachName}</p>
+                  <p className="mt-0.5 text-[10px] font-black uppercase tracking-[0.26em] text-slate-400">{landingCoachRole}</p>
                   {/* Live status pill */}
                   <div className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" style={{ animation: "coachPulse 2s ease-in-out infinite" }} />

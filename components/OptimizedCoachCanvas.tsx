@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useRef } from "react";
+import { Suspense, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { ContactShadows, MeshReflectorMaterial, useGLTF } from "@react-three/drei";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
@@ -26,6 +26,7 @@ import {
 import type { Group, Object3D } from "three";
 import { useCoachStore } from "@/store/useCoachStore";
 import { CHARACTERS } from "@/lib/characters";
+import type { CharacterId } from "@/lib/characters";
 import type { WorkoutPhase } from "@/store/useCoachStore";
 
 useGLTF.setDecoderPath("/draco/");
@@ -44,6 +45,69 @@ const PHASE_RING_COLOR: Record<WorkoutPhase, string> = {
   rest: "#7740ff",     // violet
   celebrating: "#ff00dd", // hot pink
 };
+
+const EMPTY_SUBSCRIBE = () => () => {};
+const ORBIT_TARGETS: Record<CharacterId, [number, number, number]> = {
+  atlas: [0, 1.26, 0],
+  nova: [0, 1.2, 0],
+  "anime-female": [0, 1.2, 0],
+  "anime-male": [0, 1.26, 0],
+  "virtual-idol": [0, 1.2, 0],
+  "cyber-artist": [0, 1.26, 0],
+};
+
+type CoachCanvasSurface =
+  | "default"
+  | "hero"
+  | "workout_panel"
+  | "demo_card"
+  | "summary";
+
+type SurfacePreset = {
+  cameraPosition: [number, number, number];
+  target: [number, number, number];
+  fov: number;
+};
+
+function getSurfacePreset(
+  characterId: CharacterId,
+  surface: CoachCanvasSurface
+): SurfacePreset {
+  const target = ORBIT_TARGETS[characterId] ?? [0, 1.22, 0];
+
+  switch (surface) {
+    case "hero":
+      return {
+        cameraPosition: [0, 1.34, 4.35],
+        target: [target[0], target[1] + 0.02, target[2]],
+        fov: 33,
+      };
+    case "workout_panel":
+      return {
+        cameraPosition: [0, 1.26, 4.15],
+        target,
+        fov: 32,
+      };
+    case "demo_card":
+      return {
+        cameraPosition: [0, 1.3, 4.25],
+        target,
+        fov: 32,
+      };
+    case "summary":
+      return {
+        cameraPosition: [0, 1.28, 3.95],
+        target,
+        fov: 32,
+      };
+    default:
+      return {
+        cameraPosition: [0, 1.3, 4.2],
+        target,
+        fov: 34,
+      };
+  }
+}
 
 // ─── Arena backdrop ──────────────────────────────────────────────────────────
 
@@ -317,7 +381,7 @@ function CoachModelEngine({
   useFrame((_, delta) => mixerRef.current?.update(delta));
 
   return (
-    <group ref={groupRef} scale={scale}>
+    <group ref={groupRef} scale={scale} position={[0, 0.08, 0]}>
       <primitive object={cloned} />
       <GazeController root={cloned} />
     </group>
@@ -337,10 +401,38 @@ function LoadingRing({ color }: { color: string }) {
   );
 }
 
+function CameraSetup({
+  position,
+  target,
+  fov,
+}: {
+  position: [number, number, number];
+  target: [number, number, number];
+  fov: number;
+}) {
+  const { camera } = useThree();
+
+  useEffect(() => {
+    // react-three-fiber owns this camera instance; mutating it here is the intended way
+    // to keep framing consistent across responsive coach surfaces.
+    // eslint-disable-next-line react-hooks/immutability
+    camera.position.set(...position);
+    // eslint-disable-next-line react-hooks/immutability
+    (camera as { fov?: number }).fov = fov;
+    // eslint-disable-next-line react-hooks/immutability
+    camera.lookAt(target[0], target[1], target[2]);
+    // eslint-disable-next-line react-hooks/immutability
+    camera.updateProjectionMatrix();
+  }, [camera, fov, position, target]);
+
+  return null;
+}
+
 // ─── Public component ────────────────────────────────────────────────────────
 
 type OptimizedCoachCanvasProps = {
   height?: string;
+  surface?: CoachCanvasSurface;
   cameraPosition?: [number, number, number];
   fov?: number;
   bloom?: boolean;
@@ -350,22 +442,32 @@ type OptimizedCoachCanvasProps = {
 
 export function OptimizedCoachCanvas({
   height = "h-[480px]",
-  cameraPosition = [0, 1.3, 4.2],
-  fov = 34,
+  surface = "default",
+  cameraPosition,
+  fov,
   bloom = true,
   forceShow = false,
 }: OptimizedCoachCanvasProps) {
   const { characterId, currentAnimation, displayLayout, coachSize, workoutPhase, repProgress, animationGLBPath } =
     useCoachStore();
   const character = CHARACTERS[characterId];
+  const devicePixelRatio = useSyncExternalStore(
+    EMPTY_SUBSCRIBE,
+    () => window.devicePixelRatio || 1.8,
+    () => 1.8
+  );
 
   const isCameraScreen = displayLayout === "camera_corner";
-  if (!forceShow && displayLayout === "hidden") return null;
-  if (!character.available || !character.modelPath) return null;
-
   const pixelRatio: [number, number] = isCameraScreen
     ? [1, 1]
-    : [1, Math.min(typeof window !== "undefined" ? window.devicePixelRatio : 2, 1.8)];
+    : [1, Math.min(devicePixelRatio, 1.8)];
+  const surfacePreset = getSurfacePreset(characterId, surface);
+  const resolvedCameraPosition = cameraPosition ?? surfacePreset.cameraPosition;
+  const resolvedFov = fov ?? surfacePreset.fov;
+  const orbitTarget = surfacePreset.target;
+
+  if (!forceShow && displayLayout === "hidden") return null;
+  if (!character.available || !character.modelPath) return null;
 
   const scale = SIZE_SCALE[coachSize] ?? 1.15;
   const enableBloom = bloom && !isCameraScreen;
@@ -374,7 +476,7 @@ export function OptimizedCoachCanvas({
     <div className={`overflow-hidden rounded-2xl ${height}`}>
       <Canvas
         shadows={isCameraScreen ? false : { type: PCFShadowMap }}
-        camera={{ position: cameraPosition, fov, near: 0.1, far: 200 }}
+        camera={{ position: resolvedCameraPosition, fov: resolvedFov, near: 0.1, far: 200 }}
         dpr={pixelRatio}
         gl={{ antialias: !isCameraScreen, powerPreference: "high-performance" }}
         onCreated={({ gl }) => {
@@ -383,6 +485,7 @@ export function OptimizedCoachCanvas({
           gl.toneMappingExposure = isCameraScreen ? 1.2 : 1.55;
         }}
       >
+        <CameraSetup position={resolvedCameraPosition} target={orbitTarget} fov={resolvedFov} />
         <color attach="background" args={["#010208"]} />
 
         {!isCameraScreen && (

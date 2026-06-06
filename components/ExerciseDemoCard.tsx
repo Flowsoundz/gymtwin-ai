@@ -140,13 +140,13 @@ export function ExerciseDemoCard({
                 </p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-slate-950/74 px-3 py-2 backdrop-blur-xl">
-                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-fuchsia-300">Atlas Focus</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-fuchsia-300">{avatarLabel} Focus</p>
                 <p className="mt-1 text-[11px] leading-relaxed text-slate-300">
                   {formTips[0]} • {formTips[1]}
                 </p>
               </div>
             </div>
-            <OptimizedCoachCanvas height="h-[300px]" fov={32} cameraPosition={[0, 1.1, 3.8]} bloom={false} forceShow />
+            <OptimizedCoachCanvas height="h-[300px]" surface="demo_card" bloom={false} forceShow />
             <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950 via-slate-950/75 to-transparent px-4 pb-4 pt-12">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>

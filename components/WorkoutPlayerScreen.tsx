@@ -261,10 +261,13 @@ export function WorkoutPlayerScreen({
 
   // Reset tracker state when exercise changes so stale values never carry over
   useEffect(() => {
-    setTrackerOpen(false);
-    setTrackerReps(currentReps);
     const lastWeight = getLastLoggedWeight(activeMovement.name);
-    setTrackerWeight(lastWeight);
+    const resetId = window.setTimeout(() => {
+      setTrackerOpen(false);
+      setTrackerReps(currentReps);
+      setTrackerWeight(lastWeight);
+    }, 0);
+    return () => window.clearTimeout(resetId);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeMovement.id]);
 
@@ -356,8 +359,12 @@ export function WorkoutPlayerScreen({
       feedbackMessage;
     if (!cue) return;
     onAutoSpeak(cue);
-    setVoiceCaption(cue);
-    window.setTimeout(() => setVoiceCaption(null), 4000);
+    const showId = window.setTimeout(() => setVoiceCaption(cue), 0);
+    const hideId = window.setTimeout(() => setVoiceCaption(null), 4000);
+    return () => {
+      window.clearTimeout(showId);
+      window.clearTimeout(hideId);
+    };
   }, [feedbackSeverity, latestIssue, isCameraRunning, isMuted, onAutoSpeak, feedbackMessage, avatarDisplaySettings.talkativeness]);
 
   // Difficulty adjustment wrappers — show toast then call parent
@@ -1224,7 +1231,7 @@ export function WorkoutPlayerScreen({
                 </div>
 
                 {/* Coach demo — exercise animation from store's animationGLBPath */}
-                <OptimizedCoachCanvas height="h-[320px]" fov={32} cameraPosition={[0, 1.1, 3.8]} bloom={false} forceShow />
+                <OptimizedCoachCanvas height="h-[320px]" surface="workout_panel" bloom={false} forceShow />
 
                 {/* Coach label strip at bottom */}
                 <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950 to-transparent px-3 pb-3 pt-8">
@@ -1252,7 +1259,7 @@ export function WorkoutPlayerScreen({
                       </span>
                     </div>
                     <div className="coach-float">
-                      <OptimizedCoachCanvas height="h-[300px]" fov={32} cameraPosition={[0, 1.1, 3.8]} bloom={false} forceShow />
+                      <OptimizedCoachCanvas height="h-[300px]" surface="demo_card" bloom={false} forceShow />
                     </div>
                     <div className="pointer-events-none -mt-3 flex justify-center pb-4">
                       <div className="h-3 w-28 rounded-full bg-emerald-500/40 blur-md rim-pulse" />
@@ -1672,7 +1679,7 @@ export function WorkoutPlayerScreen({
                   <p className="mt-1 text-sm font-black tracking-tight text-white">{cleanMovementName(activeMovement.name)}</p>
                 </div>
                 <div className="coach-float">
-                  <OptimizedCoachCanvas height="h-[260px]" fov={32} cameraPosition={[0, 1.1, 3.8]} bloom={false} forceShow />
+                  <OptimizedCoachCanvas height="h-[260px]" surface="demo_card" bloom={false} forceShow />
                 </div>
                 {/* Neon floor rim light — tracks live form feedback state */}
                 <div className="pointer-events-none -mt-3 flex justify-center pb-4">
