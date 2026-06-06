@@ -63,6 +63,14 @@ const nextConfig: NextConfig = {
         headers: [{ key: "Content-Type", value: "application/wasm" }],
       },
       {
+        source: "/draco/:path*.wasm",
+        headers: [{ key: "Content-Type", value: "application/wasm" }],
+      },
+      {
+        source: "/draco/:path*.js",
+        headers: [{ key: "Content-Type", value: "application/javascript" }],
+      },
+      {
         source: "/manifest.json",
         headers: [{ key: "Content-Type", value: "application/manifest+json" }],
       },
