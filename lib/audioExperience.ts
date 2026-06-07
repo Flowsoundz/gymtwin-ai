@@ -1,9 +1,16 @@
 import type { AvatarDisplaySettings, WorkoutAudioLevel, WorkoutAudioMode } from "@/types";
 
 export const FLOWSOUNDZ_RADIO_URL = "https://flowsoundz.com";
+export const SUPPORTED_BACKGROUND_AUDIO_SERVICES = [
+  "Spotify",
+  "Apple Music",
+  "YouTube Music",
+  "SoundCloud",
+  "Flowsoundz Radio",
+];
 
 export function getWorkoutAudioModeLabel(mode: WorkoutAudioMode): string {
-  return mode === "flowsoundz_radio" ? "Flowsoundz Radio" : "External";
+  return mode === "flowsoundz_radio" ? "Flowsoundz Radio" : "Any Background Music";
 }
 
 export function getWorkoutAudioLevelLabel(level: WorkoutAudioLevel): string {

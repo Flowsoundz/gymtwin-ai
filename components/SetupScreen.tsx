@@ -410,7 +410,7 @@ export function SetupScreen({
                   <p className="text-[11px] font-black uppercase tracking-[0.26em] text-fuchsia-300">Workout Audio</p>
                   <p className="mt-2 text-sm font-semibold text-white">Train with your own soundtrack.</p>
                   <p className="mt-1 text-xs leading-relaxed text-slate-400">
-                    GymTwin stays compatible with external music, and Flowsoundz Radio can run in parallel for hype, focus, or recovery sessions.
+                    GymTwin stays compatible with Spotify, Apple Music, YouTube Music, SoundCloud, Flowsoundz Radio, or any background player.
                   </p>
                 </div>
                 {onOpenFlowsoundzRadio ? (

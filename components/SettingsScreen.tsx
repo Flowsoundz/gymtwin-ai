@@ -9,6 +9,7 @@ import type { CoachSize } from "@/store/useCoachStore";
 import Image from "next/image";
 import {
   FLOWSOUNDZ_RADIO_URL,
+  SUPPORTED_BACKGROUND_AUDIO_SERVICES,
   getWorkoutAudioLevelLabel,
   getWorkoutAudioModeLabel,
 } from "@/lib/audioExperience";
@@ -585,12 +586,15 @@ export function SettingsScreen({
                         >
                           <p className="text-xs font-black">{getWorkoutAudioModeLabel(mode)}</p>
                           <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
-                            {mode === "external" ? "Use Spotify, Apple Music, YouTube, or any background player." : "Pair the session with Flowsoundz Radio in a parallel tab."}
+                            {mode === "external" ? "Use any music app or player that runs well in the background." : "Pair the session with Flowsoundz Radio in a parallel tab."}
                           </p>
                         </button>
                       );
                     })}
                   </div>
+                  <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
+                    Works well with {SUPPORTED_BACKGROUND_AUDIO_SERVICES.join(", ")}.
+                  </p>
                 </div>
 
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -661,7 +665,7 @@ export function SettingsScreen({
                     <div className="min-w-0">
                       <p className="text-[11px] font-black uppercase tracking-[0.22em] text-fuchsia-300">Flowsoundz Radio</p>
                       <p className="mt-1 text-xs leading-relaxed text-slate-400">
-                        Open your station in a parallel tab and let GymTwin handle coaching and cues.
+                        Featured option: open your station in a parallel tab and let GymTwin handle coaching and cues.
                       </p>
                     </div>
                     <button

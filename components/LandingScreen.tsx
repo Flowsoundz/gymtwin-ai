@@ -726,7 +726,7 @@ export function LandingScreen({
                     <div className="min-w-0">
                       <p className="text-[10px] font-black uppercase tracking-[0.24em] text-fuchsia-300">Workout Audio</p>
                       <p className="mt-1 text-xs leading-relaxed text-slate-400">
-                        Play your own music or launch Flowsoundz Radio alongside the workout.
+                        Use Spotify, Apple Music, YouTube Music, SoundCloud, Flowsoundz Radio, or any background player alongside the workout.
                       </p>
                     </div>
                     <button
