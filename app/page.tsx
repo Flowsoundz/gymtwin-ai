@@ -192,6 +192,7 @@ export default function GymTwinApp() {
   const [selectedWorkoutDetail, setSelectedWorkoutDetail] = useState<WorkoutSummaryData | null>(null);
   const [hasResumeSession, setHasResumeSession] = useState(false);
   const [todayFoodLog, setTodayFoodLog] = useState<FoodItem[]>([]);
+  const [nutritionReturnScreen, setNutritionReturnScreen] = useState<"landing" | "summary">("landing");
 
   const [selectedGoal, setSelectedGoal] = useState<WorkoutGoal>("Build muscle");
   const [selectedLevel, setSelectedLevel] = useState<WorkoutLevel>("Beginner");
@@ -853,6 +854,11 @@ export default function GymTwinApp() {
     setCurrentScreen("camera_sandbox");
   }
 
+  function openNutritionHub(returnScreen: "landing" | "summary" = "landing") {
+    setNutritionReturnScreen(returnScreen);
+    setCurrentScreen("nutrition");
+  }
+
   return (
     <>
       <DebugDiagnosticsReporter currentScreen={currentScreen} />
@@ -895,7 +901,7 @@ export default function GymTwinApp() {
           showSyncBanner={!supabaseUser && !syncBannerDismissed}
           onOpenAuth={() => setCurrentScreen("auth")}
           onDismissSyncBanner={() => setSyncBannerDismissed(true)}
-          onViewNutrition={() => setCurrentScreen("nutrition")}
+          onViewNutrition={() => openNutritionHub("landing")}
           onOpenFlowsoundzRadio={openFlowsoundzRadio}
           primaryButton={primaryButton}
           secondaryButton={secondaryButton}
@@ -1050,7 +1056,7 @@ export default function GymTwinApp() {
           onRepeatWorkout={initializeTrainingSession}
           onStartNewWorkout={() => setCurrentScreen("setup")}
           onViewProgress={() => setCurrentScreen("progress")}
-          onViewNutrition={() => setCurrentScreen("nutrition")}
+          onViewNutrition={() => openNutritionHub("summary")}
           primaryButton={primaryButton}
           secondaryButton={secondaryButton}
         />
@@ -1101,7 +1107,7 @@ export default function GymTwinApp() {
           caloriesBurnedToday={caloriesBurnedToday}
           activeSessionCalories={activeSessionCalories}
           bodyProfile={bodyProfile}
-          onBack={() => setCurrentScreen("landing")}
+          onBack={() => setCurrentScreen(nutritionReturnScreen)}
           onOpenFoodCamera={() => setCurrentScreen("food_camera")}
           onCopyYesterdayMeals={handleCopyYesterdayMeals}
           onRemoveFoodItem={handleRemoveFoodItem}
