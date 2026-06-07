@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useCoachStore } from "@/store/useCoachStore";
-import { Coach3D } from "@/components/Coach3D";
 import { OptimizedCoachCanvas } from "@/components/OptimizedCoachCanvas";
 import { FloatingCoachAvatar } from "@/components/FloatingCoachAvatar";
 import { ExerciseDemoCard } from "@/components/ExerciseDemoCard";
@@ -18,7 +17,7 @@ import { playCountdownCue, playSetStartCue } from "@/lib/audioCues";
 import { getCameraCoachHint, getCameraCoachLabel, getCameraCoachModeForMovementName } from "@/lib/cameraCoachMapping";
 import { getCoachBrainResponse } from "@/lib/coachBrain";
 import type { CoachAnimationHint } from "@/lib/coachBrain";
-import { getExerciseClipName, getExerciseAnimationGLBPath, isFloorMovementName } from "@/lib/exerciseAnimationMap";
+import { getExerciseClipName, getExerciseAnimationGLBPath } from "@/lib/exerciseAnimationMap";
 import {
   ENABLE_CAMERA_TRACKING,
   ENABLE_EXERCISE_DEMOS,
@@ -131,7 +130,7 @@ export function WorkoutPlayerScreen({
   useEffect(() => {
     setAnimationGLBPath(getExerciseAnimationGLBPath(activeMovement));
     return () => setAnimationGLBPath(null);
-  }, [activeMovement.id, activeMovement.name, setAnimationGLBPath]);
+  }, [activeMovement, setAnimationGLBPath]);
 
   // Progressive overload tracker
   const [trackerOpen, setTrackerOpen] = useState(false);
@@ -281,10 +280,6 @@ export function WorkoutPlayerScreen({
   const demoClipName = useMemo(
     () => getExerciseClipName(activeMovement),
     [activeMovement]
-  );
-  const isFloorDemo = useMemo(
-    () => isFloorMovementName(activeMovement.name),
-    [activeMovement.name]
   );
   const exerciseDemoDescriptor = useMemo(
     () => getExerciseDemoDescriptor(activeMovement.name, selectedAvatar),
@@ -636,6 +631,7 @@ export function WorkoutPlayerScreen({
       selectedAvatar,
       isListening,
       isCameraCoachOpen,
+      isCameraRunning,
       statusLabel,
       selectedMode,
       cameraMetrics.phase,
@@ -685,6 +681,7 @@ export function WorkoutPlayerScreen({
     repCountingEnabled: avatarDisplaySettings.repCountingEnabled,
     isMuted,
     isCameraActive: isCameraCoachOpen && isCameraRunning,
+    coachVoiceVolume: avatarDisplaySettings.coachVoiceVolume,
     selectedAvatar,
     onAnimHint: onCoachAnimHint,
   });
@@ -849,9 +846,9 @@ export function WorkoutPlayerScreen({
     }
 
     if (restCountdown === 3 || restCountdown === 2 || restCountdown === 1) {
-      playCountdownCue(restCountdown);
+      playCountdownCue(restCountdown, avatarDisplaySettings.cueVolume);
     }
-  }, [avatarDisplaySettings.countdownAudioEnabled, isMuted, isRestPhase, restCountdown]);
+  }, [avatarDisplaySettings.countdownAudioEnabled, avatarDisplaySettings.cueVolume, isMuted, isRestPhase, restCountdown]);
 
   useEffect(() => {
     if (isRestPhase) {
@@ -867,10 +864,10 @@ export function WorkoutPlayerScreen({
     if (previousActiveSetKeyRef.current !== activeSetKey) {
       previousActiveSetKeyRef.current = activeSetKey;
       window.setTimeout(() => {
-        playSetStartCue();
+        playSetStartCue(avatarDisplaySettings.cueVolume);
       }, 80);
     }
-  }, [activeSetKey, avatarDisplaySettings.countdownAudioEnabled, isMuted, isRestPhase]);
+  }, [activeSetKey, avatarDisplaySettings.countdownAudioEnabled, avatarDisplaySettings.cueVolume, isMuted, isRestPhase]);
 
   const cameraCoachPanel = supportedCameraMode ? (
     <div className="rounded-[1.7rem] border border-white/8 bg-white/6 p-4 backdrop-blur-xl shadow-[0_18px_60px_rgba(15,23,42,0.45)]">

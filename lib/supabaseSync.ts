@@ -120,3 +120,11 @@ export async function pullWorkoutHistoryFromSupabase(
   if (error || !data) return [];
   return data.map((row) => row.summary as WorkoutSummaryData).filter(Boolean);
 }
+
+export async function deleteUserDataFromSupabase(userId: string): Promise<void> {
+  await Promise.all([
+    supabase.from("workouts").delete().eq("user_id", userId),
+    supabase.from("streaks").delete().eq("id", userId),
+    supabase.from("user_settings").delete().eq("id", userId),
+  ]);
+}

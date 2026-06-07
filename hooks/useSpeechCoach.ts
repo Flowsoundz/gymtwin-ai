@@ -3,9 +3,13 @@
 import { useState } from "react";
 import { getCoachQuote } from "@/lib/coachEngine";
 import { buildCoachUtterance } from "@/lib/coachSpeech";
-import type { CoachAvatar, CoachName } from "@/types";
+import type { CoachAvatar, CoachName, WorkoutAudioLevel } from "@/types";
 
-export function useSpeechCoach(selectedCoach: CoachName, selectedAvatar: CoachAvatar = "Nova") {
+export function useSpeechCoach(
+  selectedCoach: CoachName,
+  selectedAvatar: CoachAvatar = "Nova",
+  coachVoiceVolume: WorkoutAudioLevel = "normal"
+) {
   const [isMuted, setIsMuted] = useState(false);
   const [displayedSpeech, setDisplayedSpeech] = useState(
     "Choose your coach and start your training session."
@@ -14,7 +18,7 @@ export function useSpeechCoach(selectedCoach: CoachName, selectedAvatar: CoachAv
   function speak(phrase: string) {
     if (isMuted || typeof window === "undefined" || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
-    const utterance = buildCoachUtterance(phrase, selectedAvatar, "distance");
+    const utterance = buildCoachUtterance(phrase, selectedAvatar, "distance", coachVoiceVolume);
     window.speechSynthesis.speak(utterance);
   }
 

@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { buildCoachUtterance } from "@/lib/coachSpeech";
 import type { CoachAnimationHint } from "@/lib/coachBrain";
-import type { CoachAvatar, CoachTalkativeness } from "@/types";
+import type { CoachAvatar, CoachTalkativeness, WorkoutAudioLevel } from "@/types";
 
 type RepQualityLabel = "clean" | "shallow" | "unstable" | "lost_tracking" | "unknown" | null | undefined;
 
@@ -15,6 +15,7 @@ type Props = {
   repCountingEnabled: boolean;
   isMuted: boolean;
   isCameraActive: boolean;
+  coachVoiceVolume?: WorkoutAudioLevel;
   selectedAvatar?: CoachAvatar;
   onAnimHint?: (hint: CoachAnimationHint) => void;
 };
@@ -58,11 +59,15 @@ const FORM_CUE_HYPE: typeof FORM_CUE_QUIET = {
   unknown:       null,
 };
 
-function speakLine(text: string, avatar: CoachAvatar = "Nova") {
+function speakLine(
+  text: string,
+  avatar: CoachAvatar = "Nova",
+  coachVoiceVolume: WorkoutAudioLevel = "normal"
+) {
   if (typeof window === "undefined") return;
   const synth = window.speechSynthesis;
   if (!synth) return;
-  const utt = buildCoachUtterance(text, avatar, "distance");
+  const utt = buildCoachUtterance(text, avatar, "distance", coachVoiceVolume);
   synth.speak(utt);
 }
 
@@ -73,6 +78,7 @@ export function useRepSpeech({
   repCountingEnabled,
   isMuted,
   isCameraActive,
+  coachVoiceVolume = "normal",
   selectedAvatar = "Nova",
   onAnimHint,
 }: Props) {
@@ -102,12 +108,12 @@ export function useRepSpeech({
     }
 
     if (milestoneText) {
-      speakLine(milestoneText, selectedAvatar);
+      speakLine(milestoneText, selectedAvatar, coachVoiceVolume);
       onAnimHint?.("thumbs_up");
       if (animHintTimer.current) clearTimeout(animHintTimer.current);
       animHintTimer.current = setTimeout(() => onAnimHint?.("idle"), 2500);
     }
-  }, [repCount, repCountingEnabled, isMuted, isCameraActive, talkativeness, selectedAvatar, onAnimHint]);
+  }, [coachVoiceVolume, repCount, repCountingEnabled, isMuted, isCameraActive, talkativeness, selectedAvatar, onAnimHint]);
 
   useEffect(() => {
     if (!repCountingEnabled || isMuted || !isCameraActive) return;
@@ -125,7 +131,7 @@ export function useRepSpeech({
     const cue = cueMap[repQualityLabel];
     if (!cue) return;
 
-    speakLine(cue, selectedAvatar);
+    speakLine(cue, selectedAvatar, coachVoiceVolume);
 
     if (repQualityLabel === "clean") {
       onAnimHint?.("thumbs_up");
@@ -136,7 +142,7 @@ export function useRepSpeech({
       if (animHintTimer.current) clearTimeout(animHintTimer.current);
       animHintTimer.current = setTimeout(() => onAnimHint?.("idle"), 3000);
     }
-  }, [repQualityLabel, repCountingEnabled, isMuted, isCameraActive, talkativeness, selectedAvatar, onAnimHint]);
+  }, [coachVoiceVolume, repQualityLabel, repCountingEnabled, isMuted, isCameraActive, talkativeness, selectedAvatar, onAnimHint]);
 
   useEffect(() => {
     return () => {

@@ -30,6 +30,7 @@ import {
   pullStatsFromSupabase,
   pushWorkoutToSupabase,
   pullWorkoutHistoryFromSupabase,
+  deleteUserDataFromSupabase,
 } from "@/lib/supabaseSync";
 import { AuthScreen } from "@/components/AuthScreen";
 import { CameraSandboxScreen } from "@/components/CameraSandboxScreen";
@@ -73,7 +74,7 @@ import { getAchievementBadges } from "@/lib/achievementEngine";
 import { readBodyProfile, saveBodyProfile } from "@/lib/bodyProfileStorage";
 import { generateWeeklyPlan } from "@/lib/weeklyPlanEngine";
 import { clearWeeklyPlan, markTodayComplete, readWeeklyPlan, saveWeeklyPlan } from "@/lib/weeklyPlanStorage";
-import { buildRoutine, cleanMovementName } from "@/lib/workoutEngine";
+import { cleanMovementName } from "@/lib/workoutEngine";
 import { generatePersonalizedPlan, planToWorkoutMovements } from "@/lib/personalizedWorkoutEngine";
 import {
   deriveWorkoutAdjustments,
@@ -221,7 +222,7 @@ export default function GymTwinApp() {
     setDisplayedSpeech,
     speak,
     updateCoachLine,
-  } = useSpeechCoach(selectedCoach, selectedAvatar);
+  } = useSpeechCoach(selectedCoach, selectedAvatar, avatarDisplaySettings.coachVoiceVolume);
 
   const activeMovement = activeRoutine[movementIndex];
 
@@ -290,12 +291,28 @@ export default function GymTwinApp() {
     clearActiveSession();
     clearWorkoutStorage();
     clearWeeklyPlan();
+    setAvatarDisplaySettings(defaultAvatarDisplaySettings);
+    saveAvatarDisplaySettings(defaultAvatarDisplaySettings);
     setUserStats({ workoutsCompleted: 0, streak: 0, lastWorkoutDate: null, totalMinutes: 0 });
     setWeeklyPlan(null);
     setLastWorkoutSummary(null);
     setWorkoutHistory([]);
     setSelectedWorkoutDetail(null);
     setCurrentScreen("landing");
+  }
+
+  async function handleDeleteCloudData() {
+    if (!supabaseUser) return;
+    await deleteUserDataFromSupabase(supabaseUser.id);
+    clearWorkoutStorage();
+    clearWeeklyPlan();
+    setAvatarDisplaySettings(defaultAvatarDisplaySettings);
+    saveAvatarDisplaySettings(defaultAvatarDisplaySettings);
+    setUserStats({ workoutsCompleted: 0, streak: 0, lastWorkoutDate: null, totalMinutes: 0 });
+    setWeeklyPlan(null);
+    setLastWorkoutSummary(null);
+    setWorkoutHistory([]);
+    setSelectedWorkoutDetail(null);
   }
 
   function persistAvatarSelection(nextAvatar: CoachAvatar) {
@@ -337,7 +354,6 @@ export default function GymTwinApp() {
         ? advanceMacrocycleWeek(savedMacrocycle)
         : savedMacrocycle;
       if (advanced !== savedMacrocycle) saveMacrocycle(advanced);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMacrocycleState(advanced);
     }
 
@@ -897,6 +913,7 @@ export default function GymTwinApp() {
           onOpenFlowsoundzRadio={openFlowsoundzRadio}
           bodyProfile={bodyProfile}
           avatarDisplaySettings={avatarDisplaySettings}
+          onDeleteCloudData={supabaseUser ? handleDeleteCloudData : undefined}
           onBodyProfileChange={(profile) => {
             setBodyProfile(profile);
             if (profile) saveBodyProfile(profile);

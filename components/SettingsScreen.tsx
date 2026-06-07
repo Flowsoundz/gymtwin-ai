@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { CharacterViewer } from "@/components/CharacterViewer";
@@ -13,6 +14,13 @@ import {
   getWorkoutAudioLevelLabel,
   getWorkoutAudioModeLabel,
 } from "@/lib/audioExperience";
+import {
+  GYMTWIN_PRIVACY_PATH,
+  GYMTWIN_SUPPORT_EMAIL,
+  GYMTWIN_SUPPORT_URL,
+  GYMTWIN_TERMS_PATH,
+  buildSupportMailto,
+} from "@/lib/appInfo";
 import { getAvatarAsset, getAvatarLabel, getAvatarPersonality, getAvatarRole, getAvatarSubtitle } from "@/lib/avatarAssets";
 import { clearBodyProfile, saveBodyProfile } from "@/lib/bodyProfileStorage";
 import type {
@@ -35,6 +43,7 @@ type SettingsScreenProps = {
   selectedAvatar?: CoachAvatar;
   onSelectedAvatarChange?: (avatar: CoachAvatar) => void;
   onOpenFlowsoundzRadio?: () => void;
+  onDeleteCloudData?: () => Promise<void> | void;
   bodyProfile?: BodyProfile | null;
   onBodyProfileChange?: (profile: BodyProfile | null) => void;
   avatarDisplaySettings: AvatarDisplaySettings;
@@ -151,11 +160,13 @@ export function SettingsScreen({
   selectedAvatar = "Nova",
   onSelectedAvatarChange,
   onOpenFlowsoundzRadio,
+  onDeleteCloudData,
   bodyProfile,
   onBodyProfileChange,
   avatarDisplaySettings,
   onAvatarDisplaySettingsChange,
 }: SettingsScreenProps) {
+  const [isDeletingCloudData, setIsDeletingCloudData] = useState(false);
   const [draftProfile, setDraftProfile] = useState<BodyProfile>(() => ({
       sex: "prefer_not_to_say",
       activityGoal: "",
@@ -766,13 +777,13 @@ export function SettingsScreen({
               <p>Help improve GymTwin AI during beta.</p>
               <div className="mt-4 space-y-3">
                 <a
-                  href="mailto:adonyluisflorencio@gmail.com?subject=GymTwin%20AI%20Beta%20Feedback"
+                  href={buildSupportMailto("GymTwin AI Beta Feedback")}
                   className="block w-full rounded-2xl border border-blue-400/20 bg-gradient-to-r from-blue-600 to-fuchsia-600 px-4 py-4 text-center text-sm font-black text-white shadow-[0_18px_40px_rgba(99,102,241,0.26)] transition hover:brightness-105 active:scale-95"
                 >
                   Send Beta Feedback
                 </a>
                 <a
-                  href="mailto:adonyluisflorencio@gmail.com?subject=GymTwin%20AI%20Camera%20Issue"
+                  href={buildSupportMailto("GymTwin AI Camera Issue")}
                   className="block w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-4 text-center text-sm font-black text-slate-100 transition hover:border-blue-400/30 hover:bg-slate-800 active:scale-95"
                 >
                   Report Camera Issue
@@ -820,6 +831,40 @@ export function SettingsScreen({
                       Sign Out
                     </button>
                   )}
+                  {onDeleteCloudData && (
+                    <button
+                      onClick={async () => {
+                        if (typeof window !== "undefined") {
+                          const shouldDelete = window.confirm(
+                            "Delete synced GymTwin workout data and reset local synced progress for this account?"
+                          );
+                          if (!shouldDelete) return;
+                        }
+                        setIsDeletingCloudData(true);
+                        try {
+                          await onDeleteCloudData();
+                        } finally {
+                          setIsDeletingCloudData(false);
+                        }
+                      }}
+                      disabled={isDeletingCloudData}
+                      className="w-full rounded-2xl border border-red-400/18 bg-red-950/25 px-4 py-3.5 text-sm font-black text-red-200 transition hover:border-red-400/30 hover:bg-red-950/35 active:scale-95 disabled:cursor-wait disabled:opacity-60"
+                    >
+                      {isDeletingCloudData ? "Deleting Synced Data..." : "Delete Synced Workout Data"}
+                    </button>
+                  )}
+                  <a
+                    href={buildSupportMailto(
+                      "GymTwin AI Account Deletion Request",
+                      "Please delete my GymTwin AI account and associated backend data."
+                    )}
+                    className="block w-full rounded-2xl border border-white/8 bg-slate-900/60 px-4 py-3.5 text-center text-sm font-black text-slate-200 transition hover:border-fuchsia-400/24 hover:text-white active:scale-95"
+                  >
+                    Request Full Account Deletion
+                  </a>
+                  <p className="text-xs leading-relaxed text-slate-400">
+                    Full auth-account deletion currently routes through support while backend deletion automation is finalized.
+                  </p>
                 </div>
               ) : (
                 <div className="flex flex-col gap-3">
@@ -854,10 +899,44 @@ export function SettingsScreen({
               )}
             </SettingsCard>
 
+            <SettingsCard title="Support & Policies">
+              <p className="text-slate-300">
+                Keep these links inside the app for App Store support, legal, and privacy review.
+              </p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <a
+                  href={`mailto:${GYMTWIN_SUPPORT_EMAIL}`}
+                  className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-4 text-center text-sm font-black text-slate-100 transition hover:border-cyan-400/30 hover:bg-slate-800 active:scale-95"
+                >
+                  Email Support
+                </a>
+                <a
+                  href={GYMTWIN_SUPPORT_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-4 text-center text-sm font-black text-slate-100 transition hover:border-cyan-400/30 hover:bg-slate-800 active:scale-95"
+                >
+                  Support Page
+                </a>
+                <Link
+                  href={GYMTWIN_PRIVACY_PATH}
+                  className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-4 text-center text-sm font-black text-slate-100 transition hover:border-cyan-400/30 hover:bg-slate-800 active:scale-95"
+                >
+                  Privacy Policy
+                </Link>
+                <Link
+                  href={GYMTWIN_TERMS_PATH}
+                  className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-4 text-center text-sm font-black text-slate-100 transition hover:border-fuchsia-400/30 hover:bg-slate-800 active:scale-95"
+                >
+                  Terms of Use
+                </Link>
+              </div>
+            </SettingsCard>
+
             <SettingsCard title="App Info">
               <p>GymTwin AI MVP</p>
               <p className="mt-2 text-slate-400">Camera Coach: Squat, Push-Up, Plank</p>
-              <p className="mt-2 text-slate-400">Build: Local beta</p>
+              <p className="mt-2 text-slate-400">Build: Launch hardening beta</p>
             </SettingsCard>
           </div>
 
