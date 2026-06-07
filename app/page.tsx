@@ -1050,6 +1050,7 @@ export default function GymTwinApp() {
           onRepeatWorkout={initializeTrainingSession}
           onStartNewWorkout={() => setCurrentScreen("setup")}
           onViewProgress={() => setCurrentScreen("progress")}
+          onViewNutrition={() => setCurrentScreen("nutrition")}
           primaryButton={primaryButton}
           secondaryButton={secondaryButton}
         />
@@ -1104,6 +1105,7 @@ export default function GymTwinApp() {
           onOpenFoodCamera={() => setCurrentScreen("food_camera")}
           onCopyYesterdayMeals={handleCopyYesterdayMeals}
           onRemoveFoodItem={handleRemoveFoodItem}
+          onLogRecommendedMeal={handleLogMealItem}
           primaryButton={primaryButton}
         />
       )}

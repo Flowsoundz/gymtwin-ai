@@ -10,6 +10,11 @@ import { getAchievementBadges } from "@/lib/achievementEngine";
 import { getCoachAdaptationRecommendation } from "@/lib/coachAdaptationEngine";
 import { getCoachBrainResponse } from "@/lib/coachBrain";
 import { getDifficultyAdjustmentRecommendation } from "@/lib/difficultyAdjustmentEngine";
+import {
+  getNutritionRecipesForGoal,
+  inferNutritionGoal,
+  openNutritionPartner,
+} from "@/lib/nutritionExperience";
 import { deriveProgressTrends } from "@/lib/progressTrends";
 import { EARNED_BADGE_IDS_KEY } from "@/lib/storageKeys";
 import { useEffect, useMemo, useState } from "react";
@@ -37,6 +42,7 @@ type WorkoutSummaryScreenProps = {
   onRepeatWorkout: () => void;
   onStartNewWorkout: () => void;
   onViewProgress: () => void;
+  onViewNutrition: () => void;
   primaryButton: string;
   secondaryButton: string;
 };
@@ -53,6 +59,7 @@ export function WorkoutSummaryScreen({
   onRepeatWorkout,
   onStartNewWorkout,
   onViewProgress,
+  onViewNutrition,
   primaryButton,
   secondaryButton,
 }: WorkoutSummaryScreenProps) {
@@ -175,6 +182,14 @@ export function WorkoutSummaryScreen({
         isWorkoutComplete: true,
       }),
     [coachBrain, selectedAvatar]
+  );
+  const recoveryGoal = useMemo(
+    () => inferNutritionGoal(bodyProfile?.activityGoal ?? "recovery"),
+    [bodyProfile?.activityGoal]
+  );
+  const recoveryRecipes = useMemo(
+    () => getNutritionRecipesForGoal(recoveryGoal).slice(0, 3),
+    [recoveryGoal]
   );
 
   return (
@@ -426,6 +441,61 @@ export function WorkoutSummaryScreen({
                 <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Reason</p>
                 <p className="mt-1 text-sm leading-relaxed text-slate-300">{nextBestMove.reason}</p>
               </div>
+            </div>
+          </section>
+
+          <section className="mb-8 rounded-[1.8rem] border border-emerald-400/14 bg-[linear-gradient(135deg,rgba(16,185,129,0.08),rgba(2,6,23,0.94))] p-5 shadow-[0_0_28px_rgba(16,185,129,0.08)]">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-[0.26em] text-emerald-300">Recovery Fuel</p>
+                <h3 className="mt-2 text-xl font-black text-white">Best Nutrition Move for Today</h3>
+                <p className="mt-2 text-sm leading-relaxed text-slate-300">
+                  Support today’s session with a strong next meal, a fast recovery option, or a healthy convenience shortcut.
+                </p>
+              </div>
+              <button
+                onClick={onViewNutrition}
+                className="rounded-full border border-emerald-400/18 bg-emerald-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-100 transition hover:bg-emerald-500/15"
+              >
+                Open Nutrition Hub
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-3 lg:grid-cols-3">
+              {recoveryRecipes.map((recipe) => (
+                <div
+                  key={recipe.id}
+                  className="rounded-[1.4rem] border border-white/8 bg-slate-950/60 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+                >
+                  <span className="inline-flex rounded-full border border-emerald-400/18 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-200">
+                    {recipe.badge}
+                  </span>
+                  <h4 className="mt-3 text-base font-black text-white">{recipe.title}</h4>
+                  <p className="mt-2 text-sm leading-relaxed text-slate-300">{recipe.description}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="rounded-full border border-blue-400/18 bg-blue-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-blue-200">
+                      {recipe.calories} cal
+                    </span>
+                    <span className="rounded-full border border-emerald-400/18 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-200">
+                      {recipe.protein}g protein
+                    </span>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      onClick={onViewNutrition}
+                      className="rounded-xl border border-blue-400/20 bg-gradient-to-r from-blue-600 to-fuchsia-600 px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-white transition hover:brightness-105"
+                    >
+                      {recipe.primaryCta}
+                    </button>
+                    <button
+                      onClick={() => openNutritionPartner(recipe.partnerKey)}
+                      className="rounded-xl border border-white/10 bg-slate-900/80 px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-slate-200 transition hover:border-white/20 hover:text-white"
+                    >
+                      {recipe.secondaryCta}
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           </section>
 
