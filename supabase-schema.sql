@@ -8,10 +8,21 @@ create table if not exists user_settings (
   show_during_camera boolean default true,
   show_exercise_demos boolean default true,
   minimal_camera_hud boolean default false,
+  countdown_audio_enabled boolean default true,
   talkativeness text default 'normal',
   rep_counting_enabled boolean default true,
+  workout_audio_mode text default 'external',
+  coach_voice_volume text default 'normal',
+  cue_volume text default 'normal',
+  duck_external_music boolean default true,
   updated_at timestamptz default now()
 );
+
+alter table user_settings add column if not exists countdown_audio_enabled boolean default true;
+alter table user_settings add column if not exists workout_audio_mode text default 'external';
+alter table user_settings add column if not exists coach_voice_volume text default 'normal';
+alter table user_settings add column if not exists cue_volume text default 'normal';
+alter table user_settings add column if not exists duck_external_music boolean default true;
 
 create table if not exists workouts (
   id text primary key,

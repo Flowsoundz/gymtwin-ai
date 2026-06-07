@@ -20,6 +20,10 @@ export async function pushSettingsToSupabase(
     countdown_audio_enabled: settings.countdownAudioEnabled,
     talkativeness: settings.talkativeness,
     rep_counting_enabled: settings.repCountingEnabled,
+    workout_audio_mode: settings.workoutAudioMode,
+    coach_voice_volume: settings.coachVoiceVolume,
+    cue_volume: settings.cueVolume,
+    duck_external_music: settings.duckExternalMusic,
     updated_at: new Date().toISOString(),
   });
 }
@@ -43,6 +47,10 @@ export async function pullSettingsFromSupabase(
     countdownAudioEnabled: data.countdown_audio_enabled ?? true,
     talkativeness: data.talkativeness ?? "normal",
     repCountingEnabled: data.rep_counting_enabled ?? true,
+    workoutAudioMode: data.workout_audio_mode ?? "external",
+    coachVoiceVolume: data.coach_voice_volume ?? "normal",
+    cueVolume: data.cue_volume ?? "normal",
+    duckExternalMusic: data.duck_external_music ?? true,
   };
 }
 

@@ -8,6 +8,10 @@ import { useCameraCoach } from "@/hooks/useCameraCoach";
 import type { TrackingMode } from "@/hooks/useCameraCoach";
 import { useVoiceCommands } from "@/hooks/useVoiceCommands";
 import { getAvatarLabel } from "@/lib/avatarAssets";
+import {
+  getWorkoutAudioLevelLabel,
+  getWorkoutAudioModeLabel,
+} from "@/lib/audioExperience";
 import { getAvatarCoachLayerState } from "@/lib/avatarCoachLayer";
 import { getExerciseDemoDescriptor } from "@/lib/exerciseDemoLibrary";
 import { playCountdownCue, playSetStartCue } from "@/lib/audioCues";
@@ -1108,6 +1112,24 @@ export function WorkoutPlayerScreen({
                 <div className="rounded-xl border border-white/8 bg-slate-900/70 px-3 py-2">
                   <p className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-500">Muted</p>
                   <p className="mt-0.5 text-xs font-bold text-slate-100">{isMuted ? "Yes" : "No"}</p>
+                </div>
+                <div className="rounded-xl border border-white/8 bg-slate-900/70 px-3 py-2">
+                  <p className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-500">Music</p>
+                  <p className="mt-0.5 text-xs font-bold text-slate-100">
+                    {getWorkoutAudioModeLabel(avatarDisplaySettings.workoutAudioMode)}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-white/8 bg-slate-900/70 px-3 py-2">
+                  <p className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-500">Voice Mix</p>
+                  <p className="mt-0.5 text-xs font-bold text-slate-100">
+                    {getWorkoutAudioLevelLabel(avatarDisplaySettings.coachVoiceVolume)}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-white/8 bg-slate-900/70 px-3 py-2">
+                  <p className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-500">Ducking</p>
+                  <p className="mt-0.5 text-xs font-bold text-slate-100">
+                    {avatarDisplaySettings.duckExternalMusic ? "On" : "Off"}
+                  </p>
                 </div>
                 <p className="text-[9px] text-slate-600">Full options in ← Settings</p>
               </div>

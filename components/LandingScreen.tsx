@@ -50,6 +50,7 @@ type LandingScreenProps = {
   onOpenAuth?: () => void;
   onDismissSyncBanner?: () => void;
   onViewNutrition: () => void;
+  onOpenFlowsoundzRadio: () => void;
   macrocycle?: Macrocycle | null;
   adaptiveProfile?: AdaptiveProfile | null;
   onStartPlanDay?: (config: WeeklyPlanDayConfig) => void;
@@ -217,6 +218,7 @@ export function LandingScreen({
   onOpenAuth,
   onDismissSyncBanner,
   onViewNutrition,
+  onOpenFlowsoundzRadio,
   macrocycle,
   adaptiveProfile,
   onStartPlanDay,
@@ -718,6 +720,23 @@ export function LandingScreen({
                     ⚡ Quick Start — Use Saved Settings
                   </button>
                 )}
+
+                <div className="mt-4 rounded-2xl border border-fuchsia-400/14 bg-gradient-to-r from-fuchsia-500/8 via-slate-950/55 to-cyan-500/8 px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-black uppercase tracking-[0.24em] text-fuchsia-300">Workout Audio</p>
+                      <p className="mt-1 text-xs leading-relaxed text-slate-400">
+                        Play your own music or launch Flowsoundz Radio alongside the workout.
+                      </p>
+                    </div>
+                    <button
+                      onClick={onOpenFlowsoundzRadio}
+                      className="shrink-0 rounded-xl border border-fuchsia-400/24 bg-fuchsia-500/12 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-fuchsia-100 transition hover:bg-fuchsia-500/18 active:scale-[0.97]"
+                    >
+                      Open Radio
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {/* Last Logged — Progressive Overload Snapshot */}
@@ -779,6 +798,15 @@ export function LandingScreen({
                   accentGlowClass="bg-[radial-gradient(circle_at_top_right,_rgba(148,163,184,0.14),_transparent_54%)]"
                   iconShellClass="bg-slate-500/12"
                   onClick={onOpenSettings}
+                />
+                <QuickActionCard
+                  icon="🎧"
+                  title="Flowsoundz"
+                  subtitle="Open workout radio"
+                  accentClass="text-fuchsia-300"
+                  accentGlowClass="bg-[radial-gradient(circle_at_top_right,_rgba(217,70,239,0.16),_transparent_54%)]"
+                  iconShellClass="bg-fuchsia-500/12"
+                  onClick={onOpenFlowsoundzRadio}
                 />
               </div>
             </div>

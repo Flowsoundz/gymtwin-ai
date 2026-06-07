@@ -21,6 +21,7 @@ type SetupScreenProps = {
   setHasAcceptedSafety: (accepted: boolean) => void;
   onBack: () => void;
   onGeneratePreview: () => void;
+  onOpenFlowsoundzRadio?: () => void;
   primaryButton: string;
   selectClass: string;
 };
@@ -108,6 +109,7 @@ export function SetupScreen({
   setHasAcceptedSafety,
   onBack,
   onGeneratePreview,
+  onOpenFlowsoundzRadio,
   primaryButton,
 }: SetupScreenProps) {
   const [isSelectionPending, startSelectionTransition] = useTransition();
@@ -400,6 +402,27 @@ export function SetupScreen({
                   {coachingStyleDescriptions[selectedCoach]}
                 </p>
               ) : null}
+            </div>
+
+            <div className="rounded-[1.5rem] border border-fuchsia-400/12 bg-[linear-gradient(135deg,rgba(217,70,239,0.08),rgba(15,23,42,0.82),rgba(34,211,238,0.08))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-black uppercase tracking-[0.26em] text-fuchsia-300">Workout Audio</p>
+                  <p className="mt-2 text-sm font-semibold text-white">Train with your own soundtrack.</p>
+                  <p className="mt-1 text-xs leading-relaxed text-slate-400">
+                    GymTwin stays compatible with external music, and Flowsoundz Radio can run in parallel for hype, focus, or recovery sessions.
+                  </p>
+                </div>
+                {onOpenFlowsoundzRadio ? (
+                  <button
+                    type="button"
+                    onClick={onOpenFlowsoundzRadio}
+                    className="shrink-0 rounded-2xl border border-fuchsia-400/22 bg-fuchsia-500/12 px-4 py-3 text-[10px] font-black uppercase tracking-[0.18em] text-fuchsia-100 transition hover:bg-fuchsia-500/18"
+                  >
+                    Open Radio
+                  </button>
+                ) : null}
+              </div>
             </div>
 
             {/* Safety Notice */}

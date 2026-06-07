@@ -7,6 +7,11 @@ import { CHARACTERS } from "@/lib/characters";
 import { useCoachStore } from "@/store/useCoachStore";
 import type { CoachSize } from "@/store/useCoachStore";
 import Image from "next/image";
+import {
+  FLOWSOUNDZ_RADIO_URL,
+  getWorkoutAudioLevelLabel,
+  getWorkoutAudioModeLabel,
+} from "@/lib/audioExperience";
 import { getAvatarAsset, getAvatarLabel, getAvatarPersonality, getAvatarRole, getAvatarSubtitle } from "@/lib/avatarAssets";
 import { clearBodyProfile, saveBodyProfile } from "@/lib/bodyProfileStorage";
 import type {
@@ -15,6 +20,8 @@ import type {
   BodyProfile,
   CoachAvatar,
   CoachTalkativeness,
+  WorkoutAudioLevel,
+  WorkoutAudioMode,
 } from "@/types";
 
 type SettingsScreenProps = {
@@ -26,6 +33,7 @@ type SettingsScreenProps = {
   supabaseUser?: User | null;
   selectedAvatar?: CoachAvatar;
   onSelectedAvatarChange?: (avatar: CoachAvatar) => void;
+  onOpenFlowsoundzRadio?: () => void;
   bodyProfile?: BodyProfile | null;
   onBodyProfileChange?: (profile: BodyProfile | null) => void;
   avatarDisplaySettings: AvatarDisplaySettings;
@@ -141,6 +149,7 @@ export function SettingsScreen({
   supabaseUser,
   selectedAvatar = "Nova",
   onSelectedAvatarChange,
+  onOpenFlowsoundzRadio,
   bodyProfile,
   onBodyProfileChange,
   avatarDisplaySettings,
@@ -257,6 +266,9 @@ export function SettingsScreen({
       minimalCameraHud: false,
     });
   }
+
+  const audioModeOptions: WorkoutAudioMode[] = ["external", "flowsoundz_radio"];
+  const audioLevelOptions: WorkoutAudioLevel[] = ["low", "normal", "high"];
 
   return (
     <main className="min-h-screen overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.2),_transparent_24%),radial-gradient(circle_at_bottom,_rgba(59,130,246,0.12),_transparent_24%),linear-gradient(180deg,_#020617_0%,_#020617_48%,_#030712_100%)] px-4 pb-10 pt-8 text-white antialiased sm:px-6 lg:px-8 lg:py-12">
@@ -549,6 +561,121 @@ export function SettingsScreen({
                     className="mt-1 h-5 w-5 rounded border-white/15 bg-slate-950 text-blue-500 accent-blue-500"
                   />
                 </label>
+              </div>
+            </SettingsCard>
+
+            <SettingsCard title="Workout Audio">
+              <div className="space-y-4">
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Music Source</p>
+                  <p className="mt-1 text-xs text-slate-400">GymTwin is designed to work beside your music, not interrupt it.</p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {audioModeOptions.map((mode) => {
+                      const isActive = avatarDisplaySettings.workoutAudioMode === mode;
+                      return (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => updateAvatarDisplaySettings({ workoutAudioMode: mode })}
+                          className={`rounded-2xl border px-4 py-3 text-left transition ${
+                            isActive
+                              ? "border-fuchsia-400/30 bg-gradient-to-br from-blue-500/16 to-fuchsia-500/14 text-white shadow-[0_0_16px_rgba(99,102,241,0.18)]"
+                              : "border-white/8 bg-slate-900/72 text-slate-400 hover:border-white/15 hover:text-white"
+                          }`}
+                        >
+                          <p className="text-xs font-black">{getWorkoutAudioModeLabel(mode)}</p>
+                          <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
+                            {mode === "external" ? "Use Spotify, Apple Music, YouTube, or any background player." : "Pair the session with Flowsoundz Radio in a parallel tab."}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-[1.25rem] border border-white/8 bg-slate-900/72 px-4 py-4">
+                    <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Coach Voice</p>
+                    <div className="mt-3 flex gap-2">
+                      {audioLevelOptions.map((level) => {
+                        const isActive = avatarDisplaySettings.coachVoiceVolume === level;
+                        return (
+                          <button
+                            key={level}
+                            type="button"
+                            onClick={() => updateAvatarDisplaySettings({ coachVoiceVolume: level })}
+                            className={`flex-1 rounded-xl border px-2 py-2 text-[11px] font-black transition ${
+                              isActive
+                                ? "border-blue-400/28 bg-blue-500/14 text-white"
+                                : "border-white/8 bg-slate-950/70 text-slate-400 hover:border-white/15 hover:text-white"
+                            }`}
+                          >
+                            {getWorkoutAudioLevelLabel(level)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="rounded-[1.25rem] border border-white/8 bg-slate-900/72 px-4 py-4">
+                    <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Cue Volume</p>
+                    <div className="mt-3 flex gap-2">
+                      {audioLevelOptions.map((level) => {
+                        const isActive = avatarDisplaySettings.cueVolume === level;
+                        return (
+                          <button
+                            key={level}
+                            type="button"
+                            onClick={() => updateAvatarDisplaySettings({ cueVolume: level })}
+                            className={`flex-1 rounded-xl border px-2 py-2 text-[11px] font-black transition ${
+                              isActive
+                                ? "border-cyan-400/28 bg-cyan-500/14 text-white"
+                                : "border-white/8 bg-slate-950/70 text-slate-400 hover:border-white/15 hover:text-white"
+                            }`}
+                          >
+                            {getWorkoutAudioLevelLabel(level)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                <label className="flex items-start justify-between gap-4 rounded-[1.25rem] border border-white/8 bg-slate-900/72 px-4 py-4">
+                  <div>
+                    <p className="text-sm font-black text-white">Duck Music During Coach Voice</p>
+                    <p className="mt-1 text-xs leading-relaxed text-slate-400">
+                      Recommended when using Flowsoundz Radio or any external player in parallel.
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={avatarDisplaySettings.duckExternalMusic}
+                    onChange={(event) => updateAvatarDisplaySettings({ duckExternalMusic: event.target.checked })}
+                    className="mt-1 h-5 w-5 rounded border-white/15 bg-slate-950 text-blue-500 accent-blue-500"
+                  />
+                </label>
+
+                <div className="rounded-[1.25rem] border border-fuchsia-400/12 bg-[linear-gradient(135deg,rgba(217,70,239,0.08),rgba(15,23,42,0.82),rgba(34,211,238,0.08))] px-4 py-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-black uppercase tracking-[0.22em] text-fuchsia-300">Flowsoundz Radio</p>
+                      <p className="mt-1 text-xs leading-relaxed text-slate-400">
+                        Open your station in a parallel tab and let GymTwin handle coaching and cues.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onOpenFlowsoundzRadio) onOpenFlowsoundzRadio();
+                        else if (typeof window !== "undefined") window.open(FLOWSOUNDZ_RADIO_URL, "_blank", "noopener,noreferrer");
+                      }}
+                      className="shrink-0 rounded-xl border border-fuchsia-400/24 bg-fuchsia-500/12 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-fuchsia-100 transition hover:bg-fuchsia-500/18"
+                    >
+                      Launch
+                    </button>
+                  </div>
+                </div>
               </div>
             </SettingsCard>
 

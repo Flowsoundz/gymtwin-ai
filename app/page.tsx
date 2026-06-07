@@ -120,6 +120,7 @@ import {
   readClientDiagnostics,
   setClientDiagnosticsContext,
 } from "@/lib/debugDiagnostics";
+import { FLOWSOUNDZ_RADIO_URL } from "@/lib/audioExperience";
 import { calculateTargetsFromProfile, estimateWorkoutCaloriesBurned } from "@/lib/nutritionCalc";
 import {
   appendFoodItem,
@@ -274,6 +275,11 @@ export default function GymTwinApp() {
   const primaryButton = "w-full py-4 rounded-2xl font-black transition-all active:scale-95 flex justify-center items-center bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-[0_0_22px_rgba(139,92,246,0.42)] hover:shadow-[0_0_32px_rgba(139,92,246,0.62)]";
   const secondaryButton = "w-full py-4 rounded-2xl font-bold transition-all active:scale-95 flex justify-center items-center bg-slate-900 text-slate-200 border border-slate-800 hover:border-blue-500";
   const selectClass = "w-full bg-slate-900 border border-slate-800 rounded-2xl p-4 outline-none focus:border-purple-500 transition-colors text-slate-200";
+
+  function openFlowsoundzRadio() {
+    if (typeof window === "undefined") return;
+    window.open(FLOWSOUNDZ_RADIO_URL, "_blank", "noopener,noreferrer");
+  }
 
   function clearActiveSession() {
     clearStoredActiveSession();
@@ -874,6 +880,7 @@ export default function GymTwinApp() {
           onOpenAuth={() => setCurrentScreen("auth")}
           onDismissSyncBanner={() => setSyncBannerDismissed(true)}
           onViewNutrition={() => setCurrentScreen("nutrition")}
+          onOpenFlowsoundzRadio={openFlowsoundzRadio}
           primaryButton={primaryButton}
           secondaryButton={secondaryButton}
         />
@@ -887,6 +894,7 @@ export default function GymTwinApp() {
           onResetLocalData={resetLocalAppData}
           selectedAvatar={selectedAvatar}
           onSelectedAvatarChange={persistAvatarSelection}
+          onOpenFlowsoundzRadio={openFlowsoundzRadio}
           bodyProfile={bodyProfile}
           avatarDisplaySettings={avatarDisplaySettings}
           onBodyProfileChange={(profile) => {
@@ -942,6 +950,7 @@ export default function GymTwinApp() {
           setHasAcceptedSafety={(v) => { setHasAcceptedSafety(v); if (v) markSafetyAccepted(); }}
           onBack={() => setCurrentScreen("landing")}
           onGeneratePreview={initializeTrainingSession}
+          onOpenFlowsoundzRadio={openFlowsoundzRadio}
           primaryButton={primaryButton}
           selectClass={selectClass}
         />
