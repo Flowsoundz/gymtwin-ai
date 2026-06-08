@@ -430,6 +430,13 @@ function CoachModelEngine({
   const hasShownPlayablePoseRef = useRef(false);
   const [isPoseReady, setIsPoseReady] = useState(false);
 
+  function revealPoseAndMarkLoaded() {
+    if (hasShownPlayablePoseRef.current) return;
+    hasShownPlayablePoseRef.current = true;
+    setIsPoseReady(true);
+    setLoaded(true);
+  }
+
   useEffect(() => {
     cloned.traverse((obj) => {
       obj.visible = true;
@@ -456,14 +463,19 @@ function CoachModelEngine({
 
   useEffect(() => {
     const mixer = mixerRef.current;
-    if (!mixer || !animations.length) return;
+    if (!mixer) return;
     // External GLBs: always use first valid clip (Blender FBX→GLB produces one clip)
     const clip = animationGLBPath
       ? (animations.find((c) => c.duration > 0) ?? null)
       : (animations.find((c) => c.name === animationName) ??
          animations.find((c) => c.duration > 0) ??
          null);
-    if (!clip) return;
+    if (!clip) {
+      const fallbackRevealId = window.setTimeout(() => {
+        revealPoseAndMarkLoaded();
+      }, 80);
+      return () => window.clearTimeout(fallbackRevealId);
+    }
     const next = mixer.clipAction(clip);
     next.setLoop(LoopRepeat, Infinity);
     const prev = currentActionRef.current;
@@ -477,9 +489,7 @@ function CoachModelEngine({
 
     if (!hasShownPlayablePoseRef.current) {
       mixer.update(1 / 60);
-      hasShownPlayablePoseRef.current = true;
-      setIsPoseReady(true);
-      setLoaded(true);
+      revealPoseAndMarkLoaded();
     }
   }, [animations, animationName, animationGLBPath, setLoaded]);
 
