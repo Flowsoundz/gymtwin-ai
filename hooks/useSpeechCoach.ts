@@ -1,35 +1,51 @@
 "use client";
 
-import { useState } from "react";
-import { getCoachQuote } from "@/lib/coachEngine";
-import { buildCoachUtterance } from "@/lib/coachSpeech";
+import { useCoachVoice } from "@/hooks/useCoachVoice";
 import type { CoachAvatar, CoachName, WorkoutAudioLevel } from "@/types";
+import type { CoachVoicePriority, CoachVoiceIntent } from "@/lib/voice/voiceIntents";
 
 export function useSpeechCoach(
   selectedCoach: CoachName,
   selectedAvatar: CoachAvatar = "Nova",
   coachVoiceVolume: WorkoutAudioLevel = "normal"
 ) {
-  const [isMuted, setIsMuted] = useState(false);
-  const [displayedSpeech, setDisplayedSpeech] = useState(
-    "Choose your coach and start your training session."
-  );
+  const {
+    isMuted,
+    setIsMuted,
+    displayedSpeech,
+    setDisplayedSpeech,
+    speakText,
+    speakIntent,
+  } = useCoachVoice({
+    selectedCoach,
+    selectedAvatar,
+    coachVoiceVolume,
+  });
 
-  function speak(phrase: string) {
-    if (isMuted || typeof window === "undefined" || !window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
-    const utterance = buildCoachUtterance(phrase, selectedAvatar, "distance", coachVoiceVolume);
-    window.speechSynthesis.speak(utterance);
+  function speak(
+    phrase: string,
+    options?: {
+      priority?: CoachVoicePriority;
+      emphasis?: "standard" | "distance";
+    }
+  ) {
+    speakText(
+      phrase,
+      options?.priority ?? "transition",
+      options?.emphasis ?? "distance"
+    );
   }
 
   function updateCoachLine(
     phase: "intro" | "action" | "recovery" | "outro",
     prefix?: string
   ): void {
-    const quote = getCoachQuote(selectedCoach, phase);
-    const fullLine = prefix ? `${prefix} ${quote}` : quote;
-    setDisplayedSpeech(fullLine);
-    speak(fullLine);
+    speakIntent({
+      type: "coach_quote",
+      phase,
+      prefix,
+      priority: phase === "recovery" ? "transition" : "encouragement",
+    });
   }
 
   return {
@@ -38,6 +54,7 @@ export function useSpeechCoach(
     displayedSpeech,
     setDisplayedSpeech,
     speak,
+    speakIntent: (intent: CoachVoiceIntent) => speakIntent(intent),
     updateCoachLine,
   };
 }

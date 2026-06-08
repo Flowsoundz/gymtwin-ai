@@ -28,6 +28,24 @@ npm run dev -- -p 3001
 
 3. Open `http://localhost:3001`.
 
+## Optional Voice Provider Setup
+
+GymTwin supports a server-only ElevenLabs scaffold for coach voice, but it is disabled by default.
+
+Recommended local env:
+
+```bash
+NEXT_PUBLIC_ENABLE_ELEVENLABS_VOICE=false
+ELEVENLABS_API_KEY=your_server_only_key
+ELEVENLABS_NOVA_VOICE_ID=your_nova_voice_id
+```
+
+Notes:
+
+- keep `ELEVENLABS_API_KEY` server-side only
+- do not use `NEXT_PUBLIC_` for the API key
+- leave the public enable flag off until you want ElevenLabs to be attempted
+
 ## Camera Notes
 
 - Camera access works on `localhost` during development.

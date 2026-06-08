@@ -55,7 +55,6 @@ import {
   clearStoredActiveSession,
   hasStoredActiveSession,
 } from "@/hooks/useActiveSession";
-import { getCoachQuote } from "@/lib/coachEngine";
 import { useSpeechCoach } from "@/hooks/useSpeechCoach";
 import {
   clearWorkoutStorage,
@@ -239,6 +238,7 @@ function GymTwinAppLive() {
     displayedSpeech,
     setDisplayedSpeech,
     speak,
+    speakIntent,
     updateCoachLine,
   } = useSpeechCoach(selectedCoach, selectedAvatar, avatarDisplaySettings.coachVoiceVolume);
 
@@ -285,8 +285,7 @@ function GymTwinAppLive() {
   const handleExerciseCountdownFinished = useEffectEvent(() => {
     if (!activeMovement) return;
     const line = "Time target reached. Finish your final reps if needed, then press Complete Set.";
-    setDisplayedSpeech(line);
-    speak(line);
+    speak(line, { priority: "countdown" });
   });
 
   const progressPercent = totalWorkoutSets ? Math.min(100, Math.round((completedSetEstimate / totalWorkoutSets) * 100)) : 0;
@@ -688,7 +687,7 @@ function GymTwinAppLive() {
     setSelectedLevel(session.selectedLevel); setSelectedEquipment(session.selectedEquipment); setSessionLength(session.sessionLength);
     setSelectedCoach(session.selectedCoach); setSessionStartedAt(session.sessionStartedAt || Date.now()); setDisplayedSpeech(session.displayedSpeech);
     setCurrentScreen("player");
-    setTimeout(() => speak("Workout resumed. Keep going."), 300);
+    setTimeout(() => speakIntent({ type: "resume_workout" }), 300);
   }
 
   function initializeTrainingSession() {
@@ -756,14 +755,13 @@ function GymTwinAppLive() {
     setExerciseCountdown(routine[0].activeSeconds); clearStoredActiveSession();
     setHasResumeSession(false); setCurrentScreen("workout_plan");
     const phrase = "Your personalized plan is ready. Review it and press Begin when you're set.";
-    setDisplayedSpeech(phrase); setTimeout(() => speak(phrase), 450);
+    setDisplayedSpeech(phrase); setTimeout(() => speak(phrase, { priority: "transition" }), 450);
   }
 
   function launchActiveWorkoutTracking() {
     if (activeRoutine.length === 0) { setCurrentScreen("setup"); return; }
     const startedAt = Date.now();
-    const intro = getCoachQuote(selectedCoach, "intro");
-    const opening = `First movement: ${cleanMovementName(activeRoutine[0].name)}. ${intro}`;
+    const opening = `We're up. Start with ${cleanMovementName(activeRoutine[0].name)}.`;
 
     const activeSessionPayload: ActiveSessionData = {
       activeRoutine, movementIndex: 0, workingSet: 1, currentReps: activeRoutine[0].baseReps, totalAccumulatedReps: 0,
@@ -775,7 +773,11 @@ function GymTwinAppLive() {
 
     setHasResumeSession(true); setSessionStartedAt(startedAt); setMovementIndex(0); setWorkingSet(1);
     setCurrentReps(activeRoutine[0].baseReps); setTotalAccumulatedReps(0); setIsRestPhase(false); setRestCountdown(0);
-    setExerciseCountdown(activeRoutine[0].activeSeconds); setCurrentScreen("player"); setDisplayedSpeech(opening); speak(opening);
+    setExerciseCountdown(activeRoutine[0].activeSeconds); setCurrentScreen("player"); setDisplayedSpeech(opening);
+    speakIntent({
+      type: "session_start",
+      movementName: cleanMovementName(activeRoutine[0].name),
+    });
   }
 
   function viewWorkoutDetail(workout: WorkoutSummaryData) {
@@ -809,12 +811,12 @@ function GymTwinAppLive() {
 
     if (workingSet < activeMovement.sets) {
       const nextSet = workingSet + 1; setWorkingSet(nextSet); setExerciseCountdown(activeMovement.activeSeconds);
-      updateCoachLine("action", `Set ${nextSet}.`); return;
+      speak(`Set ${nextSet}. Stay smooth.`, { priority: "transition" }); return;
     }
     if (movementIndex + 1 < activeRoutine.length) {
       const nextEx = activeRoutine[movementIndex + 1]; setMovementIndex((curr) => curr + 1); setWorkingSet(1);
       setCurrentReps(nextEx.baseReps); setExerciseCountdown(nextEx.activeSeconds);
-      updateCoachLine("action", `Next movement: ${cleanMovementName(nextEx.name)}.`); return;
+      speakIntent({ type: "next_movement", movementName: cleanMovementName(nextEx.name) }); return;
     }
     finalizeRoutineMetrics();
   }
@@ -823,7 +825,7 @@ function GymTwinAppLive() {
     if (!activeMovement) return;
     if (activeMovement.restPeriod > 0 && !(movementIndex === activeRoutine.length - 1 && workingSet === activeMovement.sets)) {
       setIsRestPhase(true); setRestCountdown(activeMovement.restPeriod);
-      updateCoachLine("recovery", `Rest for ${activeMovement.restPeriod} seconds.`); return;
+      speakIntent({ type: "rest_start", seconds: activeMovement.restPeriod }); return;
     }
     advanceExecutionTrack();
   }
@@ -888,8 +890,7 @@ function GymTwinAppLive() {
     clearActiveSession(); setSessionStartedAt(null);
     useCoachStore.getState().setWorkoutPhase("celebrating");
     useCoachStore.getState().setRepProgress(0);
-    const line = `Workout complete. ${getCoachQuote(selectedCoach, "outro")}`;
-    setDisplayedSpeech(line); speak(line); setCurrentScreen("summary");
+    speakIntent({ type: "session_complete" }); setCurrentScreen("summary");
   }
 
   function submitAdaptiveFeedback(feedback: PostWorkoutFeedback) {
@@ -935,12 +936,12 @@ function GymTwinAppLive() {
   }
 
   function recallCoachDialogue() { if (currentScreen === "player") updateCoachLine(isRestPhase ? "recovery" : "action"); }
-  function activateSafetyShutdown() { speak("Workout stopped. Safety comes first."); clearActiveSession(); setSessionStartedAt(null); setCurrentScreen("safety_stop"); }
+  function activateSafetyShutdown() { speakIntent({ type: "safety_stop" }); clearActiveSession(); setSessionStartedAt(null); setCurrentScreen("safety_stop"); }
   function resetWorkout() { clearActiveSession(); setActiveRoutine([]); setMovementIndex(0); setWorkingSet(1); setCurrentReps(0); setTotalAccumulatedReps(0); setSessionStartedAt(null); setIsRestPhase(false); setRestCountdown(0); setExerciseCountdown(0); setCurrentScreen("landing"); }
 
   function changeDifficulty(direction: "easy" | "hard") {
-    if (direction === "easy") { setCurrentReps((r) => r + 2); updateCoachLine("action", "Difficulty increased slightly."); }
-    else { setCurrentReps((r) => Math.max(1, r - 2)); updateCoachLine("action", "Difficulty lowered. Clean form matters more than ego."); }
+    if (direction === "easy") { setCurrentReps((r) => r + 2); speakIntent({ type: "difficulty_change", direction: "easy" }); }
+    else { setCurrentReps((r) => Math.max(1, r - 2)); speakIntent({ type: "difficulty_change", direction: "hard" }); }
   }
 
   // Floating coach state — mirrors exercise during workout, idles otherwise
@@ -1225,6 +1226,7 @@ function GymTwinAppLive() {
           onChangeDifficultyHard={() => changeDifficulty("hard")}
           onCoachAnimHint={setFloatingHint}
           onAutoSpeak={speak}
+          onSpeakIntent={speakIntent}
           isFirstWorkout={!firstHintsDismissed && userStats.workoutsCompleted === 0}
           onFirstHintsDismissed={() => { setFirstHintsDismissed(true); markFirstHintsShown(); }}
           primaryButton={primaryButton}

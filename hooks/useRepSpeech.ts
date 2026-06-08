@@ -1,74 +1,38 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { buildCoachUtterance } from "@/lib/coachSpeech";
+import type { CoachVoiceIntent } from "@/lib/voice/voiceIntents";
 import type { CoachAnimationHint } from "@/lib/coachBrain";
-import type { CoachAvatar, CoachTalkativeness, WorkoutAudioLevel } from "@/types";
+import type { CoachTalkativeness } from "@/types";
 
 type RepQualityLabel = "clean" | "shallow" | "unstable" | "lost_tracking" | "unknown" | null | undefined;
 
 type Props = {
   repCount: number;
   repQualityLabel: RepQualityLabel;
-  exerciseName: string;
   talkativeness: CoachTalkativeness;
   repCountingEnabled: boolean;
   isMuted: boolean;
   isCameraActive: boolean;
-  coachVoiceVolume?: WorkoutAudioLevel;
-  selectedAvatar?: CoachAvatar;
+  onSpeakIntent?: (intent: CoachVoiceIntent) => void;
   onAnimHint?: (hint: CoachAnimationHint) => void;
 };
 
 const QUIET_REP_MILESTONES = new Set([5, 10, 15, 20, 25]);
-const HYPE_PHRASES: Record<number, string> = {
-  1:  "Let's go! First rep down.",
-  5:  "Five reps! You're moving.",
-  10: "Ten reps! Halfway — keep it clean.",
-  15: "Fifteen! Dig in.",
-  20: "Twenty reps! Beast mode.",
-  25: "Twenty-five! Incredible work.",
-};
-const NORMAL_PHRASES: Record<number, string> = {
-  5:  "Five reps.",
-  10: "Ten reps.",
-  15: "Fifteen.",
-  20: "Twenty.",
-  25: "Twenty-five. Strong set.",
-};
+const NORMAL_REP_MILESTONES = new Set([5, 10, 15, 20, 25]);
+const HYPE_REP_MILESTONES = new Set([1, 5, 10, 15, 20, 25]);
+type SpeakableRepQualityLabel = "clean" | "shallow" | "unstable";
 
-const FORM_CUE_QUIET: Record<NonNullable<Exclude<RepQualityLabel, null | undefined>>, string | null> = {
-  clean:         null,
-  shallow:       "Go a bit deeper.",
-  unstable:      "Slow it down.",
-  lost_tracking: null,
-  unknown:       null,
-};
-const FORM_CUE_NORMAL: typeof FORM_CUE_QUIET = {
-  clean:         "Clean rep!",
-  shallow:       "A little deeper on that one.",
-  unstable:      "Control the movement.",
-  lost_tracking: null,
-  unknown:       null,
-};
-const FORM_CUE_HYPE: typeof FORM_CUE_QUIET = {
-  clean:         "Beautiful! Perfect form.",
-  shallow:       "Deeper — you've got the range.",
-  unstable:      "Lock it in, you can do this.",
-  lost_tracking: null,
-  unknown:       null,
-};
+function shouldAnnounceRep(repCount: number, talkativeness: CoachTalkativeness): boolean {
+  if (talkativeness === "hype") return HYPE_REP_MILESTONES.has(repCount);
+  if (talkativeness === "normal") return NORMAL_REP_MILESTONES.has(repCount);
+  return QUIET_REP_MILESTONES.has(repCount);
+}
 
-function speakLine(
-  text: string,
-  avatar: CoachAvatar = "Nova",
-  coachVoiceVolume: WorkoutAudioLevel = "normal"
-) {
-  if (typeof window === "undefined") return;
-  const synth = window.speechSynthesis;
-  if (!synth) return;
-  const utt = buildCoachUtterance(text, avatar, "distance", coachVoiceVolume);
-  synth.speak(utt);
+function shouldAnnounceForm(
+  label: Exclude<RepQualityLabel, null | undefined>
+): label is SpeakableRepQualityLabel {
+  return label === "clean" || label === "shallow" || label === "unstable";
 }
 
 export function useRepSpeech({
@@ -78,8 +42,7 @@ export function useRepSpeech({
   repCountingEnabled,
   isMuted,
   isCameraActive,
-  coachVoiceVolume = "normal",
-  selectedAvatar = "Nova",
+  onSpeakIntent,
   onAnimHint,
 }: Props) {
   const prevRepCount = useRef(repCount);
@@ -96,42 +59,31 @@ export function useRepSpeech({
     prevRepCount.current = repCount;
 
     if (repCount <= prev) return;
+    if (!shouldAnnounceRep(repCount, talkativeness)) return;
 
-    // Determine if this rep count warrants a spoken announcement
-    let milestoneText: string | null = null;
-    if (talkativeness === "hype") {
-      milestoneText = HYPE_PHRASES[repCount] ?? null;
-    } else if (talkativeness === "normal") {
-      milestoneText = NORMAL_PHRASES[repCount] ?? null;
-    } else {
-      milestoneText = QUIET_REP_MILESTONES.has(repCount) ? `${repCount} reps.` : null;
-    }
-
-    if (milestoneText) {
-      speakLine(milestoneText, selectedAvatar, coachVoiceVolume);
-      onAnimHint?.("thumbs_up");
-      if (animHintTimer.current) clearTimeout(animHintTimer.current);
-      animHintTimer.current = setTimeout(() => onAnimHint?.("idle"), 2500);
-    }
-  }, [coachVoiceVolume, repCount, repCountingEnabled, isMuted, isCameraActive, talkativeness, selectedAvatar, onAnimHint]);
+    onSpeakIntent?.({
+      type: "rep_milestone",
+      repCount,
+      talkativeness,
+      priority: "encouragement",
+    });
+    onAnimHint?.("thumbs_up");
+    if (animHintTimer.current) clearTimeout(animHintTimer.current);
+    animHintTimer.current = setTimeout(() => onAnimHint?.("idle"), 2500);
+  }, [repCount, repCountingEnabled, isMuted, isCameraActive, talkativeness, onSpeakIntent, onAnimHint]);
 
   useEffect(() => {
     if (!repCountingEnabled || isMuted || !isCameraActive) return;
     if (repQualityLabel === prevQuality.current) return;
     prevQuality.current = repQualityLabel;
-    if (!repQualityLabel || repQualityLabel === "unknown" || repQualityLabel === "lost_tracking") return;
+    if (!repQualityLabel || !shouldAnnounceForm(repQualityLabel)) return;
 
-    const cueMap =
-      talkativeness === "quiet"
-        ? FORM_CUE_QUIET
-        : talkativeness === "hype"
-          ? FORM_CUE_HYPE
-          : FORM_CUE_NORMAL;
-
-    const cue = cueMap[repQualityLabel];
-    if (!cue) return;
-
-    speakLine(cue, selectedAvatar, coachVoiceVolume);
+    onSpeakIntent?.({
+      type: "form_correction",
+      label: repQualityLabel,
+      talkativeness,
+      priority: repQualityLabel === "clean" ? "encouragement" : "form_correction",
+    });
 
     if (repQualityLabel === "clean") {
       onAnimHint?.("thumbs_up");
@@ -142,7 +94,7 @@ export function useRepSpeech({
       if (animHintTimer.current) clearTimeout(animHintTimer.current);
       animHintTimer.current = setTimeout(() => onAnimHint?.("idle"), 3000);
     }
-  }, [coachVoiceVolume, repQualityLabel, repCountingEnabled, isMuted, isCameraActive, talkativeness, selectedAvatar, onAnimHint]);
+  }, [repQualityLabel, repCountingEnabled, isMuted, isCameraActive, talkativeness, onSpeakIntent, onAnimHint]);
 
   useEffect(() => {
     return () => {

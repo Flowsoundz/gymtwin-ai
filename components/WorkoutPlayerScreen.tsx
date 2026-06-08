@@ -30,6 +30,7 @@ import {
 } from "@/lib/conversationCommands";
 import { useRepSpeech } from "@/hooks/useRepSpeech";
 import { getLastLoggedWeight } from "@/lib/progressiveOverloadEngine";
+import type { CoachVoiceIntent } from "@/lib/voice/voiceIntents";
 import { useCastSender } from "@/hooks/useCastSync";
 import type {
   AvatarDisplaySettings,
@@ -76,6 +77,7 @@ type WorkoutPlayerScreenProps = {
   isFirstWorkout?: boolean;
   onFirstHintsDismissed?: () => void;
   onAutoSpeak?: (message: string) => void;
+  onSpeakIntent?: (intent: CoachVoiceIntent) => void;
   primaryButton: string;
 };
 
@@ -110,6 +112,7 @@ export function WorkoutPlayerScreen({
   isFirstWorkout = false,
   onFirstHintsDismissed,
   onAutoSpeak,
+  onSpeakIntent,
   primaryButton,
 }: WorkoutPlayerScreenProps) {
   const [hintsVisible, setHintsVisible] = useState(isFirstWorkout);
@@ -676,13 +679,11 @@ export function WorkoutPlayerScreen({
   useRepSpeech({
     repCount: activeRepCount,
     repQualityLabel: latestRepQuality?.label,
-    exerciseName: activeMovement.name,
     talkativeness: avatarDisplaySettings.talkativeness,
     repCountingEnabled: avatarDisplaySettings.repCountingEnabled,
     isMuted,
     isCameraActive: isCameraCoachOpen && isCameraRunning,
-    coachVoiceVolume: avatarDisplaySettings.coachVoiceVolume,
-    selectedAvatar,
+    onSpeakIntent,
     onAnimHint: onCoachAnimHint,
   });
 
