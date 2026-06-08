@@ -44,6 +44,7 @@ type SettingsScreenProps = {
   onSelectedAvatarChange?: (avatar: CoachAvatar) => void;
   onOpenFlowsoundzRadio?: () => void;
   onDeleteCloudData?: () => Promise<void> | void;
+  onDeleteAccount?: () => Promise<{ ok: boolean; reason?: string; message?: string }>;
   bodyProfile?: BodyProfile | null;
   onBodyProfileChange?: (profile: BodyProfile | null) => void;
   avatarDisplaySettings: AvatarDisplaySettings;
@@ -161,12 +162,15 @@ export function SettingsScreen({
   onSelectedAvatarChange,
   onOpenFlowsoundzRadio,
   onDeleteCloudData,
+  onDeleteAccount,
   bodyProfile,
   onBodyProfileChange,
   avatarDisplaySettings,
   onAvatarDisplaySettingsChange,
 }: SettingsScreenProps) {
   const [isDeletingCloudData, setIsDeletingCloudData] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [accountDeletionMessage, setAccountDeletionMessage] = useState<string | null>(null);
   const [draftProfile, setDraftProfile] = useState<BodyProfile>(() => ({
       sex: "prefer_not_to_say",
       activityGoal: "",
@@ -853,6 +857,36 @@ export function SettingsScreen({
                       {isDeletingCloudData ? "Deleting Synced Data..." : "Delete Synced Workout Data"}
                     </button>
                   )}
+                  {onDeleteAccount && (
+                    <button
+                      onClick={async () => {
+                        if (typeof window !== "undefined") {
+                          const shouldDelete = window.confirm(
+                            "Delete your GymTwin account and all synced backend data? This cannot be undone."
+                          );
+                          if (!shouldDelete) return;
+                        }
+                        setIsDeletingAccount(true);
+                        setAccountDeletionMessage(null);
+                        try {
+                          const result = await onDeleteAccount();
+                          if (!result.ok) {
+                            setAccountDeletionMessage(
+                              result.reason === "not_configured"
+                                ? "Automated account deletion is not configured yet. Use the support request below for now."
+                                : result.message ?? "Unable to delete account right now."
+                            );
+                          }
+                        } finally {
+                          setIsDeletingAccount(false);
+                        }
+                      }}
+                      disabled={isDeletingAccount}
+                      className="w-full rounded-2xl border border-red-500/24 bg-red-950/40 px-4 py-3.5 text-sm font-black text-red-100 transition hover:border-red-400/40 hover:bg-red-950/50 active:scale-95 disabled:cursor-wait disabled:opacity-60"
+                    >
+                      {isDeletingAccount ? "Deleting Account..." : "Delete Account"}
+                    </button>
+                  )}
                   <a
                     href={buildSupportMailto(
                       "GymTwin AI Account Deletion Request",
@@ -863,8 +897,13 @@ export function SettingsScreen({
                     Request Full Account Deletion
                   </a>
                   <p className="text-xs leading-relaxed text-slate-400">
-                    Full auth-account deletion currently routes through support while backend deletion automation is finalized.
+                    If automated deletion is unavailable in the current environment, use the support request below.
                   </p>
+                  {accountDeletionMessage ? (
+                    <div className="rounded-xl border border-amber-400/20 bg-amber-500/10 px-3 py-3 text-xs leading-relaxed text-amber-100">
+                      {accountDeletionMessage}
+                    </div>
+                  ) : null}
                 </div>
               ) : (
                 <div className="flex flex-col gap-3">

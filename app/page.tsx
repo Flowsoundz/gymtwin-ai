@@ -316,6 +316,54 @@ export default function GymTwinApp() {
     setSelectedWorkoutDetail(null);
   }
 
+  async function handleDeleteAccount(): Promise<{ ok: boolean; reason?: string; message?: string }> {
+    if (!supabaseUser) {
+      return { ok: false, reason: "unauthorized", message: "No signed-in user found." };
+    }
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    const accessToken = session?.access_token;
+    if (!accessToken) {
+      return { ok: false, reason: "missing_token", message: "No active session token found." };
+    }
+
+    const response = await fetch("/api/account/delete", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    const payload = (await response.json()) as {
+      ok: boolean;
+      reason?: string;
+      message?: string;
+    };
+
+    if (!response.ok || !payload.ok) {
+      return payload;
+    }
+
+    clearActiveSession();
+    clearWorkoutStorage();
+    clearWeeklyPlan();
+    setAvatarDisplaySettings(defaultAvatarDisplaySettings);
+    saveAvatarDisplaySettings(defaultAvatarDisplaySettings);
+    setUserStats({ workoutsCompleted: 0, streak: 0, lastWorkoutDate: null, totalMinutes: 0 });
+    setWeeklyPlan(null);
+    setLastWorkoutSummary(null);
+    setWorkoutHistory([]);
+    setSelectedWorkoutDetail(null);
+    setTodayFoodLog([]);
+    await supabase.auth.signOut();
+    setCurrentScreen("landing");
+
+    return { ok: true };
+  }
+
   function persistAvatarSelection(nextAvatar: CoachAvatar) {
     setSelectedAvatar(nextAvatar);
     const currentDefaults = readQuickStartDefaults();
@@ -920,6 +968,7 @@ export default function GymTwinApp() {
           bodyProfile={bodyProfile}
           avatarDisplaySettings={avatarDisplaySettings}
           onDeleteCloudData={supabaseUser ? handleDeleteCloudData : undefined}
+          onDeleteAccount={supabaseUser ? handleDeleteAccount : undefined}
           onBodyProfileChange={(profile) => {
             setBodyProfile(profile);
             if (profile) saveBodyProfile(profile);
