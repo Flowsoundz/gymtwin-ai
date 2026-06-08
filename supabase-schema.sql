@@ -15,6 +15,8 @@ create table if not exists user_settings (
   coach_voice_volume text default 'normal',
   cue_volume text default 'normal',
   duck_external_music boolean default true,
+  body_profile jsonb,
+  weekly_plan jsonb,
   updated_at timestamptz default now()
 );
 
@@ -23,6 +25,8 @@ alter table user_settings add column if not exists workout_audio_mode text defau
 alter table user_settings add column if not exists coach_voice_volume text default 'normal';
 alter table user_settings add column if not exists cue_volume text default 'normal';
 alter table user_settings add column if not exists duck_external_music boolean default true;
+alter table user_settings add column if not exists body_profile jsonb;
+alter table user_settings add column if not exists weekly_plan jsonb;
 
 create table if not exists workouts (
   id text primary key,

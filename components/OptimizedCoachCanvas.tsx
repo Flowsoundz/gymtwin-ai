@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { ContactShadows, MeshReflectorMaterial, useGLTF } from "@react-three/drei";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
@@ -356,7 +356,6 @@ const HEAD_BONE_NAMES = ["mixamorigHead", "Head", "head", "Bip01_Head"];
 const _targetQuat = new Quaternion();
 const _worldPos = new Vector3();
 const _headDir = new Vector3();
-const _up = new Vector3(0, 1, 0);
 const MAX_YAW = Math.PI / 6;   // ±30°
 const MAX_PITCH = Math.PI / 8; // ±22.5°
 
@@ -428,6 +427,8 @@ function CoachModelEngine({
   const groupRef = useRef<Group>(null);
   const mixerRef = useRef<AnimationMixer | null>(null);
   const currentActionRef = useRef<AnimationAction | null>(null);
+  const hasShownPlayablePoseRef = useRef(false);
+  const [isPoseReady, setIsPoseReady] = useState(false);
 
   useEffect(() => {
     cloned.traverse((obj) => {
@@ -438,7 +439,7 @@ function CoachModelEngine({
         (obj as { receiveShadow?: boolean }).receiveShadow = true;
       }
     });
-    setLoaded(true);
+    hasShownPlayablePoseRef.current = false;
     return () => setLoaded(false);
   }, [cloned, setLoaded]);
 
@@ -473,13 +474,21 @@ function CoachModelEngine({
       next.reset().fadeIn(0.3).play();
     }
     currentActionRef.current = next;
-  }, [animations, animationName, animationGLBPath]);
+
+    if (!hasShownPlayablePoseRef.current) {
+      mixer.update(1 / 60);
+      hasShownPlayablePoseRef.current = true;
+      setIsPoseReady(true);
+      setLoaded(true);
+    }
+  }, [animations, animationName, animationGLBPath, setLoaded]);
 
   useFrame((_, delta) => mixerRef.current?.update(delta));
 
   return (
     <group ref={groupRef} scale={scale} position={[0, 0.08, 0]}>
-      <primitive object={cloned} />
+      {!isPoseReady && <LoadingRing color="#7dd3fc" />}
+      <primitive object={cloned} visible={isPoseReady} />
       <GazeController root={cloned} />
     </group>
   );
@@ -652,6 +661,7 @@ export function OptimizedCoachCanvas({
 
         <Suspense fallback={<LoadingRing color={character.accentColor} />}>
           <CoachModelEngine
+            key={character.modelPath}
             modelPath={character.modelPath}
             animationName={currentAnimation}
             scale={scale}

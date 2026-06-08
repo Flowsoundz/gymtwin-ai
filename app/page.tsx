@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useEffectEvent, useMemo, useState } from "react";
+import React, { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { useCoachStore } from "@/store/useCoachStore";
 import type { User } from "@supabase/supabase-js";
 import { ComingSoonScreen } from "@/components/ComingSoonScreen";
@@ -32,6 +32,10 @@ import {
   pushWorkoutToSupabase,
   pullWorkoutHistoryFromSupabase,
   deleteUserDataFromSupabase,
+  pushBodyProfileToSupabase,
+  pullBodyProfileFromSupabase,
+  pushWeeklyPlanToSupabase,
+  pullWeeklyPlanFromSupabase,
 } from "@/lib/supabaseSync";
 import { AuthScreen } from "@/components/AuthScreen";
 import { CameraSandboxScreen } from "@/components/CameraSandboxScreen";
@@ -72,7 +76,7 @@ import {
   buildScoredWorkoutSummary,
 } from "@/lib/sessionScoring";
 import { getAchievementBadges } from "@/lib/achievementEngine";
-import { readBodyProfile, saveBodyProfile } from "@/lib/bodyProfileStorage";
+import { clearBodyProfile, readBodyProfile, saveBodyProfile } from "@/lib/bodyProfileStorage";
 import { generateWeeklyPlan } from "@/lib/weeklyPlanEngine";
 import { clearWeeklyPlan, markTodayComplete, readWeeklyPlan, saveWeeklyPlan } from "@/lib/weeklyPlanStorage";
 import { cleanMovementName } from "@/lib/workoutEngine";
@@ -122,7 +126,11 @@ import {
   readClientDiagnostics,
   setClientDiagnosticsContext,
 } from "@/lib/debugDiagnostics";
-import { FLOWSOUNDZ_RADIO_URL } from "@/lib/audioExperience";
+import {
+  FLOWSOUNDZ_RADIO_ACTIVE,
+  FLOWSOUNDZ_RADIO_STAGING_MESSAGE,
+  FLOWSOUNDZ_RADIO_URL,
+} from "@/lib/audioExperience";
 import { calculateTargetsFromProfile, estimateWorkoutCaloriesBurned } from "@/lib/nutritionCalc";
 import {
   appendFoodItem,
@@ -200,6 +208,8 @@ function GymTwinAppLive() {
   const [hasResumeSession, setHasResumeSession] = useState(false);
   const [todayFoodLog, setTodayFoodLog] = useState<FoodItem[]>([]);
   const [nutritionReturnScreen, setNutritionReturnScreen] = useState<"landing" | "summary">("landing");
+  const [radioStatusMessage, setRadioStatusMessage] = useState<string | null>(null);
+  const radioNoticeTimeoutRef = useRef<number | null>(null);
 
   const [selectedGoal, setSelectedGoal] = useState<WorkoutGoal>("Build muscle");
   const [selectedLevel, setSelectedLevel] = useState<WorkoutLevel>("Beginner");
@@ -287,8 +297,102 @@ function GymTwinAppLive() {
 
   function openFlowsoundzRadio() {
     if (typeof window === "undefined") return;
-    window.open(FLOWSOUNDZ_RADIO_URL, "_blank", "noopener,noreferrer");
+    if (FLOWSOUNDZ_RADIO_ACTIVE) {
+      window.open(FLOWSOUNDZ_RADIO_URL, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    setRadioStatusMessage(FLOWSOUNDZ_RADIO_STAGING_MESSAGE);
+    if (radioNoticeTimeoutRef.current) {
+      window.clearTimeout(radioNoticeTimeoutRef.current);
+    }
+    radioNoticeTimeoutRef.current = window.setTimeout(() => {
+      setRadioStatusMessage(null);
+      radioNoticeTimeoutRef.current = null;
+    }, 4200);
   }
+
+  function mergeBodyProfiles(
+    local: BodyProfile | null,
+    remote: BodyProfile | null
+  ): BodyProfile | null {
+    if (!local) return remote;
+    if (!remote) return local;
+    const localUpdated = local.lastUpdated ? Date.parse(local.lastUpdated) : 0;
+    const remoteUpdated = remote.lastUpdated ? Date.parse(remote.lastUpdated) : 0;
+    return remoteUpdated > localUpdated ? { ...local, ...remote } : { ...remote, ...local };
+  }
+
+  function mergeWeeklyPlans(
+    local: WeeklyPlan | null,
+    remote: WeeklyPlan | null
+  ): WeeklyPlan | null {
+    if (!local) return remote;
+    if (!remote) return local;
+
+    if (local.id === remote.id) {
+      const remoteDaysById = new Map(remote.days.map((day) => [day.id || day.dayLabel, day]));
+      return {
+        ...local,
+        ...remote,
+        days: local.days.map((day) => {
+          const key = day.id || day.dayLabel;
+          const remoteDay = remoteDaysById.get(key);
+          return remoteDay
+            ? { ...day, ...remoteDay, completed: day.completed || remoteDay.completed }
+            : day;
+        }),
+      };
+    }
+
+    const localCreated = local.createdAt ? Date.parse(local.createdAt) : 0;
+    const remoteCreated = remote.createdAt ? Date.parse(remote.createdAt) : 0;
+    return remoteCreated > localCreated ? remote : local;
+  }
+
+  async function syncWorkoutSummaryToCloud(summary: WorkoutSummaryData) {
+    if (!supabaseUser) return;
+    try {
+      await pushWorkoutToSupabase(supabaseUser.id, summary);
+    } catch (error) {
+      console.warn("[GymTwinSync] failed to push workout summary", error);
+    }
+  }
+
+  async function syncStatsToCloud(stats: TraineeStats) {
+    if (!supabaseUser) return;
+    try {
+      await pushStatsToSupabase(supabaseUser.id, stats);
+    } catch (error) {
+      console.warn("[GymTwinSync] failed to push user stats", error);
+    }
+  }
+
+  async function syncBodyProfileToCloud(profile: BodyProfile | null) {
+    if (!supabaseUser) return;
+    try {
+      await pushBodyProfileToSupabase(supabaseUser.id, profile);
+    } catch (error) {
+      console.warn("[GymTwinSync] failed to push body profile", error);
+    }
+  }
+
+  async function syncWeeklyPlanToCloud(plan: WeeklyPlan | null) {
+    if (!supabaseUser) return;
+    try {
+      await pushWeeklyPlanToSupabase(supabaseUser.id, plan);
+    } catch (error) {
+      console.warn("[GymTwinSync] failed to push weekly plan", error);
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      if (radioNoticeTimeoutRef.current) {
+        window.clearTimeout(radioNoticeTimeoutRef.current);
+      }
+    };
+  }, []);
 
   function clearActiveSession() {
     clearStoredActiveSession();
@@ -299,9 +403,11 @@ function GymTwinAppLive() {
     clearActiveSession();
     clearWorkoutStorage();
     clearWeeklyPlan();
+    clearBodyProfile();
     setAvatarDisplaySettings(defaultAvatarDisplaySettings);
     saveAvatarDisplaySettings(defaultAvatarDisplaySettings);
     setUserStats({ workoutsCompleted: 0, streak: 0, lastWorkoutDate: null, totalMinutes: 0 });
+    setBodyProfile(null);
     setWeeklyPlan(null);
     setLastWorkoutSummary(null);
     setWorkoutHistory([]);
@@ -314,9 +420,11 @@ function GymTwinAppLive() {
     await deleteUserDataFromSupabase(supabaseUser.id);
     clearWorkoutStorage();
     clearWeeklyPlan();
+    clearBodyProfile();
     setAvatarDisplaySettings(defaultAvatarDisplaySettings);
     saveAvatarDisplaySettings(defaultAvatarDisplaySettings);
     setUserStats({ workoutsCompleted: 0, streak: 0, lastWorkoutDate: null, totalMinutes: 0 });
+    setBodyProfile(null);
     setWeeklyPlan(null);
     setLastWorkoutSummary(null);
     setWorkoutHistory([]);
@@ -357,9 +465,11 @@ function GymTwinAppLive() {
     clearActiveSession();
     clearWorkoutStorage();
     clearWeeklyPlan();
+    clearBodyProfile();
     setAvatarDisplaySettings(defaultAvatarDisplaySettings);
     saveAvatarDisplaySettings(defaultAvatarDisplaySettings);
     setUserStats({ workoutsCompleted: 0, streak: 0, lastWorkoutDate: null, totalMinutes: 0 });
+    setBodyProfile(null);
     setWeeklyPlan(null);
     setLastWorkoutSummary(null);
     setWorkoutHistory([]);
@@ -480,6 +590,20 @@ function GymTwinAppLive() {
               saveWorkoutHistory(merged);
             }
           }),
+          pullBodyProfileFromSupabase(user.id).then((remote) => {
+            if (remote) {
+              const merged = mergeBodyProfiles(readBodyProfile(), remote);
+              setBodyProfile(merged);
+              if (merged) saveBodyProfile(merged);
+            }
+          }),
+          pullWeeklyPlanFromSupabase(user.id).then((remote) => {
+            if (remote) {
+              const merged = mergeWeeklyPlans(readWeeklyPlan(), remote);
+              setWeeklyPlan(merged);
+              if (merged) saveWeeklyPlan(merged);
+            }
+          }),
         ]);
 
         // Go to landing after sign-in if on auth screen
@@ -501,6 +625,7 @@ function GymTwinAppLive() {
     const nextPlan = generateWeeklyPlan(selectedGoal, selectedLevel, selectedEquipment);
     setWeeklyPlan(nextPlan);
     saveWeeklyPlan(nextPlan);
+    void syncWeeklyPlanToCloud(nextPlan);
   }
 
   useEffect(() => {
@@ -675,6 +800,7 @@ function GymTwinAppLive() {
     }
     const updatedHistory = workoutHistory.map((item) => item.id === selectedWorkoutDetail.id ? updatedDetail : item);
     setWorkoutHistory(updatedHistory); saveWorkoutHistory(updatedHistory);
+    void syncWorkoutSummaryToCloud(updatedDetail);
   }
 
   function advanceExecutionTrack() {
@@ -750,11 +876,14 @@ function GymTwinAppLive() {
     const updatedHistory = [summaryPayload, ...workoutHistory].slice(0, 10); setWorkoutHistory(updatedHistory);
     saveWorkoutHistory(updatedHistory);
     if (supabaseUser) {
-      void pushWorkoutToSupabase(supabaseUser.id, summaryPayload);
-      void pushStatsToSupabase(supabaseUser.id, nextStats);
+      void syncWorkoutSummaryToCloud(summaryPayload);
+      void syncStatsToCloud(nextStats);
     }
     const updatedWeeklyPlan = markTodayComplete(weeklyPlan);
-    if (updatedWeeklyPlan) setWeeklyPlan(updatedWeeklyPlan);
+    if (updatedWeeklyPlan) {
+      setWeeklyPlan(updatedWeeklyPlan);
+      void syncWeeklyPlanToCloud(updatedWeeklyPlan);
+    }
 
     clearActiveSession(); setSessionStartedAt(null);
     useCoachStore.getState().setWorkoutPhase("celebrating");
@@ -782,6 +911,7 @@ function GymTwinAppLive() {
     );
     setWorkoutHistory(updatedHistory);
     saveWorkoutHistory(updatedHistory);
+    void syncWorkoutSummaryToCloud(updatedSummary);
 
     // Update and persist the adaptive profile
     const currentProfile = adaptiveProfile ?? readAdaptiveProfile();
@@ -979,6 +1109,8 @@ function GymTwinAppLive() {
           onBodyProfileChange={(profile) => {
             setBodyProfile(profile);
             if (profile) saveBodyProfile(profile);
+            else clearBodyProfile();
+            void syncBodyProfileToCloud(profile);
           }}
           onAvatarDisplaySettingsChange={(settings) => {
             setAvatarDisplaySettings(settings);
@@ -1190,6 +1322,17 @@ function GymTwinAppLive() {
           message={displayedSpeech || null}
         />
       )}
+
+      {radioStatusMessage ? (
+        <div className="pointer-events-none fixed inset-x-0 bottom-6 z-[120] flex justify-center px-4">
+          <div className="pointer-events-auto max-w-md rounded-2xl border border-cyan-400/20 bg-slate-950/92 px-4 py-3 shadow-[0_18px_50px_rgba(2,6,23,0.55)] backdrop-blur-xl">
+            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-300">
+              Flowsoundz Radio
+            </p>
+            <p className="mt-1 text-sm leading-relaxed text-slate-200">{radioStatusMessage}</p>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

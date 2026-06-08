@@ -1,6 +1,9 @@
 import type { AvatarDisplaySettings, WorkoutAudioLevel, WorkoutAudioMode } from "@/types";
 
 export const FLOWSOUNDZ_RADIO_URL = "https://flowsoundz.com";
+export const FLOWSOUNDZ_RADIO_ACTIVE = process.env.NEXT_PUBLIC_RADIO_ACTIVE === "true";
+export const FLOWSOUNDZ_RADIO_STAGING_MESSAGE =
+  "Flowsoundz Radio is staging right now. Live stream coming soon.";
 export const SUPPORTED_BACKGROUND_AUDIO_SERVICES = [
   "Spotify",
   "Apple Music",

@@ -1,7 +1,13 @@
 "use client";
 
 import { supabase } from "@/lib/supabase";
-import type { AvatarDisplaySettings, TraineeStats, WorkoutSummaryData } from "@/types";
+import type {
+  AvatarDisplaySettings,
+  BodyProfile,
+  TraineeStats,
+  WeeklyPlan,
+  WorkoutSummaryData,
+} from "@/types";
 
 // ── Settings ──────────────────────────────────────────────────────────────────
 
@@ -52,6 +58,54 @@ export async function pullSettingsFromSupabase(
     cueVolume: data.cue_volume ?? "normal",
     duckExternalMusic: data.duck_external_music ?? true,
   };
+}
+
+// ── Body profile / weekly plan ───────────────────────────────────────────────
+
+export async function pushBodyProfileToSupabase(
+  userId: string,
+  profile: BodyProfile | null
+): Promise<void> {
+  await supabase.from("user_settings").upsert({
+    id: userId,
+    body_profile: profile,
+    updated_at: new Date().toISOString(),
+  });
+}
+
+export async function pullBodyProfileFromSupabase(
+  userId: string
+): Promise<BodyProfile | null> {
+  const { data, error } = await supabase
+    .from("user_settings")
+    .select("body_profile")
+    .eq("id", userId)
+    .single();
+  if (error || !data) return null;
+  return (data.body_profile as BodyProfile | null) ?? null;
+}
+
+export async function pushWeeklyPlanToSupabase(
+  userId: string,
+  plan: WeeklyPlan | null
+): Promise<void> {
+  await supabase.from("user_settings").upsert({
+    id: userId,
+    weekly_plan: plan,
+    updated_at: new Date().toISOString(),
+  });
+}
+
+export async function pullWeeklyPlanFromSupabase(
+  userId: string
+): Promise<WeeklyPlan | null> {
+  const { data, error } = await supabase
+    .from("user_settings")
+    .select("weekly_plan")
+    .eq("id", userId)
+    .single();
+  if (error || !data) return null;
+  return (data.weekly_plan as WeeklyPlan | null) ?? null;
 }
 
 // ── Stats / Streak ────────────────────────────────────────────────────────────

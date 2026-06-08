@@ -9,7 +9,6 @@ import { useCoachStore } from "@/store/useCoachStore";
 import type { CoachSize } from "@/store/useCoachStore";
 import Image from "next/image";
 import {
-  FLOWSOUNDZ_RADIO_URL,
   SUPPORTED_BACKGROUND_AUDIO_SERVICES,
   getWorkoutAudioLevelLabel,
   getWorkoutAudioModeLabel,
@@ -687,7 +686,6 @@ export function SettingsScreen({
                       type="button"
                       onClick={() => {
                         if (onOpenFlowsoundzRadio) onOpenFlowsoundzRadio();
-                        else if (typeof window !== "undefined") window.open(FLOWSOUNDZ_RADIO_URL, "_blank", "noopener,noreferrer");
                       }}
                       className="shrink-0 rounded-xl border border-fuchsia-400/24 bg-fuchsia-500/12 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-fuchsia-100 transition hover:bg-fuchsia-500/18"
                     >
