@@ -3,6 +3,7 @@
 import React, { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { useCoachStore } from "@/store/useCoachStore";
 import type { User } from "@supabase/supabase-js";
+import { ComingSoonScreen } from "@/components/ComingSoonScreen";
 import type {
   AdaptiveProfile,
   AppScreen,
@@ -175,7 +176,13 @@ function DebugDiagnosticsReporter({ currentScreen }: { currentScreen: AppScreen 
   return null;
 }
 
+const COMING_SOON_MODE = true;
+
 export default function GymTwinApp() {
+  return COMING_SOON_MODE ? <ComingSoonScreen /> : <GymTwinAppLive />;
+}
+
+function GymTwinAppLive() {
   const [currentScreen, setCurrentScreen] = useState<AppScreen>("landing");
   const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
   const [syncBannerDismissed, setSyncBannerDismissed] = useState(false);
