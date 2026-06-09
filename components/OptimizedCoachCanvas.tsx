@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { ContactShadows, MeshReflectorMaterial, useGLTF } from "@react-three/drei";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
@@ -430,12 +430,12 @@ function CoachModelEngine({
   const hasShownPlayablePoseRef = useRef(false);
   const [isPoseReady, setIsPoseReady] = useState(false);
 
-  function revealPoseAndMarkLoaded() {
+  const revealPoseAndMarkLoaded = useCallback(() => {
     if (hasShownPlayablePoseRef.current) return;
     hasShownPlayablePoseRef.current = true;
     setIsPoseReady(true);
     setLoaded(true);
-  }
+  }, [setLoaded]);
 
   useEffect(() => {
     cloned.traverse((obj) => {
@@ -491,7 +491,7 @@ function CoachModelEngine({
       mixer.update(1 / 60);
       revealPoseAndMarkLoaded();
     }
-  }, [animations, animationName, animationGLBPath, setLoaded]);
+  }, [animations, animationGLBPath, animationName, revealPoseAndMarkLoaded]);
 
   useFrame((_, delta) => mixerRef.current?.update(delta));
 
@@ -529,15 +529,12 @@ function CameraSetup({
   const { camera } = useThree();
 
   useEffect(() => {
-    // react-three-fiber owns this camera instance; mutating it here is the intended way
-    // to keep framing consistent across responsive coach surfaces.
-    // eslint-disable-next-line react-hooks/immutability
     camera.position.set(...position);
+    // react-three-fiber owns this camera instance; updating fov here is the intended
+    // way to keep coach framing consistent across surfaces.
     // eslint-disable-next-line react-hooks/immutability
     (camera as { fov?: number }).fov = fov;
-    // eslint-disable-next-line react-hooks/immutability
     camera.lookAt(target[0], target[1], target[2]);
-    // eslint-disable-next-line react-hooks/immutability
     camera.updateProjectionMatrix();
   }, [camera, fov, position, target]);
 
