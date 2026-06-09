@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 
 const FEATURE_PILLS = [
@@ -67,50 +68,21 @@ export function ComingSoonScreen() {
             </div>
           </div>
 
-          <div className="relative lg:pl-4">
-            <div className="absolute inset-0 rounded-[2rem] bg-[radial-gradient(circle_at_24%_24%,rgba(34,211,238,0.12),transparent_32%),radial-gradient(circle_at_74%_74%,rgba(168,85,247,0.12),transparent_30%)] blur-3xl" />
-            <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[linear-gradient(180deg,rgba(2,6,23,0.96),rgba(15,23,42,0.88))] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-              <div className="rounded-[1.7rem] border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(2,6,23,0.42))] p-5">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Launch Preview</p>
-                    <p className="mt-1 text-base font-black text-white">Calm UI. Strong coach. Premium feel.</p>
-                  </div>
-                  <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-300">
-                    Preview
-                  </div>
-                </div>
-
-                <div className="mt-5 rounded-[1.5rem] border border-white/8 bg-slate-950/82 p-4">
-                  <div className="h-32 rounded-[1.3rem] border border-white/8 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.12),transparent_40%),linear-gradient(180deg,rgba(15,23,42,0.94),rgba(2,6,23,0.98))]" />
-                  <div className="mt-4 grid grid-cols-3 gap-3">
-                    <div className="rounded-2xl border border-white/8 bg-slate-900/70 px-3 py-4 text-center">
-                      <p className="text-xl font-black text-blue-300">1</p>
-                      <p className="mt-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Session</p>
-                    </div>
-                    <div className="rounded-2xl border border-white/8 bg-slate-900/70 px-3 py-4 text-center">
-                      <p className="text-xl font-black text-cyan-300">AI</p>
-                      <p className="mt-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Coach</p>
-                    </div>
-                    <div className="rounded-2xl border border-white/8 bg-slate-900/70 px-3 py-4 text-center">
-                      <p className="text-xl font-black text-slate-200">Mix</p>
-                      <p className="mt-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Audio</p>
-                    </div>
-                  </div>
-                  <div className="mt-4 rounded-2xl border border-blue-400/16 bg-gradient-to-r from-blue-600 to-fuchsia-600 px-4 py-3 text-center text-sm font-black text-white shadow-[0_0_20px_rgba(59,130,246,0.18)]">
-                    Start Workout
-                  </div>
-                  <div className="mt-4 grid grid-cols-2 gap-3">
-                    <div className="rounded-2xl border border-white/8 bg-slate-900/70 px-3 py-3">
-                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Workout Audio</p>
-                      <p className="mt-1 text-xs font-bold text-slate-200">Any Background Music</p>
-                    </div>
-                    <div className="rounded-2xl border border-white/8 bg-slate-900/70 px-3 py-3">
-                      <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Recovery Fuel</p>
-                      <p className="mt-1 text-xs font-bold text-slate-200">Recommended Today</p>
-                    </div>
-                  </div>
-                </div>
+          <div className="relative flex items-center justify-center lg:pl-4">
+            <div className="absolute inset-0 rounded-[2rem] bg-[radial-gradient(circle_at_50%_60%,rgba(168,85,247,0.22),transparent_60%)] blur-2xl" />
+            <div className="relative w-full max-w-sm overflow-hidden rounded-[2rem] border border-purple-500/20 shadow-[0_0_80px_rgba(168,85,247,0.18)]">
+              <Image
+                src="/avatars/nova-portrait.png"
+                alt="Nova — GymTwin AI Coach"
+                width={720}
+                height={960}
+                priority
+                className="w-full object-cover"
+              />
+              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-slate-950/90 via-slate-950/40 to-transparent px-5 pb-5 pt-10">
+                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-purple-300">AI Coach</p>
+                <p className="mt-1 text-lg font-black text-white">Nova</p>
+                <p className="text-xs text-slate-400">Precision coach · Form-first</p>
               </div>
             </div>
           </div>
@@ -128,7 +100,7 @@ export function ComingSoonScreen() {
               Support
             </Link>
           </div>
-          <p>GymTwin AI launch mode is active locally only and has not been pushed live.</p>
+          <p>© 2026 GymTwin AI. All rights reserved.</p>
         </footer>
       </div>
     </main>

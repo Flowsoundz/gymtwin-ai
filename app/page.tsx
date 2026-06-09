@@ -178,10 +178,26 @@ function DebugDiagnosticsReporter({ currentScreen }: { currentScreen: AppScreen 
   return null;
 }
 
-const COMING_SOON_MODE = true;
+const PREVIEW_TOKEN = process.env.NEXT_PUBLIC_PREVIEW_TOKEN;
 
 export default function GymTwinApp() {
-  return COMING_SOON_MODE ? <ComingSoonScreen /> : <GymTwinAppLive />;
+  const [unlocked, setUnlocked] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("access");
+    if (token && token === PREVIEW_TOKEN) {
+      localStorage.setItem("gymtwin_preview", token);
+      // Clean the token from the URL
+      const clean = window.location.pathname;
+      window.history.replaceState({}, "", clean);
+    }
+    const stored = localStorage.getItem("gymtwin_preview");
+    if (stored && stored === PREVIEW_TOKEN) setUnlocked(true);
+  }, []);
+
+  if (!PREVIEW_TOKEN) return <GymTwinAppLive />;
+  return unlocked ? <GymTwinAppLive /> : <ComingSoonScreen />;
 }
 
 function GymTwinAppLive() {
