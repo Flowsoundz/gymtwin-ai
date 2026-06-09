@@ -125,11 +125,6 @@ import {
   readClientDiagnostics,
   setClientDiagnosticsContext,
 } from "@/lib/debugDiagnostics";
-import {
-  FLOWSOUNDZ_RADIO_ACTIVE,
-  FLOWSOUNDZ_RADIO_STAGING_MESSAGE,
-  FLOWSOUNDZ_RADIO_URL,
-} from "@/lib/audioExperience";
 import { calculateTargetsFromProfile, estimateWorkoutCaloriesBurned } from "@/lib/nutritionCalc";
 import {
   appendFoodItem,
@@ -207,9 +202,6 @@ function GymTwinAppLive() {
   const [hasResumeSession, setHasResumeSession] = useState(false);
   const [todayFoodLog, setTodayFoodLog] = useState<FoodItem[]>([]);
   const [nutritionReturnScreen, setNutritionReturnScreen] = useState<"landing" | "summary">("landing");
-  const [radioStatusMessage, setRadioStatusMessage] = useState<string | null>(null);
-  const radioNoticeTimeoutRef = useRef<number | null>(null);
-
   const [selectedGoal, setSelectedGoal] = useState<WorkoutGoal>("Build muscle");
   const [selectedLevel, setSelectedLevel] = useState<WorkoutLevel>("Beginner");
   const [selectedEquipment, setSelectedEquipment] = useState<Equipment>("None");
@@ -295,20 +287,7 @@ function GymTwinAppLive() {
   const selectClass = "w-full bg-slate-900 border border-slate-800 rounded-2xl p-4 outline-none focus:border-purple-500 transition-colors text-slate-200";
 
   function openFlowsoundzRadio() {
-    if (typeof window === "undefined") return;
-    if (FLOWSOUNDZ_RADIO_ACTIVE) {
-      window.open(FLOWSOUNDZ_RADIO_URL, "_blank", "noopener,noreferrer");
-      return;
-    }
-
-    setRadioStatusMessage(FLOWSOUNDZ_RADIO_STAGING_MESSAGE);
-    if (radioNoticeTimeoutRef.current) {
-      window.clearTimeout(radioNoticeTimeoutRef.current);
-    }
-    radioNoticeTimeoutRef.current = window.setTimeout(() => {
-      setRadioStatusMessage(null);
-      radioNoticeTimeoutRef.current = null;
-    }, 4200);
+    setCurrentScreen("camera_sandbox");
   }
 
   function mergeBodyProfiles(
@@ -384,14 +363,6 @@ function GymTwinAppLive() {
       console.warn("[GymTwinSync] failed to push weekly plan", error);
     }
   }
-
-  useEffect(() => {
-    return () => {
-      if (radioNoticeTimeoutRef.current) {
-        window.clearTimeout(radioNoticeTimeoutRef.current);
-      }
-    };
-  }, []);
 
   function clearActiveSession() {
     clearStoredActiveSession();
@@ -1325,16 +1296,6 @@ function GymTwinAppLive() {
         />
       )}
 
-      {radioStatusMessage ? (
-        <div className="pointer-events-none fixed inset-x-0 bottom-6 z-[120] flex justify-center px-4">
-          <div className="pointer-events-auto max-w-md rounded-2xl border border-cyan-400/20 bg-slate-950/92 px-4 py-3 shadow-[0_18px_50px_rgba(2,6,23,0.55)] backdrop-blur-xl">
-            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-300">
-              Flowsoundz Radio
-            </p>
-            <p className="mt-1 text-sm leading-relaxed text-slate-200">{radioStatusMessage}</p>
-          </div>
-        </div>
-      ) : null}
     </>
   );
 }

@@ -140,9 +140,9 @@ const MODEL_LAB_FRAMING_PRESETS = {
       position: [0, 0.26, 0] as [number, number, number],
       scale: 0.72,
       rotation: [0, 0, 0] as [number, number, number],
-      cameraPosition: [0, 1.48, 1.58] as [number, number, number],
+      cameraPosition: [0, 1.65, 1.58] as [number, number, number],
     },
-    target: [0, 1.4, 0] as [number, number, number],
+    target: [0, 1.62, 0] as [number, number, number],
     fov: 36,
   },
 } as const;
@@ -720,6 +720,7 @@ export function ModelLabScreen({
                       lightingMode="neutral"
                       manualTuning
                       fovOverride={previewFrame === "full_body" ? MODEL_LAB_FRAMING_PRESETS.FULL_BODY.fov : MODEL_LAB_FRAMING_PRESETS.IN_FRAME.fov}
+                      cameraTargetOverride={previewFrame === "full_body" ? MODEL_LAB_FRAMING_PRESETS.FULL_BODY.target : MODEL_LAB_FRAMING_PRESETS.IN_FRAME.target}
                       onClipsDetected={setDetectedClips}
                     />
                   </div>

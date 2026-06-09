@@ -1,4 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -13,8 +13,6 @@ type DetectedItem = {
   servingSize: string;
   confidence: number;
 };
-
-const client = new Anthropic();
 
 const SYSTEM_PROMPT = `You are a professional sports nutritionist and food recognition expert.
 Analyze the food image and identify every distinct food item visible.
@@ -36,8 +34,8 @@ Rules:
 - Base estimates on standard USDA / nutritional-database values for that portion size`;
 
 export async function POST(req: NextRequest) {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json({ error: "ANTHROPIC_API_KEY not configured" }, { status: 503 });
+  if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
+    return NextResponse.json({ error: "GOOGLE_GENERATIVE_AI_API_KEY not configured" }, { status: 503 });
   }
 
   let imageBase64: string;
@@ -46,38 +44,27 @@ export async function POST(req: NextRequest) {
     if (!body.imageBase64 || typeof body.imageBase64 !== "string") {
       return NextResponse.json({ error: "imageBase64 required" }, { status: 400 });
     }
-    // Strip data URL prefix if present
     imageBase64 = body.imageBase64.replace(/^data:image\/\w+;base64,/, "");
   } catch {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
   try {
-    const message = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 512,
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "image",
-              source: {
-                type: "base64",
-                media_type: "image/jpeg",
-                data: imageBase64,
-              },
-            },
-            { type: "text", text: "Identify the food items in this image." },
-          ],
+    const genai = new GoogleGenerativeAI(process.env.GOOGLE_GENERATIVE_AI_API_KEY);
+    const model = genai.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    const result = await model.generateContent([
+      SYSTEM_PROMPT,
+      {
+        inlineData: {
+          mimeType: "image/jpeg",
+          data: imageBase64,
         },
-      ],
-    });
+      },
+      "Identify the food items in this image.",
+    ]);
 
-    const raw = message.content[0].type === "text" ? message.content[0].text.trim() : "[]";
-
-    // Extract JSON array even if the model wraps it in a code block
+    const raw = result.response.text().trim();
     const jsonMatch = raw.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {
       return NextResponse.json({ items: [] });

@@ -671,8 +671,8 @@ export function NutritionScreen({
                   <div className="space-y-3">
                     {CONVENIENCE_CARDS.map((card) => (
                       <div key={card.title} className={`rounded-[1.35rem] border px-4 py-4 ${card.accent}`}>
-                        <p className="text-sm font-black text-white">{card.title}</p>
-                        <p className="mt-1 text-xs leading-relaxed text-slate-200/90">{card.description}</p>
+                        <p className="truncate text-sm font-black text-white">{card.title}</p>
+                        <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-200/90">{card.description}</p>
                         <button
                           type="button"
                           onClick={() => openNutritionPartner(card.partnerKey)}
@@ -694,8 +694,8 @@ export function NutritionScreen({
                   <div className="space-y-3">
                     {PANTRY_CARDS.map((section) => (
                       <div key={section.title} className="rounded-[1.25rem] border border-white/8 bg-slate-900/58 px-4 py-4">
-                        <p className="text-sm font-black text-white">{section.title}</p>
-                        <p className="mt-1 text-xs leading-relaxed text-slate-400">{section.description}</p>
+                        <p className="truncate text-sm font-black text-white">{section.title}</p>
+                        <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-400">{section.description}</p>
                         <button
                           type="button"
                           onClick={() => openNutritionPartner(section.partnerKey)}
