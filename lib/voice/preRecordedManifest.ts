@@ -19,18 +19,18 @@ type AvatarVoiceManifest = Partial<Record<PreRecordedVoiceKey, string>>;
 
 export const PRE_RECORDED_VOICE_MANIFEST: Partial<Record<CoachAvatar, AvatarVoiceManifest>> = {
   Nova: {
-    session_start: "/audio/coaches/nova/session_start.mp3",
-    resume_workout: "/audio/coaches/nova/resume_workout.mp3",
-    rest_start: "/audio/coaches/nova/rest_start.mp3",
-    next_movement: "/audio/coaches/nova/next_movement.mp3",
-    session_complete: "/audio/coaches/nova/session_complete.mp3",
-    safety_stop: "/audio/coaches/nova/safety_stop.mp3",
-    difficulty_easier: "/audio/coaches/nova/difficulty_easier.mp3",
-    difficulty_harder: "/audio/coaches/nova/difficulty_harder.mp3",
-    rep_milestone_5: "/audio/coaches/nova/rep_5.mp3",
-    rep_milestone_10: "/audio/coaches/nova/rep_10.mp3",
-    form_shallow: "/audio/coaches/nova/form_shallow.mp3",
-    form_unstable: "/audio/coaches/nova/form_unstable.mp3",
+    session_start: "/audio/coaches/nova/session_start.wav",
+    resume_workout: "/audio/coaches/nova/resume_workout.wav",
+    rest_start: "/audio/coaches/nova/rest_start.wav",
+    next_movement: "/audio/coaches/nova/next_movement.wav",
+    session_complete: "/audio/coaches/nova/session_complete.wav",
+    safety_stop: "/audio/coaches/nova/safety_stop.wav",
+    difficulty_easier: "/audio/coaches/nova/difficulty_easier.wav",
+    difficulty_harder: "/audio/coaches/nova/difficulty_harder.wav",
+    rep_milestone_5: "/audio/coaches/nova/rep_5.wav",
+    rep_milestone_10: "/audio/coaches/nova/rep_10.wav",
+    form_shallow: "/audio/coaches/nova/form_shallow.wav",
+    form_unstable: "/audio/coaches/nova/form_unstable.wav",
   },
 };
 
