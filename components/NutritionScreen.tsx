@@ -311,17 +311,17 @@ function RecommendationSectionCard({ card }: { card: NutritionRecipe }) {
   return (
     <div className="rounded-[1.5rem] border border-white/8 bg-[linear-gradient(135deg,rgba(59,130,246,0.08),rgba(2,6,23,0.9))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
       <div className="flex items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0 flex-1">
           <span className="inline-flex rounded-full border border-fuchsia-400/20 bg-fuchsia-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-fuchsia-200">
             {card.badge}
           </span>
-          <h4 className="mt-3 text-base font-black text-white">{card.title}</h4>
+          <h4 className="mt-3 truncate text-base font-black text-white">{card.title}</h4>
         </div>
-        <div className="rounded-full border border-white/10 bg-slate-950/70 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-300">
+        <div className="shrink-0 rounded-full border border-white/10 bg-slate-950/70 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-300">
           {card.prepMinutes} min
         </div>
       </div>
-      <p className="mt-3 text-sm leading-relaxed text-slate-300">{card.description}</p>
+      <p className="mt-3 line-clamp-2 text-sm leading-relaxed text-slate-300">{card.description}</p>
       <div className="mt-3 flex flex-wrap gap-2">
         <span className="rounded-full border border-blue-400/18 bg-blue-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-blue-200">
           {card.calories} cal
@@ -606,12 +606,12 @@ export function NutritionScreen({
               />
               <div className="grid gap-3 lg:grid-cols-3">
                 {goalRecipes.map((meal) => (
-                  <div key={meal.id}>
-                    <RecommendationSectionCard card={meal} />
-                    <div className="-mt-12 flex gap-2 px-4 pb-4">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedRecipe(meal)}
+                    <div key={meal.id} className="rounded-[1.5rem] border border-white/8 bg-slate-950/22 p-1">
+                      <RecommendationSectionCard card={meal} />
+                      <div className="flex flex-wrap gap-2 px-4 pb-4 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedRecipe(meal)}
                         className="rounded-xl border border-blue-400/20 bg-gradient-to-r from-blue-600 to-fuchsia-600 px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-white transition hover:brightness-105"
                       >
                         {meal.primaryCta}
@@ -638,9 +638,9 @@ export function NutritionScreen({
                 />
                 <div className="space-y-3">
                   {QUICK_RECOVERY_RECIPES.map((card) => (
-                    <div key={card.id}>
+                    <div key={card.id} className="rounded-[1.5rem] border border-white/8 bg-slate-950/22 p-1">
                       <RecommendationSectionCard card={card} />
-                      <div className="-mt-12 flex gap-2 px-4 pb-4">
+                      <div className="flex flex-wrap gap-2 px-4 pb-4 pt-2">
                         <button
                           type="button"
                           onClick={() => setSelectedRecipe(card)}
