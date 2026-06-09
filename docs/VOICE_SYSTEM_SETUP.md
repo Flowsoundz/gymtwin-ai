@@ -29,20 +29,34 @@ GymTwin now has a hybrid voice system scaffold:
 - `hooks/useRepSpeech.ts`
   - rep milestones and form cues now emit structured intents
 
-## Expected Nova clip file names
+## Recommended Nova starter pack
 
-Drop these into `public/audio/coaches/nova/` when ready:
+Start with the minimum eight files that matter most in live workout flow:
 
 - `session_start.mp3`
-- `resume_workout.mp3`
 - `rest_start.mp3`
 - `session_complete.mp3`
 - `safety_stop.mp3`
 - `rep_5.mp3`
 - `rep_10.mp3`
-- `form_clean.mp3`
 - `form_shallow.mp3`
 - `form_unstable.mp3`
+
+Optional later:
+
+- `resume_workout.mp3`
+- `form_clean.mp3`
+
+Recommended copy:
+
+- `session_start.mp3` -> `We're up. Let's get into it.`
+- `rest_start.mp3` -> `Take a breath. We go again in a second.`
+- `session_complete.mp3` -> `Nice work. Session done. Recover well.`
+- `safety_stop.mp3` -> `Stop there. Reset first.`
+- `rep_5.mp3` -> `Five good reps.`
+- `rep_10.mp3` -> `Ten in. Keep it smooth.`
+- `form_shallow.mp3` -> `A little deeper.`
+- `form_unstable.mp3` -> `Slow it down. Stay in control.`
 
 ## Current fallback behavior
 
@@ -116,3 +130,13 @@ Behavior:
   1. pre-recorded clip
   2. ElevenLabs server route
   3. browser TTS fallback
+
+## One-command Nova generation
+
+Once your ElevenLabs key has `text_to_speech` permission, generate the starter pack with:
+
+```bash
+npm run voice:nova
+```
+
+That writes the eight recommended Nova mp3 files into `public/audio/coaches/nova/`.
