@@ -112,7 +112,7 @@ export function resolveCoachVoiceIntent(
       return withDefaults(
         `Next up: ${intent.movementName}. Set yourself and move well.`,
         intent.priority ?? "transition",
-        null
+        clipForIntent(context, "next_movement")
       );
     case "session_complete":
       return withDefaults(
@@ -132,7 +132,10 @@ export function resolveCoachVoiceIntent(
           ? "Good call. Let's nudge the challenge up."
           : "Good adjustment. Let's clean it up and keep moving.",
         intent.priority ?? "transition",
-        null
+        clipForIntent(
+          context,
+          intent.direction === "easy" ? "difficulty_easier" : "difficulty_harder"
+        )
       );
     case "rep_milestone": {
       let text: string | null = null;

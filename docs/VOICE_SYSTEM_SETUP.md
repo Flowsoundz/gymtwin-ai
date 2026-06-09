@@ -31,12 +31,16 @@ GymTwin now has a hybrid voice system scaffold:
 
 ## Recommended Nova starter pack
 
-Start with the minimum eight files that matter most in live workout flow:
+Use these twelve files for a clean prerecorded-first workout flow:
 
 - `session_start.mp3`
+- `resume_workout.mp3`
 - `rest_start.mp3`
+- `next_movement.mp3`
 - `session_complete.mp3`
 - `safety_stop.mp3`
+- `difficulty_easier.mp3`
+- `difficulty_harder.mp3`
 - `rep_5.mp3`
 - `rep_10.mp3`
 - `form_shallow.mp3`
@@ -44,15 +48,18 @@ Start with the minimum eight files that matter most in live workout flow:
 
 Optional later:
 
-- `resume_workout.mp3`
 - `form_clean.mp3`
 
 Recommended copy:
 
 - `session_start.mp3` -> `We're up. Let's get into it.`
+- `resume_workout.mp3` -> `Back in. Pick up where you left off.`
 - `rest_start.mp3` -> `Take a breath. We go again in a second.`
+- `next_movement.mp3` -> `Next up. Set yourself and move well.`
 - `session_complete.mp3` -> `Nice work. Session done. Recover well.`
 - `safety_stop.mp3` -> `Stop there. Reset first.`
+- `difficulty_easier.mp3` -> `Good call. Let's nudge the challenge up.`
+- `difficulty_harder.mp3` -> `Good adjustment. Let's clean it up and keep moving.`
 - `rep_5.mp3` -> `Five good reps.`
 - `rep_10.mp3` -> `Ten in. Keep it smooth.`
 - `form_shallow.mp3` -> `A little deeper.`
@@ -139,4 +146,4 @@ Once your ElevenLabs key has `text_to_speech` permission, generate the starter p
 npm run voice:nova
 ```
 
-That writes the eight recommended Nova mp3 files into `public/audio/coaches/nova/`.
+That writes the twelve recommended Nova mp3 files into `public/audio/coaches/nova/`.
