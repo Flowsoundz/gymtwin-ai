@@ -30,20 +30,15 @@ export type ElevenLabsSynthesisPayload = {
   emphasis: "standard" | "distance";
 };
 
-function buildVoiceSettings(emphasis: "standard" | "distance") {
+function buildVoiceSettings(avatar: "Nova" | "Atlas", emphasis: "standard" | "distance") {
+  if (avatar === "Atlas") {
+    return emphasis === "distance"
+      ? { stability: 0.68, similarity_boost: 0.75, style: 0.15, use_speaker_boost: true }
+      : { stability: 0.62, similarity_boost: 0.80, style: 0.20, use_speaker_boost: true };
+  }
   return emphasis === "distance"
-    ? {
-        stability: 0.48,
-        similarity_boost: 0.72,
-        style: 0.18,
-        use_speaker_boost: true,
-      }
-    : {
-        stability: 0.4,
-        similarity_boost: 0.78,
-        style: 0.24,
-        use_speaker_boost: true,
-      };
+    ? { stability: 0.48, similarity_boost: 0.72, style: 0.18, use_speaker_boost: true }
+    : { stability: 0.4, similarity_boost: 0.78, style: 0.24, use_speaker_boost: true };
 }
 
 export async function synthesizeWithElevenLabs(
@@ -69,7 +64,7 @@ export async function synthesizeWithElevenLabs(
     body: JSON.stringify({
       text: payload.text,
       model_id: ELEVENLABS_MODEL_ID,
-      voice_settings: buildVoiceSettings(payload.emphasis),
+      voice_settings: buildVoiceSettings(payload.avatar, payload.emphasis),
     }),
   });
 }
