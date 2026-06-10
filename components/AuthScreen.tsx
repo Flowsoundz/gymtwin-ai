@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase";
 type AuthMode = "login" | "signup" | "reset";
 
 type Props = {
-  onSkip: () => void;
+  onSkip?: () => void;
 };
 
 export function AuthScreen({ onSkip }: Props) {
@@ -177,13 +177,15 @@ export function AuthScreen({ onSkip }: Props) {
         </div>
       </div>
 
-      {/* Skip */}
-      <button
-        onClick={onSkip}
-        className="mt-6 text-xs font-bold text-slate-500 hover:text-slate-300 transition-colors"
-      >
-        Continue as guest — sync later
-      </button>
+      {/* Skip — only shown when not required */}
+      {onSkip && (
+        <button
+          onClick={onSkip}
+          className="mt-6 text-xs font-bold text-slate-500 hover:text-slate-300 transition-colors"
+        >
+          Continue as guest — sync later
+        </button>
+      )}
     </div>
   );
 }

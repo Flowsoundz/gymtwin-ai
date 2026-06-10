@@ -203,6 +203,7 @@ export default function GymTwinApp() {
 function GymTwinAppLive() {
   const [currentScreen, setCurrentScreen] = useState<AppScreen>("landing");
   const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [syncBannerDismissed, setSyncBannerDismissed] = useState(false);
   const [cameraTried, setCameraTried] = useState(false);
   const [firstHintsDismissed, setFirstHintsDismissed] = useState(false);
@@ -537,7 +538,12 @@ function GymTwinAppLive() {
   // Auth listener — runs once, updates user state on login/logout
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSupabaseUser(session?.user ?? null);
+      const user = session?.user ?? null;
+      setSupabaseUser(user);
+      setAuthChecked(true);
+      if (!user && isOnboardingDone()) {
+        setCurrentScreen("auth");
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -1032,6 +1038,11 @@ function GymTwinAppLive() {
     setCurrentScreen("nutrition");
   }
 
+  // Block rendering until Supabase session resolves — prevents landing flash for signed-out users
+  if (!authChecked && currentScreen !== "onboarding") {
+    return <div className="min-h-screen bg-[#070d1a]" />;
+  }
+
   return (
     <>
       <DebugDiagnosticsReporter currentScreen={currentScreen} />
@@ -1050,7 +1061,7 @@ function GymTwinAppLive() {
       )}
 
       {currentScreen === "auth" && (
-        <AuthScreen onSkip={() => setCurrentScreen("landing")} />
+        <AuthScreen />
       )}
 
       {currentScreen === "landing" && (
