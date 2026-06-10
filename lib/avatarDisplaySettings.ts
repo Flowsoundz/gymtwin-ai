@@ -1,5 +1,11 @@
 import { AVATAR_DISPLAY_SETTINGS_KEY } from "@/lib/storageKeys";
-import type { AvatarDisplayMode, AvatarDisplaySettings, CoachTalkativeness } from "@/types";
+import type {
+  AvatarDisplayMode,
+  AvatarDisplaySettings,
+  CoachTalkativeness,
+  WorkoutAudioLevel,
+  WorkoutAudioMode,
+} from "@/types";
 
 export const defaultAvatarDisplaySettings: AvatarDisplaySettings = {
   mode: "coach_card",
@@ -11,6 +17,10 @@ export const defaultAvatarDisplaySettings: AvatarDisplaySettings = {
   countdownAudioEnabled: true,
   talkativeness: "normal",
   repCountingEnabled: true,
+  workoutAudioMode: "external",
+  coachVoiceVolume: "normal",
+  cueVolume: "normal",
+  duckExternalMusic: true,
 };
 
 function isAvatarDisplayMode(value: unknown): value is AvatarDisplayMode {
@@ -24,6 +34,14 @@ function isAvatarDisplayMode(value: unknown): value is AvatarDisplayMode {
 
 function isCoachTalkativeness(value: unknown): value is CoachTalkativeness {
   return value === "quiet" || value === "normal" || value === "hype";
+}
+
+function isWorkoutAudioMode(value: unknown): value is WorkoutAudioMode {
+  return value === "external" || value === "flowsoundz_radio";
+}
+
+function isWorkoutAudioLevel(value: unknown): value is WorkoutAudioLevel {
+  return value === "low" || value === "normal" || value === "high";
 }
 
 export function sanitizeAvatarDisplaySettings(
@@ -62,6 +80,19 @@ export function sanitizeAvatarDisplaySettings(
       typeof value?.repCountingEnabled === "boolean"
         ? value.repCountingEnabled
         : defaultAvatarDisplaySettings.repCountingEnabled,
+    workoutAudioMode: isWorkoutAudioMode(value?.workoutAudioMode)
+      ? value.workoutAudioMode
+      : defaultAvatarDisplaySettings.workoutAudioMode,
+    coachVoiceVolume: isWorkoutAudioLevel(value?.coachVoiceVolume)
+      ? value.coachVoiceVolume
+      : defaultAvatarDisplaySettings.coachVoiceVolume,
+    cueVolume: isWorkoutAudioLevel(value?.cueVolume)
+      ? value.cueVolume
+      : defaultAvatarDisplaySettings.cueVolume,
+    duckExternalMusic:
+      typeof value?.duckExternalMusic === "boolean"
+        ? value.duckExternalMusic
+        : defaultAvatarDisplaySettings.duckExternalMusic,
   };
 }
 

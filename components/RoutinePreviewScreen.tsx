@@ -1,6 +1,7 @@
-import { Coach3D } from "@/components/Coach3D";
+import { CharacterViewer } from "@/components/CharacterViewer";
 import { getCameraCoachModeForMovementName } from "@/lib/cameraCoachMapping";
 import { getAvatarLabel } from "@/lib/avatarAssets";
+import { CHARACTERS } from "@/lib/characters";
 import { getExerciseDemoDescriptor } from "@/lib/exerciseDemoLibrary";
 import type { CoachAvatar, WorkoutMovement } from "@/types";
 
@@ -28,6 +29,7 @@ export function RoutinePreviewScreen({
   const estimatedDuration = activeRoutine.reduce((sum, move) => sum + move.activeSeconds + move.restPeriod, 0);
   const estimatedMinutes = Math.max(1, Math.round(estimatedDuration / 60));
   const supportedCameraCount = activeRoutine.filter((move) => getCameraCoachModeForMovementName(move.name)).length;
+  const selectedCharacter = CHARACTERS[selectedAvatar === "Atlas" ? "atlas" : "nova"];
 
   return (
     <main className="min-h-screen overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.2),_transparent_24%),radial-gradient(circle_at_bottom,_rgba(59,130,246,0.12),_transparent_24%),linear-gradient(180deg,_#020617_0%,_#020617_48%,_#030712_100%)] px-4 pb-12 pt-8 text-white antialiased sm:px-6 lg:px-8 lg:py-12">
@@ -102,13 +104,10 @@ export function RoutinePreviewScreen({
           </section>
 
           <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
-            <Coach3D
-              selectedAvatar={selectedAvatar}
-              animationHint="idle"
-              previewFrame="bust"
-              freezeAnimation
-              compact
-              lightingMode="neutral"
+            <CharacterViewer
+              character={selectedCharacter}
+              height="h-[320px]"
+              enableOrbit={false}
             />
             <section className="rounded-[1.8rem] border border-white/8 bg-[linear-gradient(180deg,rgba(15,23,42,0.82),rgba(2,6,23,0.94))] p-5 shadow-[0_30px_80px_rgba(15,23,42,0.42)]">
               <p className="text-[11px] font-black uppercase tracking-[0.26em] text-blue-300">Program Summary</p>

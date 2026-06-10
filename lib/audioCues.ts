@@ -1,5 +1,8 @@
 "use client";
 
+import { getWorkoutCueGainMultiplier } from "@/lib/audioExperience";
+import type { WorkoutAudioLevel } from "@/types";
+
 let sharedAudioContext: AudioContext | null = null;
 
 function getAudioContext(): AudioContext | null {
@@ -44,9 +47,10 @@ function scheduleTone(context: AudioContext, compressor: DynamicsCompressorNode,
   oscillator.stop(options.startAt + options.durationMs / 1000 + 0.02);
 }
 
-export function playCountdownCue(step: 3 | 2 | 1) {
+export function playCountdownCue(step: 3 | 2 | 1, level: WorkoutAudioLevel = "normal") {
   const context = getAudioContext();
   if (!context) return;
+  const gainMultiplier = getWorkoutCueGainMultiplier(level);
 
   const compressor = context.createDynamicsCompressor();
   compressor.threshold.value = -28;
@@ -62,13 +66,14 @@ export function playCountdownCue(step: 3 | 2 | 1) {
     frequency: baseFrequency,
     durationMs: 140,
     startAt: now,
-    gain: 0.22,
+    gain: 0.22 * gainMultiplier,
   });
 }
 
-export function playCountdownLaunchCue() {
+export function playCountdownLaunchCue(level: WorkoutAudioLevel = "normal") {
   const context = getAudioContext();
   if (!context) return;
+  const gainMultiplier = getWorkoutCueGainMultiplier(level);
 
   const compressor = context.createDynamicsCompressor();
   compressor.threshold.value = -24;
@@ -83,19 +88,20 @@ export function playCountdownLaunchCue() {
     frequency: 920,
     durationMs: 120,
     startAt: now,
-    gain: 0.24,
+    gain: 0.24 * gainMultiplier,
   });
   scheduleTone(context, compressor, {
     frequency: 1280,
     durationMs: 160,
     startAt: now + 0.08,
-    gain: 0.2,
+    gain: 0.2 * gainMultiplier,
   });
 }
 
-export function playSetStartCue() {
+export function playSetStartCue(level: WorkoutAudioLevel = "normal") {
   const context = getAudioContext();
   if (!context) return;
+  const gainMultiplier = getWorkoutCueGainMultiplier(level);
 
   const compressor = context.createDynamicsCompressor();
   compressor.threshold.value = -24;
@@ -110,12 +116,12 @@ export function playSetStartCue() {
     frequency: 720,
     durationMs: 90,
     startAt: now,
-    gain: 0.16,
+    gain: 0.16 * gainMultiplier,
   });
   scheduleTone(context, compressor, {
     frequency: 980,
     durationMs: 110,
     startAt: now + 0.06,
-    gain: 0.18,
+    gain: 0.18 * gainMultiplier,
   });
 }

@@ -40,7 +40,7 @@ const avatarProfiles: Record<CoachAvatar, AvatarProfile> = {
     subtitle: "AI Coach",
     role: "Focused, motivating, form-first.",
     personality: "Precision coach",
-    image: "/avatars/GTFMODEL.png",
+    image: "/avatars/nova-portrait.png",
     modelPaths: [NOVA_RUNTIME_COACH_MODEL_PATH],
     accentGradient: "from-fuchsia-500/28 via-blue-500/18 to-slate-950",
     accentText: "text-fuchsia-200",

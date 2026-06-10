@@ -1,6 +1,8 @@
 "use client";
 
+import { getWorkoutVoiceVolumeMultiplier } from "@/lib/audioExperience";
 import type { CoachAvatar } from "@/types";
+import type { WorkoutAudioLevel } from "@/types";
 
 type SpeechEmphasis = "standard" | "distance";
 
@@ -56,7 +58,8 @@ export function pickCoachVoice(avatar: CoachAvatar): SpeechSynthesisVoice | null
 export function buildCoachUtterance(
   phrase: string,
   avatar: CoachAvatar = "Nova",
-  emphasis: SpeechEmphasis = "distance"
+  emphasis: SpeechEmphasis = "distance",
+  volumeLevel: WorkoutAudioLevel = "normal"
 ): SpeechSynthesisUtterance {
   const utterance = new SpeechSynthesisUtterance(phrase);
   const profile = emphasis === "distance" ? DISTANCE_PROFILE[avatar] : STANDARD_PROFILE[avatar];
@@ -65,8 +68,10 @@ export function buildCoachUtterance(
   if (voice) utterance.voice = voice;
   utterance.rate = profile.rate;
   utterance.pitch = profile.pitch;
-  utterance.volume = profile.volume;
+  utterance.volume = Math.max(
+    0.05,
+    Math.min(1, profile.volume * getWorkoutVoiceVolumeMultiplier(volumeLevel))
+  );
 
   return utterance;
 }
-

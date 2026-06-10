@@ -10,6 +10,11 @@ import { getAchievementBadges } from "@/lib/achievementEngine";
 import { getCoachAdaptationRecommendation } from "@/lib/coachAdaptationEngine";
 import { getCoachBrainResponse } from "@/lib/coachBrain";
 import { getDifficultyAdjustmentRecommendation } from "@/lib/difficultyAdjustmentEngine";
+import {
+  getNutritionRecipesForGoal,
+  inferNutritionGoal,
+  openNutritionPartner,
+} from "@/lib/nutritionExperience";
 import { deriveProgressTrends } from "@/lib/progressTrends";
 import { EARNED_BADGE_IDS_KEY } from "@/lib/storageKeys";
 import { useEffect, useMemo, useState } from "react";
@@ -37,6 +42,7 @@ type WorkoutSummaryScreenProps = {
   onRepeatWorkout: () => void;
   onStartNewWorkout: () => void;
   onViewProgress: () => void;
+  onViewNutrition: () => void;
   primaryButton: string;
   secondaryButton: string;
 };
@@ -53,9 +59,18 @@ export function WorkoutSummaryScreen({
   onRepeatWorkout,
   onStartNewWorkout,
   onViewProgress,
+  onViewNutrition,
   primaryButton,
   secondaryButton,
 }: WorkoutSummaryScreenProps) {
+  const unlockedBadges = getAchievementBadges({ userStats, workoutHistory, lastWorkoutSummary })
+    .filter((badge) => badge.unlocked);
+  const initialNewBadges = (() => {
+    if (typeof window === "undefined") return [] as AchievementBadge[];
+    const stored: string[] = JSON.parse(localStorage.getItem(EARNED_BADGE_IDS_KEY) ?? "[]");
+    return unlockedBadges.filter((badge) => !stored.includes(badge.id));
+  })();
+
   // ── Adaptive feedback local state ─────────────────────────────────────────
   const [feedbackStep, setFeedbackStep] = useState<0 | 1 | 2 | 3>(0);
   const [difficultyPick, setDifficultyPick] = useState<"too_easy" | "perfect" | "too_hard" | null>(null);
@@ -63,18 +78,16 @@ export function WorkoutSummaryScreen({
   const [sorenessPick, setSorenessPick] = useState<SorenessRating>("none");
   const [sorenessAreas, setSorenessAreas] = useState<string[]>([]);
   const [submittedFeedback, setSubmittedFeedback] = useState<PostWorkoutFeedback | null>(null);
-  const [newBadges, setNewBadges] = useState<AchievementBadge[]>([]);
+  const [newBadges] = useState<AchievementBadge[]>(initialNewBadges);
 
   // Detect badges unlocked by this session and persist the updated earned set
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const all = getAchievementBadges({ userStats, workoutHistory, lastWorkoutSummary });
-    const unlocked = all.filter((b) => b.unlocked);
-    const stored: string[] = JSON.parse(localStorage.getItem(EARNED_BADGE_IDS_KEY) ?? "[]");
-    const fresh = unlocked.filter((b) => !stored.includes(b.id));
-    if (fresh.length > 0) {
-      setNewBadges(fresh);
-      localStorage.setItem(EARNED_BADGE_IDS_KEY, JSON.stringify(unlocked.map((b) => b.id)));
+    if (initialNewBadges.length > 0) {
+      localStorage.setItem(
+        EARNED_BADGE_IDS_KEY,
+        JSON.stringify(unlockedBadges.map((badge) => badge.id))
+      );
     }
   // Run once on mount — intentional empty deps
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -170,6 +183,14 @@ export function WorkoutSummaryScreen({
       }),
     [coachBrain, selectedAvatar]
   );
+  const recoveryGoal = useMemo(
+    () => inferNutritionGoal(bodyProfile?.activityGoal ?? "recovery"),
+    [bodyProfile?.activityGoal]
+  );
+  const recoveryRecipes = useMemo(
+    () => getNutritionRecipesForGoal(recoveryGoal).slice(0, 3),
+    [recoveryGoal]
+  );
 
   return (
     <main className="min-h-screen overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.2),_transparent_24%),radial-gradient(circle_at_bottom,_rgba(59,130,246,0.12),_transparent_24%),linear-gradient(180deg,_#020617_0%,_#020617_48%,_#030712_100%)] px-4 pb-10 pt-8 text-white antialiased sm:px-6 lg:px-8 lg:py-12">
@@ -188,7 +209,7 @@ export function WorkoutSummaryScreen({
           </header>
 
           <section className="mb-6">
-            <OptimizedCoachCanvas height="h-[280px]" fov={32} cameraPosition={[0, 1.25, 3.6]} />
+            <OptimizedCoachCanvas height="h-[280px]" surface="summary" />
           </section>
 
           <section className="mb-6 rounded-[1.7rem] border border-blue-400/14 bg-blue-950/12 p-4 text-left shadow-inner">
@@ -362,7 +383,7 @@ export function WorkoutSummaryScreen({
                 Strong output this round. Sessions with elite score or major XP gains can push badge progress forward.
               </p>
               <div className="mt-4">
-                <OptimizedCoachCanvas height="h-[200px]" fov={32} cameraPosition={[0, 1.25, 3.6]} />
+                <OptimizedCoachCanvas height="h-[200px]" surface="summary" />
               </div>
             </section>
           ) : null}
@@ -420,6 +441,61 @@ export function WorkoutSummaryScreen({
                 <p className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-500">Reason</p>
                 <p className="mt-1 text-sm leading-relaxed text-slate-300">{nextBestMove.reason}</p>
               </div>
+            </div>
+          </section>
+
+          <section className="mb-8 rounded-[1.8rem] border border-emerald-400/14 bg-[linear-gradient(135deg,rgba(16,185,129,0.08),rgba(2,6,23,0.94))] p-5 shadow-[0_0_28px_rgba(16,185,129,0.08)]">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-[0.26em] text-emerald-300">Recovery Fuel</p>
+                <h3 className="mt-2 text-xl font-black text-white">Best Nutrition Move for Today</h3>
+                <p className="mt-2 text-sm leading-relaxed text-slate-300">
+                  Support today’s session with a strong next meal, a fast recovery option, or a healthy convenience shortcut.
+                </p>
+              </div>
+              <button
+                onClick={onViewNutrition}
+                className="rounded-full border border-emerald-400/18 bg-emerald-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-100 transition hover:bg-emerald-500/15"
+              >
+                Open Nutrition Hub
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-3 lg:grid-cols-3">
+              {recoveryRecipes.map((recipe) => (
+                <div
+                  key={recipe.id}
+                  className="rounded-[1.4rem] border border-white/8 bg-slate-950/60 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]"
+                >
+                  <span className="inline-flex rounded-full border border-emerald-400/18 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-200">
+                    {recipe.badge}
+                  </span>
+                  <h4 className="mt-3 text-base font-black text-white">{recipe.title}</h4>
+                  <p className="mt-2 text-sm leading-relaxed text-slate-300">{recipe.description}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="rounded-full border border-blue-400/18 bg-blue-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-blue-200">
+                      {recipe.calories} cal
+                    </span>
+                    <span className="rounded-full border border-emerald-400/18 bg-emerald-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-200">
+                      {recipe.protein}g protein
+                    </span>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button
+                      onClick={onViewNutrition}
+                      className="rounded-xl border border-blue-400/20 bg-gradient-to-r from-blue-600 to-fuchsia-600 px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-white transition hover:brightness-105"
+                    >
+                      {recipe.primaryCta}
+                    </button>
+                    <button
+                      onClick={() => openNutritionPartner(recipe.partnerKey)}
+                      className="rounded-xl border border-white/10 bg-slate-900/80 px-3.5 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-slate-200 transition hover:border-white/20 hover:text-white"
+                    >
+                      {recipe.secondaryCta}
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           </section>
 

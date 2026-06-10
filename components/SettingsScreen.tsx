@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { CharacterViewer } from "@/components/CharacterViewer";
@@ -7,6 +8,18 @@ import { CHARACTERS } from "@/lib/characters";
 import { useCoachStore } from "@/store/useCoachStore";
 import type { CoachSize } from "@/store/useCoachStore";
 import Image from "next/image";
+import {
+  SUPPORTED_BACKGROUND_AUDIO_SERVICES,
+  getWorkoutAudioLevelLabel,
+  getWorkoutAudioModeLabel,
+} from "@/lib/audioExperience";
+import {
+  GYMTWIN_PRIVACY_PATH,
+  GYMTWIN_SUPPORT_EMAIL,
+  GYMTWIN_SUPPORT_URL,
+  GYMTWIN_TERMS_PATH,
+  buildSupportMailto,
+} from "@/lib/appInfo";
 import { getAvatarAsset, getAvatarLabel, getAvatarPersonality, getAvatarRole, getAvatarSubtitle } from "@/lib/avatarAssets";
 import { clearBodyProfile, saveBodyProfile } from "@/lib/bodyProfileStorage";
 import type {
@@ -15,6 +28,8 @@ import type {
   BodyProfile,
   CoachAvatar,
   CoachTalkativeness,
+  WorkoutAudioLevel,
+  WorkoutAudioMode,
 } from "@/types";
 
 type SettingsScreenProps = {
@@ -26,6 +41,9 @@ type SettingsScreenProps = {
   supabaseUser?: User | null;
   selectedAvatar?: CoachAvatar;
   onSelectedAvatarChange?: (avatar: CoachAvatar) => void;
+  onOpenFlowsoundzRadio?: () => void;
+  onDeleteCloudData?: () => Promise<void> | void;
+  onDeleteAccount?: () => Promise<{ ok: boolean; reason?: string; message?: string }>;
   bodyProfile?: BodyProfile | null;
   onBodyProfileChange?: (profile: BodyProfile | null) => void;
   avatarDisplaySettings: AvatarDisplaySettings;
@@ -141,11 +159,17 @@ export function SettingsScreen({
   supabaseUser,
   selectedAvatar = "Nova",
   onSelectedAvatarChange,
+  onOpenFlowsoundzRadio,
+  onDeleteCloudData,
+  onDeleteAccount,
   bodyProfile,
   onBodyProfileChange,
   avatarDisplaySettings,
   onAvatarDisplaySettingsChange,
 }: SettingsScreenProps) {
+  const [isDeletingCloudData, setIsDeletingCloudData] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [accountDeletionMessage, setAccountDeletionMessage] = useState<string | null>(null);
   const [draftProfile, setDraftProfile] = useState<BodyProfile>(() => ({
       sex: "prefer_not_to_say",
       activityGoal: "",
@@ -257,6 +281,9 @@ export function SettingsScreen({
       minimalCameraHud: false,
     });
   }
+
+  const audioModeOptions: WorkoutAudioMode[] = ["external", "flowsoundz_radio"];
+  const audioLevelOptions: WorkoutAudioLevel[] = ["low", "normal", "high"];
 
   return (
     <main className="min-h-screen overflow-y-auto bg-[radial-gradient(circle_at_top,_rgba(99,102,241,0.2),_transparent_24%),radial-gradient(circle_at_bottom,_rgba(59,130,246,0.12),_transparent_24%),linear-gradient(180deg,_#020617_0%,_#020617_48%,_#030712_100%)] px-4 pb-10 pt-8 text-white antialiased sm:px-6 lg:px-8 lg:py-12">
@@ -552,6 +579,123 @@ export function SettingsScreen({
               </div>
             </SettingsCard>
 
+            <SettingsCard title="Workout Audio">
+              <div className="space-y-4">
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Music Source</p>
+                  <p className="mt-1 text-xs text-slate-400">GymTwin is designed to work beside your music, not interrupt it.</p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {audioModeOptions.map((mode) => {
+                      const isActive = avatarDisplaySettings.workoutAudioMode === mode;
+                      return (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => updateAvatarDisplaySettings({ workoutAudioMode: mode })}
+                          className={`rounded-2xl border px-4 py-3 text-left transition ${
+                            isActive
+                              ? "border-fuchsia-400/30 bg-gradient-to-br from-blue-500/16 to-fuchsia-500/14 text-white shadow-[0_0_16px_rgba(99,102,241,0.18)]"
+                              : "border-white/8 bg-slate-900/72 text-slate-400 hover:border-white/15 hover:text-white"
+                          }`}
+                        >
+                          <p className="text-xs font-black">{getWorkoutAudioModeLabel(mode)}</p>
+                          <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
+                            {mode === "external" ? "Use any music app or player that runs well in the background." : "Pair the session with Flowsoundz Radio in a parallel tab."}
+                          </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
+                    Works well with {SUPPORTED_BACKGROUND_AUDIO_SERVICES.join(", ")}.
+                  </p>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-[1.25rem] border border-white/8 bg-slate-900/72 px-4 py-4">
+                    <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Coach Voice</p>
+                    <div className="mt-3 flex gap-2">
+                      {audioLevelOptions.map((level) => {
+                        const isActive = avatarDisplaySettings.coachVoiceVolume === level;
+                        return (
+                          <button
+                            key={level}
+                            type="button"
+                            onClick={() => updateAvatarDisplaySettings({ coachVoiceVolume: level })}
+                            className={`flex-1 rounded-xl border px-2 py-2 text-[11px] font-black transition ${
+                              isActive
+                                ? "border-blue-400/28 bg-blue-500/14 text-white"
+                                : "border-white/8 bg-slate-950/70 text-slate-400 hover:border-white/15 hover:text-white"
+                            }`}
+                          >
+                            {getWorkoutAudioLevelLabel(level)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="rounded-[1.25rem] border border-white/8 bg-slate-900/72 px-4 py-4">
+                    <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Cue Volume</p>
+                    <div className="mt-3 flex gap-2">
+                      {audioLevelOptions.map((level) => {
+                        const isActive = avatarDisplaySettings.cueVolume === level;
+                        return (
+                          <button
+                            key={level}
+                            type="button"
+                            onClick={() => updateAvatarDisplaySettings({ cueVolume: level })}
+                            className={`flex-1 rounded-xl border px-2 py-2 text-[11px] font-black transition ${
+                              isActive
+                                ? "border-cyan-400/28 bg-cyan-500/14 text-white"
+                                : "border-white/8 bg-slate-950/70 text-slate-400 hover:border-white/15 hover:text-white"
+                            }`}
+                          >
+                            {getWorkoutAudioLevelLabel(level)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                <label className="flex items-start justify-between gap-4 rounded-[1.25rem] border border-white/8 bg-slate-900/72 px-4 py-4">
+                  <div>
+                    <p className="text-sm font-black text-white">Duck Music During Coach Voice</p>
+                    <p className="mt-1 text-xs leading-relaxed text-slate-400">
+                      Recommended when using Flowsoundz Radio or any external player in parallel.
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={avatarDisplaySettings.duckExternalMusic}
+                    onChange={(event) => updateAvatarDisplaySettings({ duckExternalMusic: event.target.checked })}
+                    className="mt-1 h-5 w-5 rounded border-white/15 bg-slate-950 text-blue-500 accent-blue-500"
+                  />
+                </label>
+
+                <div className="rounded-[1.25rem] border border-fuchsia-400/12 bg-[linear-gradient(135deg,rgba(217,70,239,0.08),rgba(15,23,42,0.82),rgba(34,211,238,0.08))] px-4 py-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-black uppercase tracking-[0.22em] text-fuchsia-300">Flowsoundz Radio</p>
+                      <p className="mt-1 text-xs leading-relaxed text-slate-400">
+                        Featured option: open your station in a parallel tab and let GymTwin handle coaching and cues.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onOpenFlowsoundzRadio) onOpenFlowsoundzRadio();
+                      }}
+                      className="shrink-0 rounded-xl border border-fuchsia-400/24 bg-fuchsia-500/12 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-fuchsia-100 transition hover:bg-fuchsia-500/18"
+                    >
+                      Launch
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </SettingsCard>
+
             <SettingsCard title="Body Profile">
               <div className="space-y-4">
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -635,13 +779,13 @@ export function SettingsScreen({
               <p>Help improve GymTwin AI during beta.</p>
               <div className="mt-4 space-y-3">
                 <a
-                  href="mailto:adonyluisflorencio@gmail.com?subject=GymTwin%20AI%20Beta%20Feedback"
+                  href={buildSupportMailto("GymTwin AI Beta Feedback")}
                   className="block w-full rounded-2xl border border-blue-400/20 bg-gradient-to-r from-blue-600 to-fuchsia-600 px-4 py-4 text-center text-sm font-black text-white shadow-[0_18px_40px_rgba(99,102,241,0.26)] transition hover:brightness-105 active:scale-95"
                 >
                   Send Beta Feedback
                 </a>
                 <a
-                  href="mailto:adonyluisflorencio@gmail.com?subject=GymTwin%20AI%20Camera%20Issue"
+                  href={buildSupportMailto("GymTwin AI Camera Issue")}
                   className="block w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-4 text-center text-sm font-black text-slate-100 transition hover:border-blue-400/30 hover:bg-slate-800 active:scale-95"
                 >
                   Report Camera Issue
@@ -689,6 +833,75 @@ export function SettingsScreen({
                       Sign Out
                     </button>
                   )}
+                  {onDeleteCloudData && (
+                    <button
+                      onClick={async () => {
+                        if (typeof window !== "undefined") {
+                          const shouldDelete = window.confirm(
+                            "Delete synced GymTwin workout data and reset local synced progress for this account?"
+                          );
+                          if (!shouldDelete) return;
+                        }
+                        setIsDeletingCloudData(true);
+                        try {
+                          await onDeleteCloudData();
+                        } finally {
+                          setIsDeletingCloudData(false);
+                        }
+                      }}
+                      disabled={isDeletingCloudData}
+                      className="w-full rounded-2xl border border-red-400/18 bg-red-950/25 px-4 py-3.5 text-sm font-black text-red-200 transition hover:border-red-400/30 hover:bg-red-950/35 active:scale-95 disabled:cursor-wait disabled:opacity-60"
+                    >
+                      {isDeletingCloudData ? "Deleting Synced Data..." : "Delete Synced Workout Data"}
+                    </button>
+                  )}
+                  {onDeleteAccount && (
+                    <button
+                      onClick={async () => {
+                        if (typeof window !== "undefined") {
+                          const shouldDelete = window.confirm(
+                            "Delete your GymTwin account and all synced backend data? This cannot be undone."
+                          );
+                          if (!shouldDelete) return;
+                        }
+                        setIsDeletingAccount(true);
+                        setAccountDeletionMessage(null);
+                        try {
+                          const result = await onDeleteAccount();
+                          if (!result.ok) {
+                            setAccountDeletionMessage(
+                              result.reason === "not_configured"
+                                ? "Automated account deletion is not configured yet. Use the support request below for now."
+                                : result.message ?? "Unable to delete account right now."
+                            );
+                          }
+                        } finally {
+                          setIsDeletingAccount(false);
+                        }
+                      }}
+                      disabled={isDeletingAccount}
+                      className="w-full rounded-2xl border border-red-500/24 bg-red-950/40 px-4 py-3.5 text-sm font-black text-red-100 transition hover:border-red-400/40 hover:bg-red-950/50 active:scale-95 disabled:cursor-wait disabled:opacity-60"
+                    >
+                      {isDeletingAccount ? "Deleting Account..." : "Delete Account"}
+                    </button>
+                  )}
+                  <a
+                    href={buildSupportMailto(
+                      "GymTwin AI Account Deletion Request",
+                      "Please delete my GymTwin AI account and associated backend data."
+                    )}
+                    className="block w-full rounded-2xl border border-white/8 bg-slate-900/60 px-4 py-3.5 text-center text-sm font-black text-slate-200 transition hover:border-fuchsia-400/24 hover:text-white active:scale-95"
+                  >
+                    Request Full Account Deletion
+                  </a>
+                  <p className="text-xs leading-relaxed text-slate-400">
+                    If automated deletion is unavailable in the current environment, use the support request below.
+                  </p>
+                  {accountDeletionMessage ? (
+                    <div className="rounded-xl border border-amber-400/20 bg-amber-500/10 px-3 py-3 text-xs leading-relaxed text-amber-100">
+                      {accountDeletionMessage}
+                    </div>
+                  ) : null}
                 </div>
               ) : (
                 <div className="flex flex-col gap-3">
@@ -723,10 +936,44 @@ export function SettingsScreen({
               )}
             </SettingsCard>
 
+            <SettingsCard title="Support & Policies">
+              <p className="text-slate-300">
+                Keep these links inside the app for App Store support, legal, and privacy review.
+              </p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <a
+                  href={`mailto:${GYMTWIN_SUPPORT_EMAIL}`}
+                  className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-4 text-center text-sm font-black text-slate-100 transition hover:border-cyan-400/30 hover:bg-slate-800 active:scale-95"
+                >
+                  Email Support
+                </a>
+                <a
+                  href={GYMTWIN_SUPPORT_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-4 text-center text-sm font-black text-slate-100 transition hover:border-cyan-400/30 hover:bg-slate-800 active:scale-95"
+                >
+                  Support Page
+                </a>
+                <Link
+                  href={GYMTWIN_PRIVACY_PATH}
+                  className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-4 text-center text-sm font-black text-slate-100 transition hover:border-cyan-400/30 hover:bg-slate-800 active:scale-95"
+                >
+                  Privacy Policy
+                </Link>
+                <Link
+                  href={GYMTWIN_TERMS_PATH}
+                  className="rounded-2xl border border-white/10 bg-slate-900 px-4 py-4 text-center text-sm font-black text-slate-100 transition hover:border-fuchsia-400/30 hover:bg-slate-800 active:scale-95"
+                >
+                  Terms of Use
+                </Link>
+              </div>
+            </SettingsCard>
+
             <SettingsCard title="App Info">
               <p>GymTwin AI MVP</p>
               <p className="mt-2 text-slate-400">Camera Coach: Squat, Push-Up, Plank</p>
-              <p className="mt-2 text-slate-400">Build: Local beta</p>
+              <p className="mt-2 text-slate-400">Build: Launch hardening beta</p>
             </SettingsCard>
           </div>
 

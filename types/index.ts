@@ -55,6 +55,8 @@ export interface BodyProfile {
 }
 
 export type CoachTalkativeness = "quiet" | "normal" | "hype";
+export type WorkoutAudioMode = "external" | "flowsoundz_radio";
+export type WorkoutAudioLevel = "low" | "normal" | "high";
 
 export interface AvatarDisplaySettings {
   mode: AvatarDisplayMode;
@@ -66,6 +68,10 @@ export interface AvatarDisplaySettings {
   countdownAudioEnabled: boolean;
   talkativeness: CoachTalkativeness;
   repCountingEnabled: boolean;
+  workoutAudioMode: WorkoutAudioMode;
+  coachVoiceVolume: WorkoutAudioLevel;
+  cueVolume: WorkoutAudioLevel;
+  duckExternalMusic: boolean;
 }
 
 export type AvatarAnimationCategory =

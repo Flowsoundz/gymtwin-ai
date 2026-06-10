@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useCoachStore } from "@/store/useCoachStore";
-import { Coach3D } from "@/components/Coach3D";
 import { OptimizedCoachCanvas } from "@/components/OptimizedCoachCanvas";
 import { FloatingCoachAvatar } from "@/components/FloatingCoachAvatar";
 import { ExerciseDemoCard } from "@/components/ExerciseDemoCard";
@@ -8,13 +7,17 @@ import { useCameraCoach } from "@/hooks/useCameraCoach";
 import type { TrackingMode } from "@/hooks/useCameraCoach";
 import { useVoiceCommands } from "@/hooks/useVoiceCommands";
 import { getAvatarLabel } from "@/lib/avatarAssets";
+import {
+  getWorkoutAudioLevelLabel,
+  getWorkoutAudioModeLabel,
+} from "@/lib/audioExperience";
 import { getAvatarCoachLayerState } from "@/lib/avatarCoachLayer";
 import { getExerciseDemoDescriptor } from "@/lib/exerciseDemoLibrary";
 import { playCountdownCue, playSetStartCue } from "@/lib/audioCues";
 import { getCameraCoachHint, getCameraCoachLabel, getCameraCoachModeForMovementName } from "@/lib/cameraCoachMapping";
 import { getCoachBrainResponse } from "@/lib/coachBrain";
 import type { CoachAnimationHint } from "@/lib/coachBrain";
-import { getExerciseClipName, getExerciseAnimationGLBPath, isFloorMovementName } from "@/lib/exerciseAnimationMap";
+import { getExerciseClipName, getExerciseAnimationGLBPath } from "@/lib/exerciseAnimationMap";
 import {
   ENABLE_CAMERA_TRACKING,
   ENABLE_EXERCISE_DEMOS,
@@ -27,6 +30,7 @@ import {
 } from "@/lib/conversationCommands";
 import { useRepSpeech } from "@/hooks/useRepSpeech";
 import { getLastLoggedWeight } from "@/lib/progressiveOverloadEngine";
+import type { CoachVoiceIntent } from "@/lib/voice/voiceIntents";
 import { useCastSender } from "@/hooks/useCastSync";
 import type {
   AvatarDisplaySettings,
@@ -73,6 +77,7 @@ type WorkoutPlayerScreenProps = {
   isFirstWorkout?: boolean;
   onFirstHintsDismissed?: () => void;
   onAutoSpeak?: (message: string) => void;
+  onSpeakIntent?: (intent: CoachVoiceIntent) => void;
   primaryButton: string;
 };
 
@@ -107,6 +112,7 @@ export function WorkoutPlayerScreen({
   isFirstWorkout = false,
   onFirstHintsDismissed,
   onAutoSpeak,
+  onSpeakIntent,
   primaryButton,
 }: WorkoutPlayerScreenProps) {
   const [hintsVisible, setHintsVisible] = useState(isFirstWorkout);
@@ -127,7 +133,7 @@ export function WorkoutPlayerScreen({
   useEffect(() => {
     setAnimationGLBPath(getExerciseAnimationGLBPath(activeMovement));
     return () => setAnimationGLBPath(null);
-  }, [activeMovement.id, activeMovement.name, setAnimationGLBPath]);
+  }, [activeMovement, setAnimationGLBPath]);
 
   // Progressive overload tracker
   const [trackerOpen, setTrackerOpen] = useState(false);
@@ -261,10 +267,13 @@ export function WorkoutPlayerScreen({
 
   // Reset tracker state when exercise changes so stale values never carry over
   useEffect(() => {
-    setTrackerOpen(false);
-    setTrackerReps(currentReps);
     const lastWeight = getLastLoggedWeight(activeMovement.name);
-    setTrackerWeight(lastWeight);
+    const resetId = window.setTimeout(() => {
+      setTrackerOpen(false);
+      setTrackerReps(currentReps);
+      setTrackerWeight(lastWeight);
+    }, 0);
+    return () => window.clearTimeout(resetId);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeMovement.id]);
 
@@ -274,10 +283,6 @@ export function WorkoutPlayerScreen({
   const demoClipName = useMemo(
     () => getExerciseClipName(activeMovement),
     [activeMovement]
-  );
-  const isFloorDemo = useMemo(
-    () => isFloorMovementName(activeMovement.name),
-    [activeMovement.name]
   );
   const exerciseDemoDescriptor = useMemo(
     () => getExerciseDemoDescriptor(activeMovement.name, selectedAvatar),
@@ -356,8 +361,12 @@ export function WorkoutPlayerScreen({
       feedbackMessage;
     if (!cue) return;
     onAutoSpeak(cue);
-    setVoiceCaption(cue);
-    window.setTimeout(() => setVoiceCaption(null), 4000);
+    const showId = window.setTimeout(() => setVoiceCaption(cue), 0);
+    const hideId = window.setTimeout(() => setVoiceCaption(null), 4000);
+    return () => {
+      window.clearTimeout(showId);
+      window.clearTimeout(hideId);
+    };
   }, [feedbackSeverity, latestIssue, isCameraRunning, isMuted, onAutoSpeak, feedbackMessage, avatarDisplaySettings.talkativeness]);
 
   // Difficulty adjustment wrappers — show toast then call parent
@@ -625,6 +634,7 @@ export function WorkoutPlayerScreen({
       selectedAvatar,
       isListening,
       isCameraCoachOpen,
+      isCameraRunning,
       statusLabel,
       selectedMode,
       cameraMetrics.phase,
@@ -669,12 +679,11 @@ export function WorkoutPlayerScreen({
   useRepSpeech({
     repCount: activeRepCount,
     repQualityLabel: latestRepQuality?.label,
-    exerciseName: activeMovement.name,
     talkativeness: avatarDisplaySettings.talkativeness,
     repCountingEnabled: avatarDisplaySettings.repCountingEnabled,
     isMuted,
     isCameraActive: isCameraCoachOpen && isCameraRunning,
-    selectedAvatar,
+    onSpeakIntent,
     onAnimHint: onCoachAnimHint,
   });
 
@@ -838,9 +847,9 @@ export function WorkoutPlayerScreen({
     }
 
     if (restCountdown === 3 || restCountdown === 2 || restCountdown === 1) {
-      playCountdownCue(restCountdown);
+      playCountdownCue(restCountdown, avatarDisplaySettings.cueVolume);
     }
-  }, [avatarDisplaySettings.countdownAudioEnabled, isMuted, isRestPhase, restCountdown]);
+  }, [avatarDisplaySettings.countdownAudioEnabled, avatarDisplaySettings.cueVolume, isMuted, isRestPhase, restCountdown]);
 
   useEffect(() => {
     if (isRestPhase) {
@@ -856,10 +865,10 @@ export function WorkoutPlayerScreen({
     if (previousActiveSetKeyRef.current !== activeSetKey) {
       previousActiveSetKeyRef.current = activeSetKey;
       window.setTimeout(() => {
-        playSetStartCue();
+        playSetStartCue(avatarDisplaySettings.cueVolume);
       }, 80);
     }
-  }, [activeSetKey, avatarDisplaySettings.countdownAudioEnabled, isMuted, isRestPhase]);
+  }, [activeSetKey, avatarDisplaySettings.countdownAudioEnabled, avatarDisplaySettings.cueVolume, isMuted, isRestPhase]);
 
   const cameraCoachPanel = supportedCameraMode ? (
     <div className="rounded-[1.7rem] border border-white/8 bg-white/6 p-4 backdrop-blur-xl shadow-[0_18px_60px_rgba(15,23,42,0.45)]">
@@ -1102,6 +1111,24 @@ export function WorkoutPlayerScreen({
                   <p className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-500">Muted</p>
                   <p className="mt-0.5 text-xs font-bold text-slate-100">{isMuted ? "Yes" : "No"}</p>
                 </div>
+                <div className="rounded-xl border border-white/8 bg-slate-900/70 px-3 py-2">
+                  <p className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-500">Music</p>
+                  <p className="mt-0.5 text-xs font-bold text-slate-100">
+                    {getWorkoutAudioModeLabel(avatarDisplaySettings.workoutAudioMode)}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-white/8 bg-slate-900/70 px-3 py-2">
+                  <p className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-500">Voice Mix</p>
+                  <p className="mt-0.5 text-xs font-bold text-slate-100">
+                    {getWorkoutAudioLevelLabel(avatarDisplaySettings.coachVoiceVolume)}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-white/8 bg-slate-900/70 px-3 py-2">
+                  <p className="text-[8px] font-black uppercase tracking-[0.2em] text-slate-500">Ducking</p>
+                  <p className="mt-0.5 text-xs font-bold text-slate-100">
+                    {avatarDisplaySettings.duckExternalMusic ? "On" : "Off"}
+                  </p>
+                </div>
                 <p className="text-[9px] text-slate-600">Full options in ← Settings</p>
               </div>
             </div>
@@ -1224,7 +1251,7 @@ export function WorkoutPlayerScreen({
                 </div>
 
                 {/* Coach demo — exercise animation from store's animationGLBPath */}
-                <OptimizedCoachCanvas height="h-[320px]" fov={32} cameraPosition={[0, 1.1, 3.8]} bloom={false} forceShow />
+                <OptimizedCoachCanvas height="h-[320px]" surface="workout_panel" bloom={false} forceShow />
 
                 {/* Coach label strip at bottom */}
                 <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950 to-transparent px-3 pb-3 pt-8">
@@ -1252,7 +1279,7 @@ export function WorkoutPlayerScreen({
                       </span>
                     </div>
                     <div className="coach-float">
-                      <OptimizedCoachCanvas height="h-[300px]" fov={32} cameraPosition={[0, 1.1, 3.8]} bloom={false} forceShow />
+                      <OptimizedCoachCanvas height="h-[300px]" surface="demo_card" bloom={false} forceShow />
                     </div>
                     <div className="pointer-events-none -mt-3 flex justify-center pb-4">
                       <div className="h-3 w-28 rounded-full bg-emerald-500/40 blur-md rim-pulse" />
@@ -1672,7 +1699,7 @@ export function WorkoutPlayerScreen({
                   <p className="mt-1 text-sm font-black tracking-tight text-white">{cleanMovementName(activeMovement.name)}</p>
                 </div>
                 <div className="coach-float">
-                  <OptimizedCoachCanvas height="h-[260px]" fov={32} cameraPosition={[0, 1.1, 3.8]} bloom={false} forceShow />
+                  <OptimizedCoachCanvas height="h-[260px]" surface="demo_card" bloom={false} forceShow />
                 </div>
                 {/* Neon floor rim light — tracks live form feedback state */}
                 <div className="pointer-events-none -mt-3 flex justify-center pb-4">

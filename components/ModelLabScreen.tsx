@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Coach3D,
   getCoachModelTransformPreset,
@@ -124,96 +124,28 @@ type TransformControl = {
   onChange: (value: number) => void;
 };
 
-type PlaybackSpeedOption = 0.25 | 0.5 | 1 | 1.5;
-
-type ModelLabPreviewControlsValue = {
-  isPaused: boolean;
-  playbackSpeed: PlaybackSpeedOption;
-  showSkeleton: boolean;
-  setIsPaused: (value: boolean) => void;
-  setPlaybackSpeed: (value: PlaybackSpeedOption) => void;
-  setShowSkeleton: (value: boolean) => void;
-};
-
 const MODEL_LAB_FRAMING_PRESETS = {
   FULL_BODY: {
     transform: {
-      position: [0, 0.12, 0] as [number, number, number],
+      position: [0, 0.16, 0] as [number, number, number],
       scale: 0.56,
       rotation: [0, 0, 0] as [number, number, number],
-      cameraPosition: [0, 1.22, 1.95] as [number, number, number],
+      cameraPosition: [0, 1.26, 2.02] as [number, number, number],
     },
-    target: [0, 1.08, 0] as [number, number, number],
-    fov: 38,
+    target: [0, 1.16, 0] as [number, number, number],
+    fov: 40,
   },
   IN_FRAME: {
     transform: {
       position: [0, 0.26, 0] as [number, number, number],
       scale: 0.72,
       rotation: [0, 0, 0] as [number, number, number],
-      cameraPosition: [0, 1.48, 1.58] as [number, number, number],
+      cameraPosition: [0, 1.65, 1.58] as [number, number, number],
     },
-    target: [0, 1.4, 0] as [number, number, number],
+    target: [0, 1.62, 0] as [number, number, number],
     fov: 36,
   },
 } as const;
-
-const ModelLabPreviewControlsContext = createContext<ModelLabPreviewControlsValue | null>(null);
-
-function useModelLabPreviewControls() {
-  const value = useContext(ModelLabPreviewControlsContext);
-  if (!value) {
-    throw new Error("useModelLabPreviewControls must be used within ModelLabPreviewControlsContext");
-  }
-  return value;
-}
-
-function ModelLabPreviewToolbar() {
-  const {
-    isPaused,
-    playbackSpeed,
-    showSkeleton,
-    setIsPaused,
-    setPlaybackSpeed,
-    setShowSkeleton,
-  } = useModelLabPreviewControls();
-
-  return (
-    <div className="flex flex-wrap items-center gap-3 border-t border-white/8 px-5 py-4">
-      <button
-        type="button"
-        onClick={() => setIsPaused(!isPaused)}
-        className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[11px] font-black uppercase tracking-[0.22em] text-slate-100 transition hover:border-white/20 hover:text-white"
-      >
-        {isPaused ? "Play" : "Pause"}
-      </button>
-      <label className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-slate-300">
-        <span>Speed</span>
-        <select
-          value={playbackSpeed}
-          onChange={(event) => setPlaybackSpeed(Number(event.target.value) as PlaybackSpeedOption)}
-          className="bg-transparent text-slate-100 outline-none"
-        >
-          <option value={0.25}>0.25x</option>
-          <option value={0.5}>0.5x</option>
-          <option value={1}>1.0x</option>
-          <option value={1.5}>1.5x</option>
-        </select>
-      </label>
-      <button
-        type="button"
-        onClick={() => setShowSkeleton(!showSkeleton)}
-        className={`rounded-full border px-4 py-2 text-[11px] font-black uppercase tracking-[0.22em] transition ${
-          showSkeleton
-            ? "border-cyan-400/35 bg-cyan-500/12 text-cyan-100"
-            : "border-white/10 bg-white/5 text-slate-300 hover:border-white/20 hover:text-white"
-        }`}
-      >
-        Show Skeleton Rig
-      </button>
-    </div>
-  );
-}
 
 function formatTransformNumber(value: number) {
   return Number(value.toFixed(2)).toString();
@@ -347,43 +279,19 @@ export function ModelLabScreen({
   const [previewTransform, setPreviewTransform] = useState<Required<PreviewTransform>>(() =>
     createPreviewTransformFromPreset(ATLAS_RUNTIME_COACH_MODEL_PATH, "in_frame")
   );
-  // Ref-buffered live value — mutated directly during slider drag to avoid 60Hz
-  // React state updates. Committed to state on drag-end (onPointerUp) or debounce.
-  const liveTransformRef = useRef<Required<PreviewTransform>>(previewTransform);
-  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    const next = createPreviewTransformFromPreset(selectedModel.path, previewFrame);
-    liveTransformRef.current = next;
-    setPreviewTransform(next);
-  }, [previewFrame, selectedModel.path]);
-
-  useEffect(() => {
-    setHasSavedPreset(Boolean(loadTransformPreset(selectedModel.path, previewFrame)));
-    setSavePresetState("idle");
-  }, [previewFrame, selectedModel.path]);
-
   const updatePreviewTransform = (
     field: keyof Required<PreviewTransform>,
     value: number,
     index?: number
   ) => {
-    // 1. Mutate ref immediately — Coach3D reads this on next frame, zero React re-renders
-    const draft = { ...liveTransformRef.current };
-    if (field === "scale") {
-      draft.scale = value;
-    } else {
-      const nextTuple = [...(draft[field] as [number, number, number])] as [number, number, number];
+    setPreviewTransform((current) => {
+      if (field === "scale") {
+        return { ...current, scale: value };
+      }
+      const nextTuple = [...(current[field] as [number, number, number])] as [number, number, number];
       nextTuple[index ?? 0] = value;
-      (draft as Record<string, unknown>)[field] = nextTuple;
-    }
-    liveTransformRef.current = draft;
-
-    // 2. Debounced React state commit — updates slider labels + JSON preview at most every 80ms
-    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-    debounceTimerRef.current = setTimeout(() => {
-      setPreviewTransform({ ...liveTransformRef.current });
-    }, 80);
+      return { ...current, [field]: nextTuple };
+    });
   };
 
   const controlGroups = useMemo<TransformControl[]>(
@@ -471,15 +379,12 @@ export function ModelLabScreen({
   );
 
   const handleCopyValues = async () => {
-    // Read from the live ref so Copy always captures the latest slider position,
-    // even if the debounced React state hasn't committed yet.
-    const live = liveTransformRef.current;
     const serialized = JSON.stringify(
       {
-        position: live.position.map((v) => parseFloat(formatTransformNumber(v))),
-        scale: parseFloat(formatTransformNumber(live.scale)),
-        rotation: live.rotation.map((v) => parseFloat(formatTransformNumber(v))),
-        cameraPosition: live.cameraPosition.map((v) => parseFloat(formatTransformNumber(v))),
+        position: previewTransform.position.map((v) => parseFloat(formatTransformNumber(v))),
+        scale: parseFloat(formatTransformNumber(previewTransform.scale)),
+        rotation: previewTransform.rotation.map((v) => parseFloat(formatTransformNumber(v))),
+        cameraPosition: previewTransform.cameraPosition.map((v) => parseFloat(formatTransformNumber(v))),
       },
       null,
       2
@@ -635,7 +540,11 @@ export function ModelLabScreen({
                       key={option.id}
                       type="button"
                       onClick={() => {
+                        const nextTransform = createPreviewTransformFromPreset(selectedModel.path, option.id);
                         setPreviewFrame(option.id);
+                        setPreviewTransform(nextTransform);
+                        setHasSavedPreset(Boolean(loadTransformPreset(selectedModel.path, option.id)));
+                        setSavePresetState("idle");
                       }}
                       className={`rounded-[1.3rem] border px-4 py-4 text-left transition ${
                         previewFrame === option.id
@@ -811,6 +720,7 @@ export function ModelLabScreen({
                       lightingMode="neutral"
                       manualTuning
                       fovOverride={previewFrame === "full_body" ? MODEL_LAB_FRAMING_PRESETS.FULL_BODY.fov : MODEL_LAB_FRAMING_PRESETS.IN_FRAME.fov}
+                      cameraTargetOverride={previewFrame === "full_body" ? MODEL_LAB_FRAMING_PRESETS.FULL_BODY.target : MODEL_LAB_FRAMING_PRESETS.IN_FRAME.target}
                       onClipsDetected={setDetectedClips}
                     />
                   </div>
@@ -843,7 +753,7 @@ export function ModelLabScreen({
                   <div>
                     <p className="text-[11px] font-black uppercase tracking-[0.26em] text-cyan-300">Transform Tuner</p>
                     <p className="mt-1 text-xs leading-relaxed text-slate-400">
-                      Adjust position, scale, and camera for the current viewer mode, then save it as that mode's default.
+                      Adjust position, scale, and camera for the current viewer mode, then save it as that mode&apos;s default.
                     </p>
                     {hasSavedPreset && savePresetState === "idle" && (
                       <p className="mt-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-400">✓ Saved preset active</p>

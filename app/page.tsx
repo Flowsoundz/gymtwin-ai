@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useEffect, useEffectEvent, useMemo, useState } from "react";
+import React, { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { useCoachStore } from "@/store/useCoachStore";
 import type { User } from "@supabase/supabase-js";
+import { ComingSoonScreen } from "@/components/ComingSoonScreen";
 import type {
   AdaptiveProfile,
   AppScreen,
@@ -30,6 +31,11 @@ import {
   pullStatsFromSupabase,
   pushWorkoutToSupabase,
   pullWorkoutHistoryFromSupabase,
+  deleteUserDataFromSupabase,
+  pushBodyProfileToSupabase,
+  pullBodyProfileFromSupabase,
+  pushWeeklyPlanToSupabase,
+  pullWeeklyPlanFromSupabase,
 } from "@/lib/supabaseSync";
 import { AuthScreen } from "@/components/AuthScreen";
 import { CameraSandboxScreen } from "@/components/CameraSandboxScreen";
@@ -49,7 +55,6 @@ import {
   clearStoredActiveSession,
   hasStoredActiveSession,
 } from "@/hooks/useActiveSession";
-import { getCoachQuote } from "@/lib/coachEngine";
 import { useSpeechCoach } from "@/hooks/useSpeechCoach";
 import {
   clearWorkoutStorage,
@@ -70,10 +75,10 @@ import {
   buildScoredWorkoutSummary,
 } from "@/lib/sessionScoring";
 import { getAchievementBadges } from "@/lib/achievementEngine";
-import { readBodyProfile, saveBodyProfile } from "@/lib/bodyProfileStorage";
+import { clearBodyProfile, readBodyProfile, saveBodyProfile } from "@/lib/bodyProfileStorage";
 import { generateWeeklyPlan } from "@/lib/weeklyPlanEngine";
 import { clearWeeklyPlan, markTodayComplete, readWeeklyPlan, saveWeeklyPlan } from "@/lib/weeklyPlanStorage";
-import { buildRoutine, cleanMovementName } from "@/lib/workoutEngine";
+import { cleanMovementName } from "@/lib/workoutEngine";
 import { generatePersonalizedPlan, planToWorkoutMovements } from "@/lib/personalizedWorkoutEngine";
 import {
   deriveWorkoutAdjustments,
@@ -173,9 +178,32 @@ function DebugDiagnosticsReporter({ currentScreen }: { currentScreen: AppScreen 
   return null;
 }
 
+const PREVIEW_TOKEN = process.env.NEXT_PUBLIC_PREVIEW_TOKEN;
+
 export default function GymTwinApp() {
+  const [unlocked, setUnlocked] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("access");
+    if (token && token === PREVIEW_TOKEN) {
+      localStorage.setItem("gymtwin_preview", token);
+      // Clean the token from the URL
+      const clean = window.location.pathname;
+      window.history.replaceState({}, "", clean);
+    }
+    const stored = localStorage.getItem("gymtwin_preview");
+    if (stored && stored === PREVIEW_TOKEN) setUnlocked(true);
+  }, []);
+
+  if (!PREVIEW_TOKEN) return <GymTwinAppLive />;
+  return unlocked ? <GymTwinAppLive /> : <ComingSoonScreen />;
+}
+
+function GymTwinAppLive() {
   const [currentScreen, setCurrentScreen] = useState<AppScreen>("landing");
   const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [syncBannerDismissed, setSyncBannerDismissed] = useState(false);
   const [cameraTried, setCameraTried] = useState(false);
   const [firstHintsDismissed, setFirstHintsDismissed] = useState(false);
@@ -190,7 +218,7 @@ export default function GymTwinApp() {
   const [selectedWorkoutDetail, setSelectedWorkoutDetail] = useState<WorkoutSummaryData | null>(null);
   const [hasResumeSession, setHasResumeSession] = useState(false);
   const [todayFoodLog, setTodayFoodLog] = useState<FoodItem[]>([]);
-
+  const [nutritionReturnScreen, setNutritionReturnScreen] = useState<"landing" | "summary">("landing");
   const [selectedGoal, setSelectedGoal] = useState<WorkoutGoal>("Build muscle");
   const [selectedLevel, setSelectedLevel] = useState<WorkoutLevel>("Beginner");
   const [selectedEquipment, setSelectedEquipment] = useState<Equipment>("None");
@@ -219,8 +247,9 @@ export default function GymTwinApp() {
     displayedSpeech,
     setDisplayedSpeech,
     speak,
+    speakIntent,
     updateCoachLine,
-  } = useSpeechCoach(selectedCoach, selectedAvatar);
+  } = useSpeechCoach(selectedCoach, selectedAvatar, avatarDisplaySettings.coachVoiceVolume);
 
   const activeMovement = activeRoutine[movementIndex];
 
@@ -265,8 +294,7 @@ export default function GymTwinApp() {
   const handleExerciseCountdownFinished = useEffectEvent(() => {
     if (!activeMovement) return;
     const line = "Time target reached. Finish your final reps if needed, then press Complete Set.";
-    setDisplayedSpeech(line);
-    speak(line);
+    speak(line, { priority: "countdown" });
   });
 
   const progressPercent = totalWorkoutSets ? Math.min(100, Math.round((completedSetEstimate / totalWorkoutSets) * 100)) : 0;
@@ -274,6 +302,84 @@ export default function GymTwinApp() {
   const primaryButton = "w-full py-4 rounded-2xl font-black transition-all active:scale-95 flex justify-center items-center bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-[0_0_22px_rgba(139,92,246,0.42)] hover:shadow-[0_0_32px_rgba(139,92,246,0.62)]";
   const secondaryButton = "w-full py-4 rounded-2xl font-bold transition-all active:scale-95 flex justify-center items-center bg-slate-900 text-slate-200 border border-slate-800 hover:border-blue-500";
   const selectClass = "w-full bg-slate-900 border border-slate-800 rounded-2xl p-4 outline-none focus:border-purple-500 transition-colors text-slate-200";
+
+  function openFlowsoundzRadio() {
+    setCurrentScreen("camera_sandbox");
+  }
+
+  function mergeBodyProfiles(
+    local: BodyProfile | null,
+    remote: BodyProfile | null
+  ): BodyProfile | null {
+    if (!local) return remote;
+    if (!remote) return local;
+    const localUpdated = local.lastUpdated ? Date.parse(local.lastUpdated) : 0;
+    const remoteUpdated = remote.lastUpdated ? Date.parse(remote.lastUpdated) : 0;
+    return remoteUpdated > localUpdated ? { ...local, ...remote } : { ...remote, ...local };
+  }
+
+  function mergeWeeklyPlans(
+    local: WeeklyPlan | null,
+    remote: WeeklyPlan | null
+  ): WeeklyPlan | null {
+    if (!local) return remote;
+    if (!remote) return local;
+
+    if (local.id === remote.id) {
+      const remoteDaysById = new Map(remote.days.map((day) => [day.id || day.dayLabel, day]));
+      return {
+        ...local,
+        ...remote,
+        days: local.days.map((day) => {
+          const key = day.id || day.dayLabel;
+          const remoteDay = remoteDaysById.get(key);
+          return remoteDay
+            ? { ...day, ...remoteDay, completed: day.completed || remoteDay.completed }
+            : day;
+        }),
+      };
+    }
+
+    const localCreated = local.createdAt ? Date.parse(local.createdAt) : 0;
+    const remoteCreated = remote.createdAt ? Date.parse(remote.createdAt) : 0;
+    return remoteCreated > localCreated ? remote : local;
+  }
+
+  async function syncWorkoutSummaryToCloud(summary: WorkoutSummaryData) {
+    if (!supabaseUser) return;
+    try {
+      await pushWorkoutToSupabase(supabaseUser.id, summary);
+    } catch (error) {
+      console.warn("[GymTwinSync] failed to push workout summary", error);
+    }
+  }
+
+  async function syncStatsToCloud(stats: TraineeStats) {
+    if (!supabaseUser) return;
+    try {
+      await pushStatsToSupabase(supabaseUser.id, stats);
+    } catch (error) {
+      console.warn("[GymTwinSync] failed to push user stats", error);
+    }
+  }
+
+  async function syncBodyProfileToCloud(profile: BodyProfile | null) {
+    if (!supabaseUser) return;
+    try {
+      await pushBodyProfileToSupabase(supabaseUser.id, profile);
+    } catch (error) {
+      console.warn("[GymTwinSync] failed to push body profile", error);
+    }
+  }
+
+  async function syncWeeklyPlanToCloud(plan: WeeklyPlan | null) {
+    if (!supabaseUser) return;
+    try {
+      await pushWeeklyPlanToSupabase(supabaseUser.id, plan);
+    } catch (error) {
+      console.warn("[GymTwinSync] failed to push weekly plan", error);
+    }
+  }
 
   function clearActiveSession() {
     clearStoredActiveSession();
@@ -284,12 +390,82 @@ export default function GymTwinApp() {
     clearActiveSession();
     clearWorkoutStorage();
     clearWeeklyPlan();
+    clearBodyProfile();
+    setAvatarDisplaySettings(defaultAvatarDisplaySettings);
+    saveAvatarDisplaySettings(defaultAvatarDisplaySettings);
     setUserStats({ workoutsCompleted: 0, streak: 0, lastWorkoutDate: null, totalMinutes: 0 });
+    setBodyProfile(null);
     setWeeklyPlan(null);
     setLastWorkoutSummary(null);
     setWorkoutHistory([]);
     setSelectedWorkoutDetail(null);
     setCurrentScreen("landing");
+  }
+
+  async function handleDeleteCloudData() {
+    if (!supabaseUser) return;
+    await deleteUserDataFromSupabase(supabaseUser.id);
+    clearWorkoutStorage();
+    clearWeeklyPlan();
+    clearBodyProfile();
+    setAvatarDisplaySettings(defaultAvatarDisplaySettings);
+    saveAvatarDisplaySettings(defaultAvatarDisplaySettings);
+    setUserStats({ workoutsCompleted: 0, streak: 0, lastWorkoutDate: null, totalMinutes: 0 });
+    setBodyProfile(null);
+    setWeeklyPlan(null);
+    setLastWorkoutSummary(null);
+    setWorkoutHistory([]);
+    setSelectedWorkoutDetail(null);
+  }
+
+  async function handleDeleteAccount(): Promise<{ ok: boolean; reason?: string; message?: string }> {
+    if (!supabaseUser) {
+      return { ok: false, reason: "unauthorized", message: "No signed-in user found." };
+    }
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    const accessToken = session?.access_token;
+    if (!accessToken) {
+      return { ok: false, reason: "missing_token", message: "No active session token found." };
+    }
+
+    const response = await fetch("/api/account/delete", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    const payload = (await response.json()) as {
+      ok: boolean;
+      reason?: string;
+      message?: string;
+    };
+
+    if (!response.ok || !payload.ok) {
+      return payload;
+    }
+
+    clearActiveSession();
+    clearWorkoutStorage();
+    clearWeeklyPlan();
+    clearBodyProfile();
+    setAvatarDisplaySettings(defaultAvatarDisplaySettings);
+    saveAvatarDisplaySettings(defaultAvatarDisplaySettings);
+    setUserStats({ workoutsCompleted: 0, streak: 0, lastWorkoutDate: null, totalMinutes: 0 });
+    setBodyProfile(null);
+    setWeeklyPlan(null);
+    setLastWorkoutSummary(null);
+    setWorkoutHistory([]);
+    setSelectedWorkoutDetail(null);
+    setTodayFoodLog([]);
+    await supabase.auth.signOut();
+    setCurrentScreen("landing");
+
+    return { ok: true };
   }
 
   function persistAvatarSelection(nextAvatar: CoachAvatar) {
@@ -302,6 +478,12 @@ export default function GymTwinApp() {
       });
     }
   }
+
+  useEffect(() => {
+    useCoachStore
+      .getState()
+      .setCharacter(selectedAvatar === "Atlas" ? "atlas" : "nova");
+  }, [selectedAvatar]);
 
   useEffect(() => {
     const savedStats = readUserStats();
@@ -325,7 +507,6 @@ export default function GymTwinApp() {
         ? advanceMacrocycleWeek(savedMacrocycle)
         : savedMacrocycle;
       if (advanced !== savedMacrocycle) saveMacrocycle(advanced);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMacrocycleState(advanced);
     }
 
@@ -357,7 +538,12 @@ export default function GymTwinApp() {
   // Auth listener — runs once, updates user state on login/logout
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSupabaseUser(session?.user ?? null);
+      const user = session?.user ?? null;
+      setSupabaseUser(user);
+      setAuthChecked(true);
+      if (!user && isOnboardingDone()) {
+        setCurrentScreen("auth");
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -396,6 +582,20 @@ export default function GymTwinApp() {
               saveWorkoutHistory(merged);
             }
           }),
+          pullBodyProfileFromSupabase(user.id).then((remote) => {
+            if (remote) {
+              const merged = mergeBodyProfiles(readBodyProfile(), remote);
+              setBodyProfile(merged);
+              if (merged) saveBodyProfile(merged);
+            }
+          }),
+          pullWeeklyPlanFromSupabase(user.id).then((remote) => {
+            if (remote) {
+              const merged = mergeWeeklyPlans(readWeeklyPlan(), remote);
+              setWeeklyPlan(merged);
+              if (merged) saveWeeklyPlan(merged);
+            }
+          }),
         ]);
 
         // Go to landing after sign-in if on auth screen
@@ -417,6 +617,7 @@ export default function GymTwinApp() {
     const nextPlan = generateWeeklyPlan(selectedGoal, selectedLevel, selectedEquipment);
     setWeeklyPlan(nextPlan);
     saveWeeklyPlan(nextPlan);
+    void syncWeeklyPlanToCloud(nextPlan);
   }
 
   useEffect(() => {
@@ -479,7 +680,7 @@ export default function GymTwinApp() {
     setSelectedLevel(session.selectedLevel); setSelectedEquipment(session.selectedEquipment); setSessionLength(session.sessionLength);
     setSelectedCoach(session.selectedCoach); setSessionStartedAt(session.sessionStartedAt || Date.now()); setDisplayedSpeech(session.displayedSpeech);
     setCurrentScreen("player");
-    setTimeout(() => speak("Workout resumed. Keep going."), 300);
+    setTimeout(() => speakIntent({ type: "resume_workout" }), 300);
   }
 
   function initializeTrainingSession() {
@@ -547,14 +748,13 @@ export default function GymTwinApp() {
     setExerciseCountdown(routine[0].activeSeconds); clearStoredActiveSession();
     setHasResumeSession(false); setCurrentScreen("workout_plan");
     const phrase = "Your personalized plan is ready. Review it and press Begin when you're set.";
-    setDisplayedSpeech(phrase); setTimeout(() => speak(phrase), 450);
+    setDisplayedSpeech(phrase); setTimeout(() => speak(phrase, { priority: "transition" }), 450);
   }
 
   function launchActiveWorkoutTracking() {
     if (activeRoutine.length === 0) { setCurrentScreen("setup"); return; }
     const startedAt = Date.now();
-    const intro = getCoachQuote(selectedCoach, "intro");
-    const opening = `First movement: ${cleanMovementName(activeRoutine[0].name)}. ${intro}`;
+    const opening = `We're up. Start with ${cleanMovementName(activeRoutine[0].name)}.`;
 
     const activeSessionPayload: ActiveSessionData = {
       activeRoutine, movementIndex: 0, workingSet: 1, currentReps: activeRoutine[0].baseReps, totalAccumulatedReps: 0,
@@ -566,7 +766,11 @@ export default function GymTwinApp() {
 
     setHasResumeSession(true); setSessionStartedAt(startedAt); setMovementIndex(0); setWorkingSet(1);
     setCurrentReps(activeRoutine[0].baseReps); setTotalAccumulatedReps(0); setIsRestPhase(false); setRestCountdown(0);
-    setExerciseCountdown(activeRoutine[0].activeSeconds); setCurrentScreen("player"); setDisplayedSpeech(opening); speak(opening);
+    setExerciseCountdown(activeRoutine[0].activeSeconds); setCurrentScreen("player"); setDisplayedSpeech(opening);
+    speakIntent({
+      type: "session_start",
+      movementName: cleanMovementName(activeRoutine[0].name),
+    });
   }
 
   function viewWorkoutDetail(workout: WorkoutSummaryData) {
@@ -591,6 +795,7 @@ export default function GymTwinApp() {
     }
     const updatedHistory = workoutHistory.map((item) => item.id === selectedWorkoutDetail.id ? updatedDetail : item);
     setWorkoutHistory(updatedHistory); saveWorkoutHistory(updatedHistory);
+    void syncWorkoutSummaryToCloud(updatedDetail);
   }
 
   function advanceExecutionTrack() {
@@ -599,12 +804,12 @@ export default function GymTwinApp() {
 
     if (workingSet < activeMovement.sets) {
       const nextSet = workingSet + 1; setWorkingSet(nextSet); setExerciseCountdown(activeMovement.activeSeconds);
-      updateCoachLine("action", `Set ${nextSet}.`); return;
+      speak(`Set ${nextSet}. Stay smooth.`, { priority: "transition" }); return;
     }
     if (movementIndex + 1 < activeRoutine.length) {
       const nextEx = activeRoutine[movementIndex + 1]; setMovementIndex((curr) => curr + 1); setWorkingSet(1);
       setCurrentReps(nextEx.baseReps); setExerciseCountdown(nextEx.activeSeconds);
-      updateCoachLine("action", `Next movement: ${cleanMovementName(nextEx.name)}.`); return;
+      speakIntent({ type: "next_movement", movementName: cleanMovementName(nextEx.name) }); return;
     }
     finalizeRoutineMetrics();
   }
@@ -613,7 +818,7 @@ export default function GymTwinApp() {
     if (!activeMovement) return;
     if (activeMovement.restPeriod > 0 && !(movementIndex === activeRoutine.length - 1 && workingSet === activeMovement.sets)) {
       setIsRestPhase(true); setRestCountdown(activeMovement.restPeriod);
-      updateCoachLine("recovery", `Rest for ${activeMovement.restPeriod} seconds.`); return;
+      speakIntent({ type: "rest_start", seconds: activeMovement.restPeriod }); return;
     }
     advanceExecutionTrack();
   }
@@ -666,17 +871,19 @@ export default function GymTwinApp() {
     const updatedHistory = [summaryPayload, ...workoutHistory].slice(0, 10); setWorkoutHistory(updatedHistory);
     saveWorkoutHistory(updatedHistory);
     if (supabaseUser) {
-      void pushWorkoutToSupabase(supabaseUser.id, summaryPayload);
-      void pushStatsToSupabase(supabaseUser.id, nextStats);
+      void syncWorkoutSummaryToCloud(summaryPayload);
+      void syncStatsToCloud(nextStats);
     }
     const updatedWeeklyPlan = markTodayComplete(weeklyPlan);
-    if (updatedWeeklyPlan) setWeeklyPlan(updatedWeeklyPlan);
+    if (updatedWeeklyPlan) {
+      setWeeklyPlan(updatedWeeklyPlan);
+      void syncWeeklyPlanToCloud(updatedWeeklyPlan);
+    }
 
     clearActiveSession(); setSessionStartedAt(null);
     useCoachStore.getState().setWorkoutPhase("celebrating");
     useCoachStore.getState().setRepProgress(0);
-    const line = `Workout complete. ${getCoachQuote(selectedCoach, "outro")}`;
-    setDisplayedSpeech(line); speak(line); setCurrentScreen("summary");
+    speakIntent({ type: "session_complete" }); setCurrentScreen("summary");
   }
 
   function submitAdaptiveFeedback(feedback: PostWorkoutFeedback) {
@@ -698,6 +905,7 @@ export default function GymTwinApp() {
     );
     setWorkoutHistory(updatedHistory);
     saveWorkoutHistory(updatedHistory);
+    void syncWorkoutSummaryToCloud(updatedSummary);
 
     // Update and persist the adaptive profile
     const currentProfile = adaptiveProfile ?? readAdaptiveProfile();
@@ -721,12 +929,12 @@ export default function GymTwinApp() {
   }
 
   function recallCoachDialogue() { if (currentScreen === "player") updateCoachLine(isRestPhase ? "recovery" : "action"); }
-  function activateSafetyShutdown() { speak("Workout stopped. Safety comes first."); clearActiveSession(); setSessionStartedAt(null); setCurrentScreen("safety_stop"); }
+  function activateSafetyShutdown() { speakIntent({ type: "safety_stop" }); clearActiveSession(); setSessionStartedAt(null); setCurrentScreen("safety_stop"); }
   function resetWorkout() { clearActiveSession(); setActiveRoutine([]); setMovementIndex(0); setWorkingSet(1); setCurrentReps(0); setTotalAccumulatedReps(0); setSessionStartedAt(null); setIsRestPhase(false); setRestCountdown(0); setExerciseCountdown(0); setCurrentScreen("landing"); }
 
   function changeDifficulty(direction: "easy" | "hard") {
-    if (direction === "easy") { setCurrentReps((r) => r + 2); updateCoachLine("action", "Difficulty increased slightly."); }
-    else { setCurrentReps((r) => Math.max(1, r - 2)); updateCoachLine("action", "Difficulty lowered. Clean form matters more than ego."); }
+    if (direction === "easy") { setCurrentReps((r) => r + 2); speakIntent({ type: "difficulty_change", direction: "easy" }); }
+    else { setCurrentReps((r) => Math.max(1, r - 2)); speakIntent({ type: "difficulty_change", direction: "hard" }); }
   }
 
   // Floating coach state — mirrors exercise during workout, idles otherwise
@@ -825,6 +1033,16 @@ export default function GymTwinApp() {
     setCurrentScreen("camera_sandbox");
   }
 
+  function openNutritionHub(returnScreen: "landing" | "summary" = "landing") {
+    setNutritionReturnScreen(returnScreen);
+    setCurrentScreen("nutrition");
+  }
+
+  // Block rendering until Supabase session resolves — prevents landing flash for signed-out users
+  if (!authChecked && currentScreen !== "onboarding") {
+    return <div className="min-h-screen bg-[#070d1a]" />;
+  }
+
   return (
     <>
       <DebugDiagnosticsReporter currentScreen={currentScreen} />
@@ -843,7 +1061,7 @@ export default function GymTwinApp() {
       )}
 
       {currentScreen === "auth" && (
-        <AuthScreen onSkip={() => setCurrentScreen("landing")} />
+        <AuthScreen />
       )}
 
       {currentScreen === "landing" && (
@@ -867,7 +1085,8 @@ export default function GymTwinApp() {
           showSyncBanner={!supabaseUser && !syncBannerDismissed}
           onOpenAuth={() => setCurrentScreen("auth")}
           onDismissSyncBanner={() => setSyncBannerDismissed(true)}
-          onViewNutrition={() => setCurrentScreen("nutrition")}
+          onViewNutrition={() => openNutritionHub("landing")}
+          onOpenFlowsoundzRadio={openFlowsoundzRadio}
           primaryButton={primaryButton}
           secondaryButton={secondaryButton}
         />
@@ -881,11 +1100,16 @@ export default function GymTwinApp() {
           onResetLocalData={resetLocalAppData}
           selectedAvatar={selectedAvatar}
           onSelectedAvatarChange={persistAvatarSelection}
+          onOpenFlowsoundzRadio={openFlowsoundzRadio}
           bodyProfile={bodyProfile}
           avatarDisplaySettings={avatarDisplaySettings}
+          onDeleteCloudData={supabaseUser ? handleDeleteCloudData : undefined}
+          onDeleteAccount={supabaseUser ? handleDeleteAccount : undefined}
           onBodyProfileChange={(profile) => {
             setBodyProfile(profile);
             if (profile) saveBodyProfile(profile);
+            else clearBodyProfile();
+            void syncBodyProfileToCloud(profile);
           }}
           onAvatarDisplaySettingsChange={(settings) => {
             setAvatarDisplaySettings(settings);
@@ -936,6 +1160,7 @@ export default function GymTwinApp() {
           setHasAcceptedSafety={(v) => { setHasAcceptedSafety(v); if (v) markSafetyAccepted(); }}
           onBack={() => setCurrentScreen("landing")}
           onGeneratePreview={initializeTrainingSession}
+          onOpenFlowsoundzRadio={openFlowsoundzRadio}
           primaryButton={primaryButton}
           selectClass={selectClass}
         />
@@ -999,6 +1224,7 @@ export default function GymTwinApp() {
           onChangeDifficultyHard={() => changeDifficulty("hard")}
           onCoachAnimHint={setFloatingHint}
           onAutoSpeak={speak}
+          onSpeakIntent={speakIntent}
           isFirstWorkout={!firstHintsDismissed && userStats.workoutsCompleted === 0}
           onFirstHintsDismissed={() => { setFirstHintsDismissed(true); markFirstHintsShown(); }}
           primaryButton={primaryButton}
@@ -1018,6 +1244,7 @@ export default function GymTwinApp() {
           onRepeatWorkout={initializeTrainingSession}
           onStartNewWorkout={() => setCurrentScreen("setup")}
           onViewProgress={() => setCurrentScreen("progress")}
+          onViewNutrition={() => openNutritionHub("summary")}
           primaryButton={primaryButton}
           secondaryButton={secondaryButton}
         />
@@ -1068,10 +1295,11 @@ export default function GymTwinApp() {
           caloriesBurnedToday={caloriesBurnedToday}
           activeSessionCalories={activeSessionCalories}
           bodyProfile={bodyProfile}
-          onBack={() => setCurrentScreen("landing")}
+          onBack={() => setCurrentScreen(nutritionReturnScreen)}
           onOpenFoodCamera={() => setCurrentScreen("food_camera")}
           onCopyYesterdayMeals={handleCopyYesterdayMeals}
           onRemoveFoodItem={handleRemoveFoodItem}
+          onLogRecommendedMeal={handleLogMealItem}
           primaryButton={primaryButton}
         />
       )}
@@ -1094,6 +1322,7 @@ export default function GymTwinApp() {
           message={displayedSpeech || null}
         />
       )}
+
     </>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useRef } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { ContactShadows, MeshReflectorMaterial, useGLTF } from "@react-three/drei";
 import { EffectComposer, Bloom } from "@react-three/postprocessing";
@@ -26,6 +26,7 @@ import {
 import type { Group, Object3D } from "three";
 import { useCoachStore } from "@/store/useCoachStore";
 import { CHARACTERS } from "@/lib/characters";
+import type { CharacterId } from "@/lib/characters";
 import type { WorkoutPhase } from "@/store/useCoachStore";
 
 useGLTF.setDecoderPath("/draco/");
@@ -44,6 +45,158 @@ const PHASE_RING_COLOR: Record<WorkoutPhase, string> = {
   rest: "#7740ff",     // violet
   celebrating: "#ff00dd", // hot pink
 };
+
+const EMPTY_SUBSCRIBE = () => () => {};
+const ORBIT_TARGETS: Record<CharacterId, [number, number, number]> = {
+  atlas: [0, 1.26, 0],
+  nova: [0, 1.2, 0],
+  "anime-female": [0, 1.2, 0],
+  "anime-male": [0, 1.26, 0],
+  "virtual-idol": [0, 1.2, 0],
+  "cyber-artist": [0, 1.26, 0],
+};
+
+type CoachCanvasSurface =
+  | "default"
+  | "hero"
+  | "workout_panel"
+  | "demo_card"
+  | "summary";
+
+type SurfacePreset = {
+  cameraPosition: [number, number, number];
+  target: [number, number, number];
+  fov: number;
+};
+
+type LightingPreset = {
+  ambientIntensity: number;
+  hemisphereIntensity: number;
+  keyIntensity: number;
+  rimIntensity: number;
+  violetFillIntensity: number;
+  floorBounceIntensity: number;
+  topFillIntensity: number;
+  faceFillIntensity: number;
+  bloomIntensity: number;
+  floorMixStrength: number;
+  toneExposure: number;
+};
+
+function getSurfacePreset(
+  characterId: CharacterId,
+  surface: CoachCanvasSurface
+): SurfacePreset {
+  const target = ORBIT_TARGETS[characterId] ?? [0, 1.22, 0];
+
+  switch (surface) {
+    case "hero":
+      return {
+        cameraPosition: [0, 1.34, 4.35],
+        target: [target[0], target[1] + 0.02, target[2]],
+        fov: 33,
+      };
+    case "workout_panel":
+      return {
+        cameraPosition: [0, 1.26, 4.15],
+        target,
+        fov: 32,
+      };
+    case "demo_card":
+      return {
+        cameraPosition: [0, 1.3, 4.25],
+        target,
+        fov: 32,
+      };
+    case "summary":
+      return {
+        cameraPosition: [0, 1.28, 3.95],
+        target,
+        fov: 32,
+      };
+    default:
+      return {
+        cameraPosition: [0, 1.3, 4.2],
+        target,
+        fov: 34,
+      };
+  }
+}
+
+function getLightingPreset(surface: CoachCanvasSurface): LightingPreset {
+  switch (surface) {
+    case "hero":
+      return {
+        ambientIntensity: 0.18,
+        hemisphereIntensity: 0.34,
+        keyIntensity: 5.7,
+        rimIntensity: 3.9,
+        violetFillIntensity: 2.1,
+        floorBounceIntensity: 2.2,
+        topFillIntensity: 1.6,
+        faceFillIntensity: 0.7,
+        bloomIntensity: 0.95,
+        floorMixStrength: 22,
+        toneExposure: 1.5,
+      };
+    case "workout_panel":
+      return {
+        ambientIntensity: 0.15,
+        hemisphereIntensity: 0.28,
+        keyIntensity: 5.2,
+        rimIntensity: 2.9,
+        violetFillIntensity: 1.2,
+        floorBounceIntensity: 1.6,
+        topFillIntensity: 1.4,
+        faceFillIntensity: 0,
+        bloomIntensity: 0.6,
+        floorMixStrength: 16,
+        toneExposure: 1.42,
+      };
+    case "demo_card":
+      return {
+        ambientIntensity: 0.15,
+        hemisphereIntensity: 0.3,
+        keyIntensity: 5.1,
+        rimIntensity: 3.0,
+        violetFillIntensity: 1.25,
+        floorBounceIntensity: 1.55,
+        topFillIntensity: 1.45,
+        faceFillIntensity: 0,
+        bloomIntensity: 0.62,
+        floorMixStrength: 15,
+        toneExposure: 1.42,
+      };
+    case "summary":
+      return {
+        ambientIntensity: 0.17,
+        hemisphereIntensity: 0.31,
+        keyIntensity: 5.35,
+        rimIntensity: 3.2,
+        violetFillIntensity: 1.45,
+        floorBounceIntensity: 1.75,
+        topFillIntensity: 1.5,
+        faceFillIntensity: 0,
+        bloomIntensity: 0.72,
+        floorMixStrength: 18,
+        toneExposure: 1.46,
+      };
+    default:
+      return {
+        ambientIntensity: 0.18,
+        hemisphereIntensity: 0.32,
+        keyIntensity: 5.5,
+        rimIntensity: 3.6,
+        violetFillIntensity: 1.8,
+        floorBounceIntensity: 2.1,
+        topFillIntensity: 1.6,
+        faceFillIntensity: 0,
+        bloomIntensity: 0.85,
+        floorMixStrength: 24,
+        toneExposure: 1.55,
+      };
+  }
+}
 
 // ─── Arena backdrop ──────────────────────────────────────────────────────────
 
@@ -168,7 +321,15 @@ function DynamicHexPlatform({
 
 // ─── Reflective floor ────────────────────────────────────────────────────────
 
-function ReflectiveFloor({ accentColor }: { accentColor: string }) {
+function ReflectiveFloor({
+  accentColor,
+  mixStrength,
+}: {
+  accentColor: string;
+  mixStrength: number;
+}) {
+  const floorTint = useMemo(() => new Color(accentColor).multiplyScalar(0.42), [accentColor]);
+
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.18, 0]} receiveShadow>
       <circleGeometry args={[3.5, 64]} />
@@ -176,12 +337,12 @@ function ReflectiveFloor({ accentColor }: { accentColor: string }) {
         blur={[300, 100]}
         resolution={512}
         mixBlur={1}
-        mixStrength={40}
+        mixStrength={mixStrength}
         roughness={1}
         depthScale={1.2}
         minDepthThreshold={0.4}
         maxDepthThreshold={1.4}
-        color={accentColor}
+        color={floorTint}
         metalness={0.8}
         mirror={0}
       />
@@ -195,7 +356,6 @@ const HEAD_BONE_NAMES = ["mixamorigHead", "Head", "head", "Bip01_Head"];
 const _targetQuat = new Quaternion();
 const _worldPos = new Vector3();
 const _headDir = new Vector3();
-const _up = new Vector3(0, 1, 0);
 const MAX_YAW = Math.PI / 6;   // ±30°
 const MAX_PITCH = Math.PI / 8; // ±22.5°
 
@@ -267,6 +427,15 @@ function CoachModelEngine({
   const groupRef = useRef<Group>(null);
   const mixerRef = useRef<AnimationMixer | null>(null);
   const currentActionRef = useRef<AnimationAction | null>(null);
+  const hasShownPlayablePoseRef = useRef(false);
+  const [isPoseReady, setIsPoseReady] = useState(false);
+
+  const revealPoseAndMarkLoaded = useCallback(() => {
+    if (hasShownPlayablePoseRef.current) return;
+    hasShownPlayablePoseRef.current = true;
+    setIsPoseReady(true);
+    setLoaded(true);
+  }, [setLoaded]);
 
   useEffect(() => {
     cloned.traverse((obj) => {
@@ -277,7 +446,7 @@ function CoachModelEngine({
         (obj as { receiveShadow?: boolean }).receiveShadow = true;
       }
     });
-    setLoaded(true);
+    hasShownPlayablePoseRef.current = false;
     return () => setLoaded(false);
   }, [cloned, setLoaded]);
 
@@ -294,14 +463,19 @@ function CoachModelEngine({
 
   useEffect(() => {
     const mixer = mixerRef.current;
-    if (!mixer || !animations.length) return;
+    if (!mixer) return;
     // External GLBs: always use first valid clip (Blender FBX→GLB produces one clip)
     const clip = animationGLBPath
       ? (animations.find((c) => c.duration > 0) ?? null)
       : (animations.find((c) => c.name === animationName) ??
          animations.find((c) => c.duration > 0) ??
          null);
-    if (!clip) return;
+    if (!clip) {
+      const fallbackRevealId = window.setTimeout(() => {
+        revealPoseAndMarkLoaded();
+      }, 80);
+      return () => window.clearTimeout(fallbackRevealId);
+    }
     const next = mixer.clipAction(clip);
     next.setLoop(LoopRepeat, Infinity);
     const prev = currentActionRef.current;
@@ -312,13 +486,19 @@ function CoachModelEngine({
       next.reset().fadeIn(0.3).play();
     }
     currentActionRef.current = next;
-  }, [animations, animationName, animationGLBPath]);
+
+    if (!hasShownPlayablePoseRef.current) {
+      mixer.update(1 / 60);
+      revealPoseAndMarkLoaded();
+    }
+  }, [animations, animationGLBPath, animationName, revealPoseAndMarkLoaded]);
 
   useFrame((_, delta) => mixerRef.current?.update(delta));
 
   return (
-    <group ref={groupRef} scale={scale}>
-      <primitive object={cloned} />
+    <group ref={groupRef} scale={scale} position={[0, 0.08, 0]}>
+      {!isPoseReady && <LoadingRing color="#7dd3fc" />}
+      <primitive object={cloned} visible={isPoseReady} />
       <GazeController root={cloned} />
     </group>
   );
@@ -337,10 +517,35 @@ function LoadingRing({ color }: { color: string }) {
   );
 }
 
+function CameraSetup({
+  position,
+  target,
+  fov,
+}: {
+  position: [number, number, number];
+  target: [number, number, number];
+  fov: number;
+}) {
+  const { camera } = useThree();
+
+  useEffect(() => {
+    camera.position.set(...position);
+    // react-three-fiber owns this camera instance; updating fov here is the intended
+    // way to keep coach framing consistent across surfaces.
+    // eslint-disable-next-line react-hooks/immutability
+    (camera as { fov?: number }).fov = fov;
+    camera.lookAt(target[0], target[1], target[2]);
+    camera.updateProjectionMatrix();
+  }, [camera, fov, position, target]);
+
+  return null;
+}
+
 // ─── Public component ────────────────────────────────────────────────────────
 
 type OptimizedCoachCanvasProps = {
   height?: string;
+  surface?: CoachCanvasSurface;
   cameraPosition?: [number, number, number];
   fov?: number;
   bloom?: boolean;
@@ -350,22 +555,33 @@ type OptimizedCoachCanvasProps = {
 
 export function OptimizedCoachCanvas({
   height = "h-[480px]",
-  cameraPosition = [0, 1.3, 4.2],
-  fov = 34,
+  surface = "default",
+  cameraPosition,
+  fov,
   bloom = true,
   forceShow = false,
 }: OptimizedCoachCanvasProps) {
   const { characterId, currentAnimation, displayLayout, coachSize, workoutPhase, repProgress, animationGLBPath } =
     useCoachStore();
   const character = CHARACTERS[characterId];
+  const devicePixelRatio = useSyncExternalStore(
+    EMPTY_SUBSCRIBE,
+    () => window.devicePixelRatio || 1.8,
+    () => 1.8
+  );
 
   const isCameraScreen = displayLayout === "camera_corner";
-  if (!forceShow && displayLayout === "hidden") return null;
-  if (!character.available || !character.modelPath) return null;
-
   const pixelRatio: [number, number] = isCameraScreen
     ? [1, 1]
-    : [1, Math.min(typeof window !== "undefined" ? window.devicePixelRatio : 2, 1.8)];
+    : [1, Math.min(devicePixelRatio, 1.8)];
+  const surfacePreset = getSurfacePreset(characterId, surface);
+  const lightingPreset = getLightingPreset(surface);
+  const resolvedCameraPosition = cameraPosition ?? surfacePreset.cameraPosition;
+  const resolvedFov = fov ?? surfacePreset.fov;
+  const orbitTarget = surfacePreset.target;
+
+  if (!forceShow && displayLayout === "hidden") return null;
+  if (!character.available || !character.modelPath) return null;
 
   const scale = SIZE_SCALE[coachSize] ?? 1.15;
   const enableBloom = bloom && !isCameraScreen;
@@ -374,15 +590,16 @@ export function OptimizedCoachCanvas({
     <div className={`overflow-hidden rounded-2xl ${height}`}>
       <Canvas
         shadows={isCameraScreen ? false : { type: PCFShadowMap }}
-        camera={{ position: cameraPosition, fov, near: 0.1, far: 200 }}
+        camera={{ position: resolvedCameraPosition, fov: resolvedFov, near: 0.1, far: 200 }}
         dpr={pixelRatio}
         gl={{ antialias: !isCameraScreen, powerPreference: "high-performance" }}
         onCreated={({ gl }) => {
           gl.outputColorSpace = SRGBColorSpace;
           gl.toneMapping = ACESFilmicToneMapping;
-          gl.toneMappingExposure = isCameraScreen ? 1.2 : 1.55;
+          gl.toneMappingExposure = isCameraScreen ? 1.2 : lightingPreset.toneExposure;
         }}
       >
+        <CameraSetup position={resolvedCameraPosition} target={orbitTarget} fov={resolvedFov} />
         <color attach="background" args={["#010208"]} />
 
         {!isCameraScreen && (
@@ -396,12 +613,12 @@ export function OptimizedCoachCanvas({
           <ambientLight intensity={1.0} color="#c8e0ff" />
         ) : (
           <>
-            <ambientLight intensity={0.18} color="#080c1a" />
-            <hemisphereLight color="#1a2050" groundColor="#000000" intensity={0.32} />
+            <ambientLight intensity={lightingPreset.ambientIntensity} color="#080c1a" />
+            <hemisphereLight color="#1a2050" groundColor="#000000" intensity={lightingPreset.hemisphereIntensity} />
             <directionalLight
               castShadow
               position={[-2, 7, 5]}
-              intensity={5.5}
+              intensity={lightingPreset.keyIntensity}
               color="#d0e8ff"
               shadow-mapSize-width={2048}
               shadow-mapSize-height={2048}
@@ -413,10 +630,19 @@ export function OptimizedCoachCanvas({
               shadow-camera-top={5}
               shadow-camera-bottom={-5}
             />
-            <directionalLight position={[-5, 3, -3]} intensity={4.5} color={character.rimColor} />
-            <directionalLight position={[5, 2, -2]} intensity={3.2} color="#7740ff" />
-            <pointLight position={[0, 0.05, 0.3]} intensity={2.8} color={character.rimColor} distance={4.5} decay={2} />
-            <pointLight position={[0, 9, 1]} intensity={1.6} color="#c8e0ff" distance={16} decay={2} />
+            <directionalLight position={[-5, 3, -3]} intensity={lightingPreset.rimIntensity} color={character.rimColor} />
+            <directionalLight position={[5, 2, -2]} intensity={lightingPreset.violetFillIntensity} color="#7740ff" />
+            <pointLight position={[0, 0.05, 0.3]} intensity={lightingPreset.floorBounceIntensity} color={character.rimColor} distance={4.5} decay={2} />
+            <pointLight position={[0, 9, 1]} intensity={lightingPreset.topFillIntensity} color="#c8e0ff" distance={16} decay={2} />
+            {lightingPreset.faceFillIntensity > 0 && (
+              <pointLight
+                position={[0, 1.85, 2.15]}
+                intensity={lightingPreset.faceFillIntensity}
+                color="#ffe7d6"
+                distance={4.2}
+                decay={2}
+              />
+            )}
           </>
         )}
 
@@ -427,7 +653,7 @@ export function OptimizedCoachCanvas({
               workoutPhase={workoutPhase}
               repProgress={repProgress}
             />
-            <ReflectiveFloor accentColor={character.accentColor} />
+            <ReflectiveFloor accentColor={character.accentColor} mixStrength={lightingPreset.floorMixStrength} />
             <ContactShadows
               position={[0, -0.178, 0]}
               opacity={0.18}
@@ -442,6 +668,7 @@ export function OptimizedCoachCanvas({
 
         <Suspense fallback={<LoadingRing color={character.accentColor} />}>
           <CoachModelEngine
+            key={character.modelPath}
             modelPath={character.modelPath}
             animationName={currentAnimation}
             scale={scale}
@@ -454,7 +681,7 @@ export function OptimizedCoachCanvas({
             <Bloom
               luminanceThreshold={0.75}
               luminanceSmoothing={0.3}
-              intensity={1.2}
+              intensity={lightingPreset.bloomIntensity}
               mipmapBlur
             />
           </EffectComposer>
