@@ -47,6 +47,7 @@ CATEGORIES = {
     "emote":      "emotes",
     "pose":       "poses",
     "dance":      "dance",
+    "gestures":   "gestures",
 }
 
 ANIM_ROOT   = os.path.join(PROJECT_ROOT, "assets/blender/maximo_character/animations")
@@ -79,6 +80,20 @@ def parse_name(filename):
     return category, slug
 
 
+def parse_gesture_name(filename):
+    """
+    Raw Mixamo gesture names: 'head nod yes.fbx' → ('gestures', 'Head_Nod_Yes_1')
+    Skips 'Untitled.fbx'.
+    """
+    stem = os.path.splitext(filename)[0]
+    if stem.lower() == "untitled":
+        return None, None
+    # Title-case each word and join with underscores
+    words = re.split(r"[\s_-]+", stem.strip())
+    slug = "_".join(w.capitalize() for w in words if w) + "_1"
+    return "gestures", slug
+
+
 # ─── Run ──────────────────────────────────────────────────────────────────────
 
 # Gather all FBX files grouped by category
@@ -88,10 +103,14 @@ for cat_folder in sorted(os.listdir(ANIM_ROOT)):
     cat_path = os.path.join(ANIM_ROOT, cat_folder)
     if not os.path.isdir(cat_path):
         continue
+    is_gestures = cat_folder.lower() == "gestures"
     for fname in sorted(os.listdir(cat_path)):
         if not fname.lower().endswith(".fbx"):
             continue
-        category, slug = parse_name(fname)
+        if is_gestures:
+            category, slug = parse_gesture_name(fname)
+        else:
+            category, slug = parse_name(fname)
         if category is None:
             continue
         out_dir = os.path.join(OUTPUT_ROOT, category)
