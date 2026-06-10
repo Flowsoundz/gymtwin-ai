@@ -121,6 +121,15 @@ export function WorkoutPlayerScreen({
 
   // Sync rep progress + workout phase into global coach store
   const { setRepProgress, setWorkoutPhase, setAnimationGLBPath } = useCoachStore();
+
+  // Coach reaction helper — debounced so consecutive same-severity events don't spam
+  const lastReactionRef = useRef<number>(0);
+  function triggerCoachReaction(glbPath: string, cooldownMs = 3500) {
+    const now = Date.now();
+    if (now - lastReactionRef.current < cooldownMs) return;
+    lastReactionRef.current = now;
+    useCoachStore.getState().setReactionGLBPath(glbPath);
+  }
   useEffect(() => {
     const target = activeMovement.baseReps ?? 10;
     setRepProgress(currentReps / target);
@@ -134,6 +143,7 @@ export function WorkoutPlayerScreen({
     setAnimationGLBPath(getExerciseAnimationGLBPath(activeMovement));
     return () => setAnimationGLBPath(null);
   }, [activeMovement, setAnimationGLBPath]);
+
 
   // Progressive overload tracker
   const [trackerOpen, setTrackerOpen] = useState(false);
@@ -369,6 +379,21 @@ export function WorkoutPlayerScreen({
     };
   }, [feedbackSeverity, latestIssue, isCameraRunning, isMuted, onAutoSpeak, feedbackMessage, avatarDisplaySettings.talkativeness]);
 
+  // Coach reacts to form feedback and phase changes
+  useEffect(() => {
+    if (feedbackSeverity === "good") {
+      triggerCoachReaction("/models/animations/gestures/Head_Nod_Yes_1.glb");
+    } else if (feedbackSeverity === "error") {
+      triggerCoachReaction("/models/animations/gestures/Shaking_Head_No_1.glb", 4000);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feedbackSeverity]);
+
+  useEffect(() => {
+    if (isRestPhase) triggerCoachReaction("/models/animations/gestures/Weight_Shift_1.glb", 1000);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRestPhase]);
+
   // Difficulty adjustment wrappers — show toast then call parent
   function handleDifficultyEasy() {
     const hint = personalizedExercise?.harderOption ?? "Adding 2 reps to push hypertrophic range.";
@@ -429,6 +454,7 @@ export function WorkoutPlayerScreen({
       if (result.isPR && result.prLabel) {
         setPrFlash(result.prLabel);
         window.setTimeout(() => setPrFlash(null), 3500);
+        useCoachStore.getState().setReactionGLBPath("/models/animations/emotes/Cheering_1.glb");
       }
     }
     setTrackerOpen(false);

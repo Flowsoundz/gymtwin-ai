@@ -15,6 +15,7 @@ import {
   CanvasTexture,
   Color,
   Euler,
+  LoopOnce,
   LoopRepeat,
   Mesh,
   MathUtils,
@@ -401,18 +402,27 @@ function GazeController({ root }: { root: Object3D }) {
 
 // ─── Coach model ─────────────────────────────────────────────────────────────
 
+// Preload common reaction GLBs so they're in cache before the first trigger
+useGLTF.preload("/models/animations/gestures/Head_Nod_Yes_1.glb");
+useGLTF.preload("/models/animations/gestures/Shaking_Head_No_1.glb");
+useGLTF.preload("/models/animations/gestures/Weight_Shift_1.glb");
+useGLTF.preload("/models/animations/emotes/Cheering_1.glb");
+useGLTF.preload("/models/animations/emotes/Victory_1.glb");
+
 function CoachModelEngine({
   modelPath,
   animationName,
   scale,
   animationGLBPath,
+  reactionGLBPath,
 }: {
   modelPath: string;
   animationName: string;
   scale: number;
   animationGLBPath: string | null;
+  reactionGLBPath: string | null;
 }) {
-  const { setLoaded } = useCoachStore();
+  const { setLoaded, setReactionGLBPath } = useCoachStore();
   const { scene, animations: charAnimations } = useGLTF(modelPath) as {
     scene: Object3D;
     animations: AnimationClip[];
@@ -421,12 +431,17 @@ function CoachModelEngine({
   const { animations: extAnimations } = useGLTF(animationGLBPath ?? modelPath) as {
     animations: AnimationClip[];
   };
+  // Same pattern for reactions — falls back to modelPath when no reaction queued
+  const { animations: reactionAnims } = useGLTF(reactionGLBPath ?? modelPath) as {
+    animations: AnimationClip[];
+  };
   const animations = animationGLBPath ? extAnimations : charAnimations;
 
   const cloned = useMemo(() => skeletonClone(scene), [scene]);
   const groupRef = useRef<Group>(null);
   const mixerRef = useRef<AnimationMixer | null>(null);
   const currentActionRef = useRef<AnimationAction | null>(null);
+  const reactionActionRef = useRef<AnimationAction | null>(null);
   const hasShownPlayablePoseRef = useRef(false);
   const [isPoseReady, setIsPoseReady] = useState(false);
 
@@ -492,6 +507,30 @@ function CoachModelEngine({
       revealPoseAndMarkLoaded();
     }
   }, [animations, animationGLBPath, animationName, revealPoseAndMarkLoaded]);
+
+  // One-shot reaction: plays once then crossfades back to the exercise loop
+  useEffect(() => {
+    const mixer = mixerRef.current;
+    if (!mixer || !reactionGLBPath) return;
+    const clip = reactionAnims.find((c) => c.duration > 0);
+    if (!clip) { setReactionGLBPath(null); return; }
+
+    const action = mixer.clipAction(clip);
+    action.setLoop(LoopOnce, 1);
+    action.clampWhenFinished = false;
+    action.reset().play();
+    if (currentActionRef.current) currentActionRef.current.crossFadeTo(action, 0.2, true);
+    reactionActionRef.current = action;
+
+    const onFinished = (e: { action: AnimationAction }) => {
+      if (e.action !== action) return;
+      if (currentActionRef.current) action.crossFadeTo(currentActionRef.current, 0.3, true);
+      reactionActionRef.current = null;
+      setReactionGLBPath(null);
+    };
+    mixer.addEventListener("finished", onFinished);
+    return () => mixer.removeEventListener("finished", onFinished);
+  }, [reactionGLBPath, reactionAnims, setReactionGLBPath]);
 
   useFrame((_, delta) => mixerRef.current?.update(delta));
 
@@ -561,7 +600,7 @@ export function OptimizedCoachCanvas({
   bloom = true,
   forceShow = false,
 }: OptimizedCoachCanvasProps) {
-  const { characterId, currentAnimation, displayLayout, coachSize, workoutPhase, repProgress, animationGLBPath } =
+  const { characterId, currentAnimation, displayLayout, coachSize, workoutPhase, repProgress, animationGLBPath, reactionGLBPath } =
     useCoachStore();
   const character = CHARACTERS[characterId];
   const devicePixelRatio = useSyncExternalStore(
@@ -673,6 +712,7 @@ export function OptimizedCoachCanvas({
             animationName={currentAnimation}
             scale={scale}
             animationGLBPath={animationGLBPath}
+            reactionGLBPath={reactionGLBPath}
           />
         </Suspense>
 
