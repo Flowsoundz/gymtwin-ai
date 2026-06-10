@@ -8,6 +8,7 @@ export const metadata: Metadata = {
 };
 
 const terms = [
+  "You must be at least 13 years old to create an account and use GymTwin AI. Users under 18 must have the consent of a parent or legal guardian. By creating an account you confirm that you meet this requirement.",
   "GymTwin AI is a fitness coaching product, not a medical device, emergency tool, or professional healthcare substitute.",
   "You are responsible for exercising within your limits and stopping immediately if you feel pain, dizziness, chest pain, or unusual discomfort.",
   "Workout suggestions, form cues, nutrition estimates, and camera feedback are informational and should be used with judgment.",

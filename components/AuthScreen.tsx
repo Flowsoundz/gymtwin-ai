@@ -16,6 +16,7 @@ export function AuthScreen({ onSkip }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   const inputClass =
     "w-full rounded-2xl border border-white/10 bg-slate-900 px-4 py-3.5 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-purple-500 transition-colors";
@@ -113,9 +114,25 @@ export function AuthScreen({ onSkip }: Props) {
               className={inputClass}
             />
           )}
+          {mode === "signup" && (
+            <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-white/8 bg-slate-900/60 px-4 py-3.5">
+              <input
+                type="checkbox"
+                checked={agreedToTerms}
+                onChange={(e) => setAgreedToTerms(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 accent-purple-500"
+              />
+              <span className="text-xs leading-5 text-slate-400">
+                I am 13 or older (or have a parent&apos;s permission) and agree to the{" "}
+                <a href="/terms" target="_blank" className="text-purple-400 underline underline-offset-2 hover:text-purple-300">Terms of Use</a>
+                {" "}and{" "}
+                <a href="/privacy" target="_blank" className="text-purple-400 underline underline-offset-2 hover:text-purple-300">Privacy Policy</a>.
+              </span>
+            </label>
+          )}
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || (mode === "signup" && !agreedToTerms)}
             className="mt-1 w-full rounded-2xl bg-gradient-to-r from-blue-600 to-purple-600 py-3.5 text-sm font-black text-white shadow-[0_0_22px_rgba(139,92,246,0.42)] transition-all active:scale-95 disabled:opacity-50"
           >
             {loading
@@ -156,7 +173,7 @@ export function AuthScreen({ onSkip }: Props) {
         <div className="mt-5 flex flex-col items-center gap-2 text-xs text-slate-400">
           {mode === "login" && (
             <>
-              <button onClick={() => { setMode("signup"); setError(null); }} className="font-bold text-purple-400 hover:text-purple-300">
+              <button onClick={() => { setMode("signup"); setError(null); setAgreedToTerms(false); }} className="font-bold text-purple-400 hover:text-purple-300">
                 No account? Sign up free
               </button>
               <button onClick={() => { setMode("reset"); setError(null); }} className="text-slate-500 hover:text-slate-300">
@@ -165,7 +182,7 @@ export function AuthScreen({ onSkip }: Props) {
             </>
           )}
           {mode === "signup" && (
-            <button onClick={() => { setMode("login"); setError(null); }} className="font-bold text-purple-400 hover:text-purple-300">
+            <button onClick={() => { setMode("login"); setError(null); setAgreedToTerms(false); }} className="font-bold text-purple-400 hover:text-purple-300">
               Already have an account? Sign in
             </button>
           )}

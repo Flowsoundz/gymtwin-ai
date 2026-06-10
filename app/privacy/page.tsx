@@ -33,6 +33,11 @@ const sections = [
     body:
       "You can reset local app data from Settings. Signed-in users can also delete synced workout data from Settings. For full account deletion requests, contact support.",
   },
+  {
+    title: "Users under 18",
+    body:
+      "GymTwin AI requires users to be at least 13 years old. Users under 18 must have parental or guardian consent before using the app. We do not knowingly collect personal data from children under 13. If you believe a child under 13 has created an account without parental consent, please contact us and we will delete the account and associated data promptly.",
+  },
 ];
 
 export default function PrivacyPage() {
