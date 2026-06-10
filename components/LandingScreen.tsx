@@ -16,7 +16,8 @@ import { getAchievementBadges } from "@/lib/achievementEngine";
 import { getTopLoggedExercises } from "@/lib/progressiveOverloadEngine";
 import { deriveProgressTrends } from "@/lib/progressTrends";
 import { getTodayWeeklyPlanLabel } from "@/lib/weeklyPlanEngine";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useCoachStore } from "@/store/useCoachStore";
 import type { AdaptiveProfile, BodyProfile, CoachAvatar, TraineeStats, WeeklyPlan, WeeklyPlanDayConfig, WorkoutSummaryData } from "@/types";
 import type { Macrocycle } from "@/types/macrocycle";
 
@@ -54,6 +55,7 @@ type LandingScreenProps = {
   macrocycle?: Macrocycle | null;
   adaptiveProfile?: AdaptiveProfile | null;
   onStartPlanDay?: (config: WeeklyPlanDayConfig) => void;
+  onStartQuickPill?: (pill: { label: string; durationMin: number }) => void;
   primaryButton: string;
   secondaryButton: string;
 };
@@ -113,14 +115,18 @@ function ChromeProBadge({ onClick }: { onClick?: () => void }) {
   );
 }
 
-function MegaCTA({ label, onClick }: { label: string; onClick: () => void }) {
+function MegaCTA({ label, onClick, glowColor = "rgba(0,170,255,0.45)", glowHoverColor = "rgba(0,170,255,0.65)" }: { label: string; onClick: () => void; glowColor?: string; glowHoverColor?: string }) {
+  const [hovered, setHovered] = useState(false);
   return (
     <div className="relative">
       {/* Pulsating outer ring */}
-      <span className="cta-pulse-ring absolute inset-0 rounded-2xl border-2 border-violet-500/60" />
+      <span className="cta-pulse-ring absolute inset-0 rounded-2xl border-2 border-blue-500/60" />
       <button
         onClick={onClick}
-        className="group relative w-full overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-violet-600 to-fuchsia-600 py-5 text-center shadow-[0_0_40px_rgba(99,102,241,0.45)] transition-all duration-300 hover:scale-[1.025] hover:shadow-[0_0_60px_rgba(99,102,241,0.65)] active:scale-[0.98]"
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{ boxShadow: `0 0 ${hovered ? "60px" : "40px"} ${hovered ? glowHoverColor : glowColor}` }}
+        className="group relative w-full overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 via-violet-600 to-fuchsia-600 py-5 text-center transition-all duration-300 hover:scale-[1.025] active:scale-[0.98]"
       >
         <span className="relative z-10 flex items-center justify-center gap-3 text-lg font-black uppercase tracking-[0.06em] text-white">
           <span className="text-xl">▶</span>
@@ -222,12 +228,23 @@ export function LandingScreen({
   macrocycle,
   adaptiveProfile,
   onStartPlanDay,
+  onStartQuickPill,
 }: LandingScreenProps) {
   const [activeTab, setActiveTab] = useState<NavTab>("home");
   const [heroInteractive, setHeroInteractive] = useState(false);
   const [heroPostureIndex, setHeroPostureIndex] = useState(0);
   const [hasMounted, setHasMounted] = useState(false);
   const [hydratedNow, setHydratedNow] = useState<number | null>(null);
+  const [selectedQuickPill, setSelectedQuickPill] = useState<{ label: string; durationMin: number } | null>(null);
+  const [showRadioPlayer, setShowRadioPlayer] = useState(false);
+  const radioAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [radioPlaying, setRadioPlaying] = useState(false);
+  // Direct audio stream takes priority; otherwise an embedded iframe of the
+  // radio web player opens so the user never leaves the workout screen.
+  const radioStreamUrl = process.env.NEXT_PUBLIC_FLOWSOUNDZ_STREAM_URL ?? "";
+  const [radioEmbedOpen, setRadioEmbedOpen] = useState(false);
+
+  const { isModelLoaded } = useCoachStore();
   const displayedHeroPostureIndex = heroInteractive ? heroPostureIndex : 0;
 
   const coachName = getAvatarLabel(selectedAvatar);
@@ -239,12 +256,16 @@ export function LandingScreen({
   const weeklyCompletionRatio = weeklyPlan ? completedWeeklyDays / Math.max(weeklyPlan.days.length, 1) : 0;
   const planCircumference = 2 * Math.PI * 22;
   const planRingOffset = planCircumference * (1 - weeklyCompletionRatio);
+  // Streak tiers override; base aura matches the selected coach's accent
+  // (Nova = fuchsia badge, Atlas = blue badge) so badge and glow never conflict
   const streakAuraClass =
     userStats.streak >= 7
       ? "from-emerald-400/28 via-cyan-400/12 to-emerald-300/22"
       : userStats.streak >= 3
         ? "from-cyan-400/24 via-blue-400/10 to-emerald-400/16"
-        : "from-blue-500/24 via-cyan-400/10 to-indigo-400/18";
+        : selectedAvatar === "Nova"
+          ? "from-fuchsia-500/24 via-violet-400/10 to-pink-400/18"
+          : "from-blue-500/24 via-cyan-400/10 to-indigo-400/18";
   const heroAuraDuration = userStats.streak >= 7 ? "2.4s" : userStats.streak >= 3 ? "3.1s" : "4.6s";
   const focusLines = [
     `Ready when you are${bodyProfile?.lastUpdated ? "." : ", Adony."} Let's smash today's block.`,
@@ -457,10 +478,31 @@ export function LandingScreen({
               onMouseLeave={() => setHeroInteractive(false)}
               onTouchStart={() => setHeroInteractive((current) => !current)}
             >
-              {/* Neon glow ring */}
-              <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-blue-500/8 via-violet-500/5 to-fuchsia-500/8" />
+              {/* Neon glow ring — accent follows the selected coach */}
+              <div
+                className={`absolute inset-0 rounded-3xl bg-gradient-to-br ${
+                  selectedAvatar === "Nova"
+                    ? "from-fuchsia-500/8 via-violet-500/5 to-pink-500/8"
+                    : "from-blue-500/8 via-cyan-500/5 to-indigo-500/8"
+                }`}
+              />
               <div className="relative">
                 <div className="relative h-[380px] overflow-hidden rounded-[1.5rem] bg-[#010208] md:h-[min(70vh,640px)]">
+                  {/* Portrait fallback — sits ABOVE the canvas (z-[1]) so it covers the
+                      solid #010208 canvas background while the GLB model loads.
+                      Fades out once isModelLoaded flips true. */}
+                  <div
+                    className={`pointer-events-none absolute inset-0 z-[1] transition-opacity duration-700 ${isModelLoaded ? "opacity-0" : "opacity-100"}`}
+                  >
+                    <Image
+                      src={getAvatarAsset(selectedAvatar)}
+                      alt={landingCoachName}
+                      fill
+                      className="object-cover object-top"
+                      priority
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#010208]/90 via-[#010208]/20 to-transparent" />
+                  </div>
                   <div
                     className={`pointer-events-none absolute inset-[8%] z-[1] rounded-[2rem] bg-gradient-to-br blur-3xl hero-aura ${streakAuraClass}`}
                     style={{ animationDuration: heroAuraDuration }}
@@ -485,9 +527,19 @@ export function LandingScreen({
                     <span className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-300">AI Coach Ready</span>
                   </div>
                   <div className="mt-3 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
-                    <span className="rounded-full border border-cyan-400/18 bg-cyan-500/10 px-2 py-1 text-cyan-200">
-                      Aura {userStats.streak >= 7 ? "Emerald Surge" : "Neon Blue"}
-                    </span>
+                    {userStats.streak >= 7 ? (
+                      <span className="rounded-full border border-emerald-400/18 bg-emerald-500/10 px-2 py-1 text-emerald-200">
+                        Aura Emerald Surge
+                      </span>
+                    ) : selectedAvatar === "Nova" ? (
+                      <span className="rounded-full border border-fuchsia-400/18 bg-fuchsia-500/10 px-2 py-1 text-fuchsia-200">
+                        Aura Neon Fuchsia
+                      </span>
+                    ) : (
+                      <span className="rounded-full border border-cyan-400/18 bg-cyan-500/10 px-2 py-1 text-cyan-200">
+                        Aura Neon Blue
+                      </span>
+                    )}
                     <span>{heroInteractive ? "Engaged" : "Idle"}</span>
                   </div>
                 </div>
@@ -610,7 +662,7 @@ export function LandingScreen({
                   <div className="min-w-0">
                     <p className="text-[10px] font-black uppercase tracking-[0.28em] text-blue-400">Today&apos;s Plan</p>
                     <p className="mt-1 truncate text-base font-black text-white">
-                      {todayPlan ? todayPlan.focus : "No plan yet"}
+                      {todayPlan ? todayPlan.focus : selectedQuickPill ? selectedQuickPill.label : "No plan yet"}
                     </p>
                     {todayPlan ? (
                       <>
@@ -638,20 +690,55 @@ export function LandingScreen({
                           <span className="mt-1.5 inline-block rounded-full border border-teal-900/40 bg-teal-950/30 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-teal-400">Rest Day</span>
                         )}
                       </>
+                    ) : selectedQuickPill ? (
+                      <>
+                        <p className="mt-0.5 text-xs text-slate-400">
+                          Quick Start · {selectedQuickPill.durationMin} min
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {[
+                            { label: "🔥 30-min Strength", durationMin: 30 },
+                            { label: "🧘 20-min Mobility", durationMin: 20 },
+                            { label: "⚡ Quick Burn", durationMin: 15 },
+                          ].map((pill) => (
+                            <button
+                              key={pill.label}
+                              onClick={() => setSelectedQuickPill(pill)}
+                              className={`rounded-lg border px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] transition ${
+                                selectedQuickPill.label === pill.label
+                                  ? "border-blue-400/40 bg-blue-500/15 text-blue-200"
+                                  : "border-white/10 bg-white/5 text-slate-400 hover:border-white/20 hover:text-white"
+                              }`}
+                            >
+                              {pill.label}
+                            </button>
+                          ))}
+                        </div>
+                        <button
+                          onClick={() =>
+                            onStartQuickPill
+                              ? onStartQuickPill(selectedQuickPill)
+                              : onStartWorkout()
+                          }
+                          className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-950/40 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-blue-300 transition hover:border-blue-500/50 hover:bg-blue-950/60 active:scale-95"
+                        >
+                          ▶ Start This Session
+                        </button>
+                      </>
                     ) : (
                       <div className="mt-2 space-y-2">
                         <div className="flex flex-wrap gap-1.5">
                           {[
-                            { label: "🔥 30-min Strength" },
-                            { label: "🧘 20-min Mobility" },
-                            { label: "⚡ Quick Burn" },
-                          ].map(({ label }) => (
+                            { label: "🔥 30-min Strength", durationMin: 30 },
+                            { label: "🧘 20-min Mobility", durationMin: 20 },
+                            { label: "⚡ Quick Burn", durationMin: 15 },
+                          ].map((pill) => (
                             <button
-                              key={label}
-                              onClick={onStartWorkout}
-                              className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300 transition hover:border-white/20 hover:text-white"
+                              key={pill.label}
+                              onClick={() => setSelectedQuickPill(pill)}
+                              className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-300 transition hover:border-blue-400/30 hover:bg-blue-500/10 hover:text-blue-200"
                             >
-                              {label}
+                              {pill.label}
                             </button>
                           ))}
                         </div>
@@ -708,8 +795,16 @@ export function LandingScreen({
                 )}
 
                 <MegaCTA
-                  label={hasResumeSession ? "Start New Workout" : weeklyPlan ? "Start Today's Workout" : "Start Workout"}
-                  onClick={weeklyPlan && !hasResumeSession ? onStartTodaysWorkout : onStartWorkout}
+                  label={hasResumeSession ? "Start New Workout" : weeklyPlan ? "Start Today's Workout" : selectedQuickPill ? `Start · ${selectedQuickPill.label.replace(/^[^ ]+ /, "")}` : "Start Workout"}
+                  onClick={
+                    weeklyPlan && !hasResumeSession
+                      ? onStartTodaysWorkout
+                      : !weeklyPlan && !hasResumeSession && selectedQuickPill && onStartQuickPill
+                        ? () => onStartQuickPill(selectedQuickPill)
+                        : onStartWorkout
+                  }
+                  glowColor={selectedAvatar === "Nova" ? "rgba(255,0,221,0.4)" : "rgba(0,170,255,0.4)"}
+                  glowHoverColor={selectedAvatar === "Nova" ? "rgba(255,0,221,0.65)" : "rgba(0,170,255,0.65)"}
                 />
 
                 {onQuickStart && !hasResumeSession && (
@@ -726,14 +821,18 @@ export function LandingScreen({
                     <div className="min-w-0">
                       <p className="text-[10px] font-black uppercase tracking-[0.24em] text-fuchsia-300">Workout Audio</p>
                       <p className="mt-1 text-xs leading-relaxed text-slate-400">
-                        Use Spotify, Apple Music, YouTube Music, SoundCloud, Flowsoundz Radio, or any background player alongside the workout.
+                        {showRadioPlayer ? "Flowsoundz Radio — playing in mini-player below." : "Use Flowsoundz Radio or any background player alongside your workout."}
                       </p>
                     </div>
                     <button
-                      onClick={onOpenFlowsoundzRadio}
-                      className="shrink-0 rounded-xl border border-fuchsia-400/24 bg-fuchsia-500/12 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-fuchsia-100 transition hover:bg-fuchsia-500/18 active:scale-[0.97]"
+                      onClick={() => setShowRadioPlayer((v) => !v)}
+                      className={`shrink-0 rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] transition active:scale-[0.97] ${
+                        showRadioPlayer
+                          ? "border-fuchsia-400/40 bg-fuchsia-500/22 text-fuchsia-100 shadow-[0_0_14px_rgba(217,70,239,0.3)]"
+                          : "border-fuchsia-400/24 bg-fuchsia-500/12 text-fuchsia-100 hover:bg-fuchsia-500/18"
+                      }`}
                     >
-                      Open Radio
+                      {showRadioPlayer ? "▐▐ Radio" : "▶ Radio"}
                     </button>
                   </div>
                 </div>
@@ -802,11 +901,11 @@ export function LandingScreen({
                 <QuickActionCard
                   icon="🎧"
                   title="Flowsoundz"
-                  subtitle="Open workout radio"
+                  subtitle={showRadioPlayer ? "Player active ↓" : "Open workout radio"}
                   accentClass="text-fuchsia-300"
                   accentGlowClass="bg-[radial-gradient(circle_at_top_right,_rgba(217,70,239,0.16),_transparent_54%)]"
                   iconShellClass="bg-fuchsia-500/12"
-                  onClick={onOpenFlowsoundzRadio}
+                  onClick={() => setShowRadioPlayer((v) => !v)}
                 />
               </div>
             </div>
@@ -852,6 +951,14 @@ export function LandingScreen({
                     }
                   </p>
                 )}
+                {coachRecommendation.title === "Complete Your Body Profile" && (
+                  <button
+                    onClick={onOpenSettings}
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-violet-400/30 bg-violet-500/12 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-violet-200 transition hover:border-violet-400/50 hover:bg-violet-500/20 active:scale-95"
+                  >
+                    Complete Setup →
+                  </button>
+                )}
               </div>
               <div className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${
                 coachRecommendation.priority === "high"
@@ -883,6 +990,93 @@ export function LandingScreen({
 
         </div>
       </main>
+
+      {/* ── Flowsoundz Mini Radio Player ── */}
+      <div
+        className={`fixed bottom-24 left-1/2 z-40 w-full max-w-sm -translate-x-1/2 px-4 transition-all duration-400 ${
+          showRadioPlayer ? "translate-y-0 opacity-100 pointer-events-auto" : "translate-y-8 opacity-0 pointer-events-none"
+        }`}
+      >
+        <div className="overflow-hidden rounded-3xl border border-fuchsia-400/20 bg-slate-950/90 shadow-[0_0_40px_rgba(217,70,239,0.2)] backdrop-blur-2xl">
+          {/* Top accent line */}
+          <div className="h-px w-full bg-gradient-to-r from-transparent via-fuchsia-400/60 to-transparent" />
+          <div className="flex items-center gap-3 px-4 py-3">
+            {/* Icon */}
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-fuchsia-400/20 bg-fuchsia-500/12 text-lg">
+              🎧
+            </div>
+            {/* Track info */}
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-black uppercase tracking-[0.24em] text-fuchsia-300">Flowsoundz Radio</p>
+              <p className="mt-0.5 truncate text-xs font-semibold text-white">
+                {radioPlaying || radioEmbedOpen ? "Live — Now Playing" : "Ready to stream"}
+              </p>
+            </div>
+            {/* Controls */}
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                onClick={() => {
+                  if (radioStreamUrl) {
+                    const audio = radioAudioRef.current;
+                    if (!audio) return;
+                    if (radioPlaying) {
+                      audio.pause();
+                      setRadioPlaying(false);
+                    } else {
+                      if (!audio.src) audio.src = radioStreamUrl;
+                      void audio.play().then(() => setRadioPlaying(true)).catch(() => {});
+                    }
+                    return;
+                  }
+                  // No direct stream — toggle the embedded web player instead
+                  setRadioEmbedOpen((v) => !v);
+                }}
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-fuchsia-400/30 bg-fuchsia-500/15 text-sm text-fuchsia-100 transition hover:bg-fuchsia-500/25 active:scale-95"
+                aria-label={radioPlaying || radioEmbedOpen ? "Pause" : "Play"}
+              >
+                {radioPlaying || radioEmbedOpen ? "▐▐" : "▶"}
+              </button>
+              <a
+                href="https://flowsoundzradio.com/radio"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-xs text-slate-400 transition hover:border-white/20 hover:text-white"
+                aria-label="Open Flowsoundz Radio"
+              >
+                ↗
+              </a>
+              <button
+                onClick={() => { setShowRadioPlayer(false); setRadioPlaying(false); setRadioEmbedOpen(false); radioAudioRef.current?.pause(); }}
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-white/8 bg-white/5 text-xs text-slate-500 transition hover:text-white"
+                aria-label="Close player"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+          {/* Playback bar — animated when playing */}
+          <div className="mx-4 mb-3 h-1 overflow-hidden rounded-full bg-slate-800">
+            <div
+              className={`h-full rounded-full bg-gradient-to-r from-fuchsia-500 to-cyan-400 transition-all ${radioPlaying ? "animate-pulse" : ""}`}
+              style={{ width: radioPlaying ? "60%" : "0%" }}
+            />
+          </div>
+          {/* Embedded live player — lazy-mounted only while open. Uses the
+              dedicated /embed/radio route (frameable + open during launch gates) */}
+          {radioEmbedOpen && !radioStreamUrl ? (
+            <iframe
+              src="https://flowsoundzradio.com/embed/radio"
+              title="Flowsoundz Radio"
+              className="h-44 w-full border-0"
+              allow="autoplay; encrypted-media"
+              loading="lazy"
+            />
+          ) : null}
+          {/* Hidden audio element — used when a direct stream URL is configured */}
+          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+          <audio ref={radioAudioRef} preload="none" onEnded={() => setRadioPlaying(false)} />
+        </div>
+      </div>
 
       {/* ── Box D: Floating Glassmorphic Nav Dock ── */}
       <nav className="nav-dock-enter fixed bottom-5 left-1/2 z-50 -translate-x-1/2">

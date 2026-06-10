@@ -9,7 +9,9 @@ type SummaryInput = Pick<
   | "difficultyFeedback"
   | "level"
   | "goal"
->;
+> & {
+  cleanRepPct?: number; // 0–1, from camera tracking; undefined = no camera data
+};
 
 function difficultyModifier(feedback: DifficultyFeedback) {
   if (feedback === "perfect") return 8;
@@ -49,7 +51,16 @@ export function calculateFormScore(summaryInput: SummaryInput): number {
           : 75;
   const consistencyBonus = Math.min(10, Math.round(summaryInput.totalSets / 2));
   const repBalancePenalty = summaryInput.estimatedReps > 160 ? 4 : 0;
-  return Math.max(50, Math.min(100, Math.round(base + consistencyBonus - repBalancePenalty)));
+  const baseScore = Math.round(base + consistencyBonus - repBalancePenalty);
+
+  // Camera override: if we have clean rep data, blend it in (60% camera, 40% base)
+  if (summaryInput.cleanRepPct != null) {
+    const cameraScore = Math.round(summaryInput.cleanRepPct * 100);
+    const blended = Math.round(cameraScore * 0.6 + baseScore * 0.4);
+    return Math.max(50, Math.min(100, blended));
+  }
+
+  return Math.max(50, Math.min(100, baseScore));
 }
 
 export function calculateXpEarned(summaryInput: SummaryInput): number {
@@ -86,7 +97,7 @@ export function generateCoachNote(summaryInput: SummaryInput): string {
   return "Session complete. Keep building consistency.";
 }
 
-export function buildScoredWorkoutSummary(summary: WorkoutSummaryData): WorkoutSummaryData {
+export function buildScoredWorkoutSummary(summary: WorkoutSummaryData, cleanRepPct?: number): WorkoutSummaryData {
   const scoringInput: SummaryInput = {
     goal: summary.goal,
     level: summary.level,
@@ -95,6 +106,7 @@ export function buildScoredWorkoutSummary(summary: WorkoutSummaryData): WorkoutS
     estimatedReps: summary.estimatedReps,
     exerciseCount: summary.exerciseCount,
     difficultyFeedback: summary.difficultyFeedback,
+    cleanRepPct,
   };
 
   return {

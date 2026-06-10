@@ -43,7 +43,7 @@ export type CoachBrainInput = {
   bodyScanConfidence?: number;
   bodyScanMessage?: string;
   postureAlignmentScore?: number;
-  trackingMode?: "squat" | "pushup" | "plank";
+  trackingMode?: "squat" | "pushup" | "plank" | "lunge" | "curl";
   latestRepQualityLabel?: "clean" | "shallow" | "unstable" | "lost_tracking" | "unknown";
   latestRepQualityMessage?: string;
   cleanRepCount?: number;
@@ -62,6 +62,13 @@ export type CoachBrainInput = {
   formScore?: number;
   xpEarned?: number;
   isWorkoutComplete?: boolean;
+  // Coach memory — populated from workout history
+  totalSessionsCompleted?: number;
+  sessionStreak?: number;
+  lastSessionScore?: number;
+  lastSessionFormScore?: number;
+  lastSessionPRs?: Array<{ exerciseName: string; prType: string; prLabel: string }>;
+  currentSessionPRs?: Array<{ exerciseName: string; prType: string; prLabel: string }>;
 };
 
 export type CoachBrainOutput = {
@@ -104,6 +111,20 @@ function getCameraCoachingMessage(input: CoachBrainInput) {
     return "Hold still so I can read your posture.";
   }
 
+  if (input.trackingMode === "lunge") {
+    if (phase.includes("desc")) return "Control the drop. Keep your torso upright.";
+    if (phase.includes("bottom")) return "Good depth. Drive through your front heel.";
+    if (phase.includes("ris")) return "Push back up with control.";
+    if (phase.includes("stand")) return "Reset and step back in.";
+  }
+
+  if (input.trackingMode === "curl") {
+    if (phase.includes("curl")) return "Keep your elbow pinned. Curl with control.";
+    if (phase.includes("top")) return "Squeeze at the top.";
+    if (phase.includes("lower")) return "Lower slowly. Control the negative.";
+    if (phase.includes("extend")) return "Full extension before the next rep.";
+  }
+
   return "Stay sharp. I’m tracking your movement.";
 }
 
@@ -117,6 +138,38 @@ function getSeverityState(feedbackSeverity?: CoachBrainInput["feedbackSeverity"]
   }
 
   return { mood: "coaching" as const, animationHint: "talking" as const };
+}
+
+function getMemoryGreeting(input: CoachBrainInput): string | null {
+  const { totalSessionsCompleted, sessionStreak, lastSessionScore, lastSessionFormScore, lastSessionPRs } = input;
+
+  if (totalSessionsCompleted === 0 || totalSessionsCompleted == null) return null;
+
+  if (sessionStreak && sessionStreak >= 3) {
+    return `${sessionStreak} sessions in a row. That kind of consistency is how you actually change.`;
+  }
+
+  if (lastSessionPRs && lastSessionPRs.length > 0) {
+    const pr = lastSessionPRs[0];
+    return `Last session you hit a PR on ${pr.exerciseName}. Let's build on that.`;
+  }
+
+  if (lastSessionScore != null && lastSessionFormScore != null) {
+    if (lastSessionScore >= 90 && lastSessionFormScore >= 85) {
+      return `Last session was elite — ${lastSessionScore} score and clean form. Let's match it.`;
+    }
+    if (lastSessionFormScore < 70) {
+      return `Form was the weak point last session. Let's clean that up today.`;
+    }
+    if (lastSessionScore >= 75) {
+      return `Strong session last time — ${lastSessionScore} overall. Keep stacking.`;
+    }
+  }
+
+  if (totalSessionsCompleted === 1) return "Second session. This is where the habit starts.";
+  if (totalSessionsCompleted < 5) return `Session ${totalSessionsCompleted + 1}. You're building real momentum.`;
+
+  return null;
 }
 
 export function getCoachBrainResponse(input: CoachBrainInput): CoachBrainOutput {
@@ -303,6 +356,28 @@ export function getCoachBrainResponse(input: CoachBrainInput): CoachBrainOutput 
       message: getCameraCoachingMessage(input),
       shouldSpeak: false,
       animationHint: severityState.animationHint,
+    };
+  }
+
+  if (input.screenContext === "player" && !input.isCameraActive) {
+    const memoryGreeting = getMemoryGreeting(input);
+    if (memoryGreeting) {
+      return {
+        mood: "coaching",
+        message: memoryGreeting,
+        shouldSpeak: false,
+        animationHint: "talking",
+      };
+    }
+  }
+
+  if (input.isWorkoutComplete && input.currentSessionPRs && input.currentSessionPRs.length > 0) {
+    const pr = input.currentSessionPRs[0];
+    return {
+      mood: "celebrating",
+      message: `PR on ${pr.exerciseName}. ${input.currentSessionPRs.length > 1 ? `${input.currentSessionPRs.length} PRs this session.` : "Write that down."}`,
+      shouldSpeak: true,
+      animationHint: "celebrate",
     };
   }
 

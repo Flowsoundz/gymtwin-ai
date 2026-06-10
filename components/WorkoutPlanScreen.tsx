@@ -447,9 +447,19 @@ export function WorkoutPlanScreen({
                           {getCameraCoachLabel("squat")} · {cameraStats.squat}
                         </span>
                       )}
+                      {cameraStats.lunge > 0 && (
+                        <span className="rounded-full border border-amber-900/40 bg-amber-950/30 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-amber-300">
+                          {getCameraCoachLabel("lunge")} · {cameraStats.lunge}
+                        </span>
+                      )}
                       {cameraStats.pushup > 0 && (
                         <span className="rounded-full border border-purple-900/40 bg-purple-950/30 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-purple-300">
                           {getCameraCoachLabel("pushup")} · {cameraStats.pushup}
+                        </span>
+                      )}
+                      {cameraStats.curl > 0 && (
+                        <span className="rounded-full border border-rose-900/40 bg-rose-950/30 px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-rose-300">
+                          {getCameraCoachLabel("curl")} · {cameraStats.curl}
                         </span>
                       )}
                       {cameraStats.plank > 0 && (

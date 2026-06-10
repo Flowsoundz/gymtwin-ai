@@ -206,6 +206,7 @@ function GymTwinAppLive() {
   const [authChecked, setAuthChecked] = useState(false);
   const [syncBannerDismissed, setSyncBannerDismissed] = useState(false);
   const [cameraTried, setCameraTried] = useState(false);
+  const [showCameraExplainer, setShowCameraExplainer] = useState(false);
   const [firstHintsDismissed, setFirstHintsDismissed] = useState(false);
   const [userStats, setUserStats] = useState<TraineeStats>({ workoutsCompleted: 0, streak: 0, lastWorkoutDate: null, totalMinutes: 0 });
   const [bodyProfile, setBodyProfile] = useState<BodyProfile | null>(null);
@@ -214,6 +215,7 @@ function GymTwinAppLive() {
     defaultAvatarDisplaySettings
   );
   const [lastWorkoutSummary, setLastWorkoutSummary] = useState<WorkoutSummaryData | null>(null);
+  const sessionCleanRepPctRef = useRef<number | undefined>(undefined);
   const [workoutHistory, setWorkoutHistory] = useState<WorkoutSummaryData[]>([]);
   const [selectedWorkoutDetail, setSelectedWorkoutDetail] = useState<WorkoutSummaryData | null>(null);
   const [hasResumeSession, setHasResumeSession] = useState(false);
@@ -304,7 +306,7 @@ function GymTwinAppLive() {
   const selectClass = "w-full bg-slate-900 border border-slate-800 rounded-2xl p-4 outline-none focus:border-purple-500 transition-colors text-slate-200";
 
   function openFlowsoundzRadio() {
-    setCurrentScreen("camera_sandbox");
+    window.open("https://flowsoundzradio.com/radio", "_blank", "noopener,noreferrer");
   }
 
   function mergeBodyProfiles(
@@ -865,7 +867,8 @@ function GymTwinAppLive() {
       completedAt: today,
       muscleGroups,
       sessionPRs: sessionPRs.length > 0 ? sessionPRs : undefined,
-    } satisfies WorkoutSummaryData);
+    } satisfies WorkoutSummaryData, sessionCleanRepPctRef.current);
+    sessionCleanRepPctRef.current = undefined;
 
     setLastWorkoutSummary(summaryPayload); saveLastWorkoutSummary(summaryPayload);
     const updatedHistory = [summaryPayload, ...workoutHistory].slice(0, 10); setWorkoutHistory(updatedHistory);
@@ -1012,6 +1015,16 @@ function GymTwinAppLive() {
     setCurrentScreen("setup");
   }
 
+  // Quick-start pills on the landing dashboard ("No plan yet" state) — maps
+  // the pill to a goal + duration so Start lands on a pre-filled setup screen
+  function handleStartQuickPill(pill: { label: string; durationMin: number }) {
+    if (pill.label.includes("Strength")) setSelectedGoal("Build muscle");
+    else if (pill.label.includes("Mobility")) setSelectedGoal("Mobility");
+    else setSelectedGoal("Lose weight");
+    setSessionLength(String(pill.durationMin));
+    setCurrentScreen("setup");
+  }
+
   function handleQuickStart() {
     const defaults = readQuickStartDefaults();
     if (defaults) {
@@ -1026,10 +1039,19 @@ function GymTwinAppLive() {
   }
 
   function handleOpenCamera() {
+    // First visit: explain on-device processing before the browser's native
+    // camera permission prompt can fire inside the sandbox
     if (!cameraTried) {
-      markCameraTried();
-      setCameraTried(true);
+      setShowCameraExplainer(true);
+      return;
     }
+    setCurrentScreen("camera_sandbox");
+  }
+
+  function confirmCameraExplainer() {
+    markCameraTried();
+    setCameraTried(true);
+    setShowCameraExplainer(false);
     setCurrentScreen("camera_sandbox");
   }
 
@@ -1080,6 +1102,8 @@ function GymTwinAppLive() {
           workoutHistory={workoutHistory}
           latestWorkoutSummary={lastWorkoutSummary}
           onGenerateWeeklyPlan={handleGenerateWeeklyPlan}
+          onStartPlanDay={handleStartPlanDay}
+          onStartQuickPill={handleStartQuickPill}
           selectedAvatar={selectedAvatar}
           cameraTried={cameraTried}
           showSyncBanner={!supabaseUser && !syncBannerDismissed}
@@ -1095,7 +1119,7 @@ function GymTwinAppLive() {
       {currentScreen === "settings" && (
         <SettingsScreen
           onBackHome={() => setCurrentScreen("landing")}
-          onOpenCameraSandbox={() => setCurrentScreen("camera_sandbox")}
+          onOpenCameraSandbox={handleOpenCamera}
           onOpenModelLab={() => setCurrentScreen("model_lab")}
           onResetLocalData={resetLocalAppData}
           selectedAvatar={selectedAvatar}
@@ -1228,6 +1252,10 @@ function GymTwinAppLive() {
           isFirstWorkout={!firstHintsDismissed && userStats.workoutsCompleted === 0}
           onFirstHintsDismissed={() => { setFirstHintsDismissed(true); markFirstHintsShown(); }}
           primaryButton={primaryButton}
+          lastWorkoutSummary={lastWorkoutSummary}
+          totalSessionsCompleted={userStats.workoutsCompleted}
+          sessionStreak={userStats.streak}
+          onCameraFormData={(pct) => { sessionCleanRepPctRef.current = pct; }}
         />
       )}
 
@@ -1321,6 +1349,42 @@ function GymTwinAppLive() {
           demoClipName={floatingDemoClip}
           message={displayedSpeech || null}
         />
+      )}
+
+      {/* Camera Coach pre-permission explainer — shown once before the browser prompt */}
+      {showCameraExplainer && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 px-6 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-3xl border border-cyan-400/20 bg-slate-950/95 p-6 shadow-[0_0_60px_rgba(6,182,212,0.15)]">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-cyan-400/25 bg-cyan-500/10 text-2xl">
+              📷
+            </div>
+            <h2 className="mt-4 text-center text-lg font-black text-white">
+              Camera Form Coach
+            </h2>
+            <p className="mt-2 text-center text-sm leading-relaxed text-slate-400">
+              GymTwin uses <span className="font-bold text-cyan-300">local, on-device AI</span> to
+              watch your posture and count reps. No video is ever recorded or
+              leaves your device.
+            </p>
+            <p className="mt-2 text-center text-xs text-slate-500">
+              Your browser will ask for camera access on the next screen.
+            </p>
+            <div className="mt-5 flex flex-col gap-2">
+              <button
+                onClick={confirmCameraExplainer}
+                className="w-full rounded-2xl bg-gradient-to-r from-cyan-600 to-blue-600 py-3 text-sm font-black text-white shadow-[0_0_20px_rgba(6,182,212,0.3)] transition hover:brightness-110 active:scale-[0.98]"
+              >
+                Enable Camera Coach
+              </button>
+              <button
+                onClick={() => setShowCameraExplainer(false)}
+                className="w-full rounded-2xl border border-white/10 bg-white/5 py-3 text-sm font-bold text-slate-400 transition hover:text-white active:scale-[0.98]"
+              >
+                Not Now
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </>

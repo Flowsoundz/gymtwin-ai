@@ -32,17 +32,6 @@ const SQUAT_EXERCISES = new Set([
   "Banded Squats",
   "Dumbbell Thrusters",
 
-  // ── Lunge & single-leg variations ───────────────────────────────────────
-  "Alternating Reverse Lunges",
-  "Reverse Lunge with Hold",
-  "Reverse Lunge Hold",
-  "Supported Step Lunges",
-  "Dumbbell Walking Lunges",
-
-  // ── Split squats ─────────────────────────────────────────────────────────
-  "Bulgarian Split Squats",
-  "Bench Bulgarian Split Squats",
-
   // ── Step-ups ─────────────────────────────────────────────────────────────
   "Step-Ups with Pause",
   "Bench Step-Ups",
@@ -51,6 +40,24 @@ const SQUAT_EXERCISES = new Set([
   // ── Lateral ──────────────────────────────────────────────────────────────
   "Banded Lateral Walks",
   "Lateral Resisted Shuffles",
+]);
+
+const LUNGE_EXERCISES = new Set([
+  "Alternating Reverse Lunges",
+  "Reverse Lunge with Hold",
+  "Reverse Lunge Hold",
+  "Supported Step Lunges",
+  "Dumbbell Walking Lunges",
+  "Bulgarian Split Squats",
+  "Bench Bulgarian Split Squats",
+]);
+
+const CURL_EXERCISES = new Set([
+  "Dumbbell Bicep Curl",
+  "Banded Bicep Curls",
+  "Hammer Curls",
+  "Concentration Curls",
+  "Incline Dumbbell Curls",
 ]);
 
 const PUSHUP_EXERCISES = new Set([
@@ -102,20 +109,26 @@ const PLANK_EXERCISES = new Set([
 export function getCameraCoachModeForMovementName(name: string): TrackingMode | null {
   const n = normalize(name);
   if (SQUAT_EXERCISES.has(n)) return "squat";
+  if (LUNGE_EXERCISES.has(n)) return "lunge";
   if (PUSHUP_EXERCISES.has(n)) return "pushup";
+  if (CURL_EXERCISES.has(n)) return "curl";
   if (PLANK_EXERCISES.has(n)) return "plank";
   return null;
 }
 
 export function getCameraCoachLabel(mode: TrackingMode): string {
-  if (mode === "squat") return "Squat & Lunge Tracker";
+  if (mode === "squat") return "Squat Tracker";
+  if (mode === "lunge") return "Lunge Tracker";
   if (mode === "pushup") return "Push-Up Tracker";
+  if (mode === "curl") return "Curl Tracker";
   return "Plank & Alignment Tracker";
 }
 
 export function getCameraCoachHint(mode: TrackingMode): string {
   if (mode === "squat") return "Stand 6–8 ft away facing the camera. Your full body must be visible.";
+  if (mode === "lunge") return "Stand 6–8 ft away facing the camera. Keep your full body in frame as you step.";
   if (mode === "pushup") return "Place the camera at floor level to your side. Keep your whole body in frame.";
+  if (mode === "curl") return "Stand facing the camera. Keep your shoulder, elbow, and wrist in frame.";
   return "Camera at floor level to your side. Your hips, shoulders, and feet must all be visible.";
 }
 
@@ -123,15 +136,19 @@ export function getCameraCoachHint(mode: TrackingMode): string {
 export function countCameraReadyExercises(exerciseNames: string[]): {
   total: number;
   squat: number;
+  lunge: number;
   pushup: number;
+  curl: number;
   plank: number;
 } {
-  let squat = 0, pushup = 0, plank = 0;
+  let squat = 0, lunge = 0, pushup = 0, curl = 0, plank = 0;
   for (const name of exerciseNames) {
     const mode = getCameraCoachModeForMovementName(name);
     if (mode === "squat") squat++;
+    else if (mode === "lunge") lunge++;
     else if (mode === "pushup") pushup++;
+    else if (mode === "curl") curl++;
     else if (mode === "plank") plank++;
   }
-  return { total: squat + pushup + plank, squat, pushup, plank };
+  return { total: squat + lunge + pushup + curl + plank, squat, lunge, pushup, curl, plank };
 }

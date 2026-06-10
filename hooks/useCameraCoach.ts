@@ -11,7 +11,7 @@ type PushupPhase = "up" | "descending" | "bottom" | "rising" | "unknown";
 type PlankPosture = "stable" | "hips high" | "hips low" | "unknown";
 type FeedbackSeverity = "good" | "warning" | "error" | "neutral";
 
-export type TrackingMode = "squat" | "pushup" | "plank";
+export type TrackingMode = "squat" | "pushup" | "plank" | "lunge" | "curl";
 
 export type TrackingReadiness = {
   headVisible: boolean;
@@ -39,7 +39,7 @@ export type RepQualityLabel = "clean" | "shallow" | "unstable" | "lost_tracking"
 
 export type RepQualityEntry = {
   id: number;
-  mode: "squat" | "pushup" | "plank";
+  mode: "squat" | "pushup" | "plank" | "lunge" | "curl";
   label: RepQualityLabel;
   message: string;
   angle?: number;
@@ -113,6 +113,17 @@ export function useCameraCoach() {
   const trackingRecoveryExpiresAtRef = useRef<number | null>(null);
   const squatBottomAngleRef = useRef<number | null>(null);
   const pushupBottomAngleRef = useRef<number | null>(null);
+  // Lunge tracking
+  const lungePhaseRef = useRef<SquatPhase>("standing");
+  const reachedLungeBottomRef = useRef(false);
+  const lungeRepCountRef = useRef(0);
+  const lungeBottomAngleRef = useRef<number | null>(null);
+  // Curl tracking
+  type CurlPhase = "extended" | "curling" | "top" | "lowering" | "unknown";
+  const curlPhaseRef = useRef<CurlPhase>("extended");
+  const reachedCurlTopRef = useRef(false);
+  const curlRepCountRef = useRef(0);
+  const curlTopAngleRef = useRef<number | null>(null);
   const repQualityIdRef = useRef(0);
   const deviationCalloutIdRef = useRef(0);
   const deviationDismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -135,6 +146,10 @@ export function useCameraCoach() {
   const [pushupRepCount, setPushupRepCount] = useState(0);
   const [pushupPhase, setPushupPhase] = useState<PushupPhase>("unknown");
   const [elbowAngleDisplay, setElbowAngleDisplay] = useState("--");
+  const [lungeRepCount, setLungeRepCount] = useState(0);
+  const [lungePhase, setLungePhase] = useState<SquatPhase>("unknown");
+  const [curlRepCount, setCurlRepCount] = useState(0);
+  const [curlPhase, setCurlPhase] = useState("unknown");
   const [plankHoldSeconds, setPlankHoldSeconds] = useState(0);
   const [plankPostureStatus, setPlankPostureStatus] = useState<PlankPosture>("unknown");
   const [plankAlignmentScore, setPlankAlignmentScore] = useState("--");
@@ -170,17 +185,17 @@ export function useCameraCoach() {
 
   const resetTrackingState = useCallback((mode: TrackingMode) => {
     const neutralMessage =
-      mode === "squat"
-        ? "Start camera to begin squat form feedback."
-        : mode === "pushup"
-          ? "Start camera to begin push-up form feedback."
-          : "Start camera to begin plank posture tracking.";
+      mode === "squat"   ? "Start camera to begin squat form feedback."   :
+      mode === "pushup"  ? "Start camera to begin push-up form feedback."  :
+      mode === "lunge"   ? "Start camera to begin lunge tracking."          :
+      mode === "curl"    ? "Start camera to begin curl tracking."            :
+                           "Start camera to begin plank posture tracking.";
     const neutralWarning =
-      mode === "squat"
-        ? "Stand fully in frame to begin squat tracking."
-        : mode === "pushup"
-          ? "Keep your shoulders, elbows, and wrists clearly visible."
-          : "Keep your shoulders, hips, and ankles clearly visible.";
+      mode === "squat"  ? "Stand fully in frame to begin squat tracking."        :
+      mode === "pushup" ? "Keep your shoulders, elbows, and wrists clearly visible." :
+      mode === "lunge"  ? "Stand fully in frame so I can see your full body."     :
+      mode === "curl"   ? "Keep your shoulder, elbow, and wrist clearly visible." :
+                          "Keep your shoulders, hips, and ankles clearly visible.";
 
     squatPhaseRef.current = "unknown";
     reachedBottomRef.current = false;
@@ -199,6 +214,14 @@ export function useCameraCoach() {
     trackingRecoveryExpiresAtRef.current = null;
     squatBottomAngleRef.current = null;
     pushupBottomAngleRef.current = null;
+    lungePhaseRef.current = "standing";
+    reachedLungeBottomRef.current = false;
+    lungeRepCountRef.current = 0;
+    lungeBottomAngleRef.current = null;
+    curlPhaseRef.current = "extended";
+    reachedCurlTopRef.current = false;
+    curlRepCountRef.current = 0;
+    curlTopAngleRef.current = null;
     repQualityIdRef.current = 0;
     deviationCalloutIdRef.current = 0;
     trackingConfidenceTotalRef.current = 0;
@@ -217,6 +240,10 @@ export function useCameraCoach() {
     setPushupRepCount(0);
     setPushupPhase("unknown");
     setElbowAngleDisplay("--");
+    setLungeRepCount(0);
+    setLungePhase("unknown");
+    setCurlRepCount(0);
+    setCurlPhase("unknown");
     setPlankHoldSeconds(0);
     setPlankPostureStatus("unknown");
     setPlankAlignmentScore("--");
@@ -362,7 +389,9 @@ export function useCameraCoach() {
 
       if (mode === "pushup" || mode === "plank") {
         if (!likelySideView) placementScore -= 16;
-      } else if (mode === "squat") {
+      } else if (mode === "squat" || mode === "lunge") {
+        if (!likelyFrontView && !likelySideView) placementScore -= 8;
+      } else if (mode === "curl") {
         if (!likelyFrontView && !likelySideView) placementScore -= 8;
       }
 
@@ -396,6 +425,30 @@ export function useCameraCoach() {
           message = "Use a side angle so I can see your shoulder, hip, and ankle line.";
         } else {
           message = "Good side view. Keep your full plank line visible.";
+        }
+      } else if (mode === "lunge") {
+        if (tooClose) {
+          message = "Step back so I can see your full lunge stride.";
+        } else if (tooFar) {
+          message = "Move the phone closer so I can read your knee angle.";
+        } else if (tooLow) {
+          message = "Raise the phone slightly so I can see your upper body.";
+        } else if (tooHigh) {
+          message = "Tilt the phone down so your feet stay visible during the lunge.";
+        } else {
+          message = "Good setup. Keep your full body visible as you step.";
+        }
+      } else if (mode === "curl") {
+        if (tooClose) {
+          message = "Step back so I can see your shoulder, elbow, and wrist.";
+        } else if (tooFar) {
+          message = "Move the phone closer so I can read your curl angle.";
+        } else if (tooLow) {
+          message = "Raise the phone to elbow height for the clearest read.";
+        } else if (tooHigh) {
+          message = "Lower the phone slightly so your elbow stays in frame.";
+        } else {
+          message = "Good setup. Keep your arm visible through the full range.";
         }
       } else {
         if (tooClose) {
@@ -798,6 +851,8 @@ export function useCameraCoach() {
     trackingConfidenceSampleCountRef.current = 0;
     squatBottomAngleRef.current = null;
     pushupBottomAngleRef.current = null;
+    lungeBottomAngleRef.current = null;
+    curlTopAngleRef.current = null;
     setRepQualityLog([]);
     setLatestRepQuality(undefined);
     setCleanRepCount(0);
@@ -806,6 +861,136 @@ export function useCameraCoach() {
     setPlankQualityMessage("Hold still so I can read your posture.");
     setTrackingConfidenceAverage(0);
   }, []);
+
+  const getLungeRepQuality = useCallback(
+    (bottomAngle: number | null, readiness: TrackingReadiness, visibility: number | null): Omit<RepQualityEntry, "id" | "timestamp"> => {
+      if (!readiness.fullBodyVisible || readiness.confidenceScore < 70) {
+        return { mode: "lunge", label: "lost_tracking", message: "Keep your full body in frame during the lunge.", angle: bottomAngle ?? undefined, confidenceScore: readiness.confidenceScore };
+      }
+      if (bottomAngle === null) return { mode: "lunge", label: "unknown", message: "Rep counted. I need a clearer angle next time.", confidenceScore: readiness.confidenceScore };
+      if ((visibility ?? 1) < 0.58 || readiness.confidenceScore < 85) return { mode: "lunge", label: "unstable", message: "Good rep. Stay square to camera for a cleaner read.", angle: bottomAngle, confidenceScore: readiness.confidenceScore };
+      if (bottomAngle <= 105) return { mode: "lunge", label: "clean", message: "Clean lunge. Good depth and control.", angle: bottomAngle, confidenceScore: readiness.confidenceScore };
+      return { mode: "lunge", label: "shallow", message: "Try to lower your back knee closer to the ground.", angle: bottomAngle, confidenceScore: readiness.confidenceScore };
+    },
+    []
+  );
+
+  const getCurlRepQuality = useCallback(
+    (topAngle: number | null, readiness: TrackingReadiness, visibility: number | null): Omit<RepQualityEntry, "id" | "timestamp"> => {
+      const upperBodyVisible = readiness.headVisible && readiness.shouldersVisible;
+      if (!upperBodyVisible || readiness.confidenceScore < 70) {
+        return { mode: "curl", label: "lost_tracking", message: "Keep your upper body in frame.", angle: topAngle ?? undefined, confidenceScore: readiness.confidenceScore };
+      }
+      if (topAngle === null) return { mode: "curl", label: "unknown", message: "Rep counted. I need a clearer angle next time.", confidenceScore: readiness.confidenceScore };
+      if ((visibility ?? 1) < 0.55 || readiness.confidenceScore < 85) return { mode: "curl", label: "unstable", message: "Good rep. Keep elbow visible for a cleaner read.", angle: topAngle, confidenceScore: readiness.confidenceScore };
+      if (topAngle <= 65) return { mode: "curl", label: "clean", message: "Full range curl. Squeeze at the top.", angle: topAngle, confidenceScore: readiness.confidenceScore };
+      return { mode: "curl", label: "shallow", message: "Curl a little higher to hit the full range.", angle: topAngle, confidenceScore: readiness.confidenceScore };
+    },
+    []
+  );
+
+  const updateLungeTracking = useCallback((landmarks: NormalizedLandmark[], shouldCommitUi: boolean) => {
+    const standingThreshold = 155;
+    const bottomThreshold = 120;
+    const measurement = getBestKneeMeasurement(landmarks);
+
+    if (!measurement || measurement.angle === null || !measurement.point) {
+      setFeedbackIfChanged("Step back so your full body is visible.", "warning");
+      return { angleLabel: "--", anglePoint: null, feedbackMessage: "Step back so your full body is visible.", feedbackSeverity: "warning" as const };
+    }
+
+    const roundedAngle = Math.round(measurement.angle);
+    let nextPhase: SquatPhase = lungePhaseRef.current;
+
+    if (measurement.visibility < 0.45) {
+      nextPhase = "unknown";
+    } else if (roundedAngle > standingThreshold) {
+      if (reachedLungeBottomRef.current) {
+        recordRepQuality(getLungeRepQuality(lungeBottomAngleRef.current, trackingReadinessRef.current, measurement.visibility));
+        lungeRepCountRef.current += 1;
+        reachedLungeBottomRef.current = false;
+      }
+      lungeBottomAngleRef.current = null;
+      nextPhase = "standing";
+    } else if (roundedAngle < bottomThreshold) {
+      reachedLungeBottomRef.current = true;
+      lungeBottomAngleRef.current = lungeBottomAngleRef.current === null ? roundedAngle : Math.min(lungeBottomAngleRef.current, roundedAngle);
+      nextPhase = "bottom";
+    } else {
+      lungeBottomAngleRef.current = lungeBottomAngleRef.current === null ? roundedAngle : Math.min(lungeBottomAngleRef.current, roundedAngle);
+      nextPhase = reachedLungeBottomRef.current ? "rising" : "descending";
+    }
+
+    if (nextPhase === "unknown") lungeBottomAngleRef.current = null;
+    lungePhaseRef.current = nextPhase;
+
+    let nextFeedbackMessage = "Step forward and lower your back knee.";
+    let nextFeedbackSeverity: FeedbackSeverity = "neutral";
+    if (nextPhase === "bottom" && roundedAngle <= 105) { nextFeedbackMessage = "Good depth. Drive back up."; nextFeedbackSeverity = "good"; }
+    else if (nextPhase === "bottom") { nextFeedbackMessage = "Try to lower your back knee closer to the ground."; nextFeedbackSeverity = "warning"; }
+    else if (nextPhase === "rising") { nextFeedbackMessage = "Drive through your front heel."; }
+    else if (nextPhase === "unknown") { nextFeedbackMessage = "Step back so your full body is visible."; nextFeedbackSeverity = "error"; }
+
+    setFeedbackIfChanged(nextFeedbackMessage, nextFeedbackSeverity);
+    if (shouldCommitUi) {
+      setLungeRepCount(lungeRepCountRef.current);
+      setLungePhase(nextPhase);
+      setKneeAngleDisplay(`${roundedAngle}°`);
+    }
+    return { angleLabel: `${roundedAngle}°`, anglePoint: measurement.point, feedbackMessage: nextFeedbackMessage, feedbackSeverity: nextFeedbackSeverity, deviationCallout: null };
+  }, [getBestKneeMeasurement, getLungeRepQuality, recordRepQuality, setFeedbackIfChanged]);
+
+  const updateCurlTracking = useCallback((landmarks: NormalizedLandmark[], shouldCommitUi: boolean) => {
+    const extendedThreshold = 155;
+    const topThreshold = 65;
+    const measurement = getBestElbowMeasurement(landmarks);
+
+    if (!measurement || measurement.angle === null || !measurement.point) {
+      setFeedbackIfChanged("Keep your shoulder, elbow, and wrist in frame.", "warning");
+      return { angleLabel: "--", anglePoint: null, feedbackMessage: "Keep your shoulder, elbow, and wrist in frame.", feedbackSeverity: "warning" as const };
+    }
+
+    const roundedAngle = Math.round(measurement.angle);
+    type CurlPhase = "extended" | "curling" | "top" | "lowering" | "unknown";
+    let nextPhase: CurlPhase = curlPhaseRef.current as CurlPhase;
+
+    if (measurement.visibility < 0.45) {
+      nextPhase = "unknown";
+    } else if (roundedAngle > extendedThreshold) {
+      if (reachedCurlTopRef.current) {
+        recordRepQuality(getCurlRepQuality(curlTopAngleRef.current, trackingReadinessRef.current, measurement.visibility));
+        curlRepCountRef.current += 1;
+        reachedCurlTopRef.current = false;
+      }
+      curlTopAngleRef.current = null;
+      nextPhase = "extended";
+    } else if (roundedAngle < topThreshold) {
+      reachedCurlTopRef.current = true;
+      curlTopAngleRef.current = curlTopAngleRef.current === null ? roundedAngle : Math.min(curlTopAngleRef.current, roundedAngle);
+      nextPhase = "top";
+    } else {
+      curlTopAngleRef.current = curlTopAngleRef.current === null ? roundedAngle : Math.min(curlTopAngleRef.current, roundedAngle);
+      nextPhase = reachedCurlTopRef.current ? "lowering" : "curling";
+    }
+
+    if (nextPhase === "unknown") curlTopAngleRef.current = null;
+    curlPhaseRef.current = nextPhase;
+
+    let nextFeedbackMessage = "Curl with control. Keep your elbow stable.";
+    let nextFeedbackSeverity: FeedbackSeverity = "neutral";
+    if (nextPhase === "top" && roundedAngle <= 65) { nextFeedbackMessage = "Squeeze at the top."; nextFeedbackSeverity = "good"; }
+    else if (nextPhase === "top") { nextFeedbackMessage = "Curl a little higher for full range."; nextFeedbackSeverity = "warning"; }
+    else if (nextPhase === "lowering") { nextFeedbackMessage = "Lower slowly. Control the negative."; }
+    else if (nextPhase === "unknown") { nextFeedbackMessage = "Keep your arm in frame."; nextFeedbackSeverity = "error"; }
+
+    setFeedbackIfChanged(nextFeedbackMessage, nextFeedbackSeverity);
+    if (shouldCommitUi) {
+      setCurlRepCount(curlRepCountRef.current);
+      setCurlPhase(nextPhase);
+      setElbowAngleDisplay(`${roundedAngle}°`);
+    }
+    return { angleLabel: `${roundedAngle}°`, anglePoint: measurement.point, feedbackMessage: nextFeedbackMessage, feedbackSeverity: nextFeedbackSeverity, deviationCallout: null };
+  }, [getBestElbowMeasurement, getCurlRepQuality, recordRepQuality, setFeedbackIfChanged]);
 
   const getSquatRepQuality = useCallback(
     (bottomAngle: number | null, readiness: TrackingReadiness, visibility: number | null): Omit<RepQualityEntry, "id" | "timestamp"> => {
@@ -1635,6 +1820,12 @@ export function useCameraCoach() {
             } else if (selectedMode === "pushup") {
               const overlay = updatePushupTracking(landmarks, shouldCommitUi);
               drawOverlay(landmarks, overlay);
+            } else if (selectedMode === "lunge") {
+              const overlay = updateLungeTracking(landmarks, shouldCommitUi);
+              drawOverlay(landmarks, overlay);
+            } else if (selectedMode === "curl") {
+              const overlay = updateCurlTracking(landmarks, shouldCommitUi);
+              drawOverlay(landmarks, overlay);
             } else {
               const overlay = updatePlankTracking(landmarks, timestampMs, shouldCommitUi);
               drawOverlay(landmarks, overlay);
@@ -1645,6 +1836,8 @@ export function useCameraCoach() {
               setKneeAngleDisplay("--");
               setPushupPhase("unknown");
               setElbowAngleDisplay("--");
+              setLungePhase("unknown");
+              setCurlPhase("unknown");
               setPlankPostureStatus("unknown");
               setPlankAlignmentScore("--");
               setTrackingWarning(
@@ -1652,7 +1845,11 @@ export function useCameraCoach() {
                   ? "No pose detected. Step back until your full body is visible."
                   : selectedMode === "pushup"
                     ? "No pose detected. Step back until your upper body is visible."
-                    : "No pose detected. Step back until your full body is visible."
+                    : selectedMode === "lunge"
+                      ? "No pose detected. Step back until your full body is visible."
+                      : selectedMode === "curl"
+                        ? "No pose detected. Keep your arm in frame."
+                        : "No pose detected. Step back until your full body is visible."
               );
             }
 
@@ -1665,7 +1862,11 @@ export function useCameraCoach() {
                 ? "Step back so your full body is visible."
                 : selectedMode === "pushup"
                   ? "Step back so your upper body is visible."
-                  : "Step back so your full body is visible.",
+                  : selectedMode === "lunge"
+                    ? "Step back so your full body is visible."
+                    : selectedMode === "curl"
+                      ? "Keep your shoulder, elbow, and wrist in frame."
+                      : "Step back so your full body is visible.",
               "error"
             );
             trackingReadinessRef.current = {
@@ -1719,6 +1920,8 @@ export function useCameraCoach() {
     selectedMode,
     setFeedbackIfChanged,
     stopAnimationLoop,
+    updateCurlTracking,
+    updateLungeTracking,
     updatePlankTracking,
     updatePushupTracking,
     updateSquatTracking,
@@ -1906,6 +2109,10 @@ export function useCameraCoach() {
     pushupRepCount,
     pushupPhase,
     elbowAngleDisplay,
+    lungeRepCount,
+    lungePhase,
+    curlRepCount,
+    curlPhase,
     plankHoldSeconds,
     plankPostureStatus,
     plankAlignmentScore,

@@ -6,6 +6,7 @@ import { ExerciseDemoCard } from "@/components/ExerciseDemoCard";
 import { useCameraCoach } from "@/hooks/useCameraCoach";
 import type { TrackingMode } from "@/hooks/useCameraCoach";
 import { useVoiceCommands } from "@/hooks/useVoiceCommands";
+import { useCoachConversation } from "@/hooks/useCoachConversation";
 import { getAvatarLabel } from "@/lib/avatarAssets";
 import {
   getWorkoutAudioLevelLabel,
@@ -38,6 +39,7 @@ import type {
   CoachName,
   PersonalizedWorkoutPlan,
   WorkoutMovement,
+  WorkoutSummaryData,
 } from "@/types";
 
 type WorkoutPlayerScreenProps = {
@@ -79,6 +81,10 @@ type WorkoutPlayerScreenProps = {
   onAutoSpeak?: (message: string) => void;
   onSpeakIntent?: (intent: CoachVoiceIntent) => void;
   primaryButton: string;
+  lastWorkoutSummary?: WorkoutSummaryData | null;
+  totalSessionsCompleted?: number;
+  sessionStreak?: number;
+  onCameraFormData?: (cleanRepPct: number) => void;
 };
 
 export function WorkoutPlayerScreen({
@@ -114,6 +120,10 @@ export function WorkoutPlayerScreen({
   onAutoSpeak,
   onSpeakIntent,
   primaryButton,
+  lastWorkoutSummary,
+  totalSessionsCompleted,
+  sessionStreak,
+  onCameraFormData,
 }: WorkoutPlayerScreenProps) {
   const [hintsVisible, setHintsVisible] = useState(isFirstWorkout);
   const [quickSettingsOpen, setQuickSettingsOpen] = useState(false);
@@ -150,6 +160,7 @@ export function WorkoutPlayerScreen({
   const [trackerReps, setTrackerReps] = useState(currentReps);
   const [trackerWeight, setTrackerWeight] = useState<number | null>(null);
   const [prFlash, setPrFlash] = useState<string | null>(null);
+  const currentSessionPRsRef = useRef<Array<{ exerciseName: string; prType: string; prLabel: string }>>([]);
   const [difficultyToast, setDifficultyToast] = useState<{ message: string; direction: "easy" | "hard" } | null>(null);
   const [voiceCaption, setVoiceCaption] = useState<string | null>(null);
   const previousRestCountdownRef = useRef<number | null>(null);
@@ -190,6 +201,10 @@ export function WorkoutPlayerScreen({
     pushupRepCount,
     pushupPhase,
     elbowAngleDisplay,
+    lungeRepCount,
+    lungePhase,
+    curlRepCount,
+    curlPhase,
     plankHoldSeconds,
     plankPostureStatus,
     plankAlignmentScore,
@@ -215,6 +230,9 @@ export function WorkoutPlayerScreen({
     startCamera,
     stopCamera,
   } = useCameraCoach();
+
+  const { sendMessage: sendToCoach, isThinking: coachIsThinking, clearHistory: clearCoachHistory } = useCoachConversation(selectedAvatar);
+
   const {
     isListening,
     isSupported,
@@ -270,6 +288,25 @@ export function WorkoutPlayerScreen({
           handleStopCameraCoach();
           break;
         default:
+          // Unknown command — route to Claude
+          if (intent === "unknown" && rawTranscript.trim().length > 2) {
+            void sendToCoach(rawTranscript, {
+              exerciseName: cleanMovementName(activeMovement.name),
+              setNumber: workingSet,
+              totalSets: activeMovement.sets,
+              repsDone: currentReps,
+              targetReps: activeMovement.baseReps ?? 10,
+              cleanRepCount,
+              needsWorkRepCount,
+              feedbackMessage: feedbackMessage || "Keep going.",
+              isRestPhase,
+              elapsedMinutes,
+              sessionStreak,
+              lastSessionScore: lastWorkoutSummary?.workoutScore,
+            }).then((reply) => {
+              if (reply && onAutoSpeak) onAutoSpeak(reply);
+            });
+          }
           break;
       }
     },
@@ -283,6 +320,7 @@ export function WorkoutPlayerScreen({
       setTrackerReps(currentReps);
       setTrackerWeight(lastWeight);
     }, 0);
+    clearCoachHistory();
     return () => window.clearTimeout(resetId);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeMovement.id]);
@@ -394,6 +432,13 @@ export function WorkoutPlayerScreen({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRestPhase]);
 
+  useEffect(() => {
+    if (!onCameraFormData) return;
+    const total = cleanRepCount + needsWorkRepCount;
+    if (total < 3) return; // need enough data before reporting
+    onCameraFormData(cleanRepCount / total);
+  }, [cleanRepCount, needsWorkRepCount, onCameraFormData]);
+
   // Difficulty adjustment wrappers — show toast then call parent
   function handleDifficultyEasy() {
     const hint = personalizedExercise?.harderOption ?? "Adding 2 reps to push hypertrophic range.";
@@ -455,6 +500,10 @@ export function WorkoutPlayerScreen({
         setPrFlash(result.prLabel);
         window.setTimeout(() => setPrFlash(null), 3500);
         useCoachStore.getState().setReactionGLBPath("/models/animations/emotes/Cheering_1.glb");
+        currentSessionPRsRef.current = [
+          ...currentSessionPRsRef.current,
+          { exerciseName: cleanMovementName(activeMovement.name), prType: "rep", prLabel: result.prLabel },
+        ];
       }
     }
     setTrackerOpen(false);
@@ -496,25 +545,14 @@ export function WorkoutPlayerScreen({
   const cameraModeLabel = supportedCameraMode ? getCameraCoachLabel(supportedCameraMode) : null;
   const cameraMetrics =
     selectedMode === "squat"
-      ? {
-          metricLabel: "Knee Angle",
-          metricValue: kneeAngleDisplay,
-          reps: squatRepCount,
-          phase: squatPhase,
-        }
+      ? { metricLabel: "Knee Angle", metricValue: kneeAngleDisplay, reps: squatRepCount, phase: squatPhase }
       : selectedMode === "pushup"
-        ? {
-            metricLabel: "Elbow Angle",
-            metricValue: elbowAngleDisplay,
-            reps: pushupRepCount,
-            phase: pushupPhase,
-          }
-        : {
-            metricLabel: "Alignment Score",
-            metricValue: plankAlignmentScore,
-            reps: `Hold ${formatHoldTime(plankHoldSeconds)}`,
-            phase: plankPostureStatus,
-          };
+        ? { metricLabel: "Elbow Angle", metricValue: elbowAngleDisplay, reps: pushupRepCount, phase: pushupPhase }
+        : selectedMode === "lunge"
+          ? { metricLabel: "Knee Angle", metricValue: kneeAngleDisplay, reps: lungeRepCount, phase: lungePhase }
+          : selectedMode === "curl"
+            ? { metricLabel: "Elbow Angle", metricValue: elbowAngleDisplay, reps: curlRepCount, phase: curlPhase }
+            : { metricLabel: "Alignment Score", metricValue: plankAlignmentScore, reps: `Hold ${formatHoldTime(plankHoldSeconds)}`, phase: plankPostureStatus };
 
   const formAccuracyPct = trackingReadiness.confidenceScore;
   const paceMatchPct =
@@ -608,6 +646,11 @@ export function WorkoutPlayerScreen({
           Heard: <span className="font-semibold">{transcript}</span>
         </p>
       )}
+      {coachIsThinking && (
+        <p className="mt-2 animate-pulse rounded-xl border border-fuchsia-500/20 bg-fuchsia-950/30 px-3 py-2 text-xs font-semibold text-fuchsia-300">
+          Coach is thinking...
+        </p>
+      )}
       {voiceErrorMessage && (
         <p className="mt-2 text-xs leading-relaxed text-red-300">{voiceErrorMessage}</p>
       )}
@@ -655,6 +698,12 @@ export function WorkoutPlayerScreen({
         angleLabel: String(cameraMetrics.metricValue),
         formFeedback: feedbackMessage,
         feedbackSeverity,
+        totalSessionsCompleted,
+        sessionStreak,
+        lastSessionScore: lastWorkoutSummary?.workoutScore,
+        lastSessionFormScore: lastWorkoutSummary?.formScore,
+        lastSessionPRs: lastWorkoutSummary?.sessionPRs,
+        currentSessionPRs: currentSessionPRsRef.current.length > 0 ? currentSessionPRsRef.current : undefined,
       }),
     [
       selectedAvatar,
@@ -686,6 +735,9 @@ export function WorkoutPlayerScreen({
       plankQualityMessage,
       feedbackMessage,
       feedbackSeverity,
+      totalSessionsCompleted,
+      sessionStreak,
+      lastWorkoutSummary,
     ]
   );
   // Bubble coachBrain animation hints up to the floating coach
@@ -701,7 +753,9 @@ export function WorkoutPlayerScreen({
   // Per-rep speech + form-reactive avatar reactions
   const activeRepCount =
     selectedMode === "squat" ? squatRepCount :
-    selectedMode === "pushup" ? pushupRepCount : 0;
+    selectedMode === "pushup" ? pushupRepCount :
+    selectedMode === "lunge" ? lungeRepCount :
+    selectedMode === "curl" ? curlRepCount : 0;
   useRepSpeech({
     repCount: activeRepCount,
     repQualityLabel: latestRepQuality?.label,
@@ -1467,7 +1521,7 @@ export function WorkoutPlayerScreen({
                         <div className="mt-1 flex items-center gap-2">
                           <div className="h-1.5 w-1.5 rounded-full bg-fuchsia-400 shadow-[0_0_6px_rgba(217,70,239,0.8)]" />
                           <span className="text-sm font-black text-fuchsia-300">
-                            Camera: {selectedMode === "squat" ? squatRepCount : selectedMode === "pushup" ? pushupRepCount : `${Math.round(plankHoldSeconds)}s`}
+                            Camera: {selectedMode === "squat" ? squatRepCount : selectedMode === "pushup" ? pushupRepCount : selectedMode === "lunge" ? lungeRepCount : selectedMode === "curl" ? curlRepCount : selectedMode === "plank" ? `${Math.round(plankHoldSeconds)}s` : 0}
                           </span>
                           <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">
                             {selectedMode === "plank" ? "hold" : "reps tracked"}
