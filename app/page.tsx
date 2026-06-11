@@ -1096,7 +1096,7 @@ function GymTwinAppLive() {
       )}
 
       {currentScreen === "auth" && (
-        <AuthScreen />
+        <AuthScreen onSkip={() => setCurrentScreen("landing")} />
       )}
 
       {currentScreen === "landing" && (
