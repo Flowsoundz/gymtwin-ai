@@ -80,6 +80,7 @@ import { clearBodyProfile, readBodyProfile, saveBodyProfile } from "@/lib/bodyPr
 import { generateWeeklyPlan } from "@/lib/weeklyPlanEngine";
 import { clearWeeklyPlan, markTodayComplete, readWeeklyPlan, saveWeeklyPlan } from "@/lib/weeklyPlanStorage";
 import {
+  PROGRAMS,
   clearActiveProgram,
   generateProgramWeekPlan,
   getProgram,
@@ -87,7 +88,9 @@ import {
   readActiveProgram,
   saveActiveProgram,
   type ActiveProgramState,
+  type TrainingProgram,
 } from "@/lib/programs";
+import { ProgramCompleteModal } from "@/components/ProgramCompleteModal";
 import { cleanMovementName } from "@/lib/workoutEngine";
 import { generatePersonalizedPlan, planToWorkoutMovements } from "@/lib/personalizedWorkoutEngine";
 import {
@@ -222,6 +225,7 @@ function GymTwinAppLive() {
   const [bodyProfile, setBodyProfile] = useState<BodyProfile | null>(null);
   const [weeklyPlan, setWeeklyPlan] = useState<WeeklyPlan | null>(null);
   const [activeProgram, setActiveProgram] = useState<ActiveProgramState | null>(null);
+  const [completedProgram, setCompletedProgram] = useState<TrainingProgram | null>(null);
   const [avatarDisplaySettings, setAvatarDisplaySettings] = useState<AvatarDisplaySettings>(
     defaultAvatarDisplaySettings
   );
@@ -675,9 +679,10 @@ function GymTwinAppLive() {
     if (!program) { clearActiveProgram(); setActiveProgram(null); return; }
 
     if (activeProgram.currentWeek >= program.weeks.length) {
-      // Program complete 🎉 — leave the finished week visible, clear progression
+      // Program complete 🎉 — celebration modal + shareable card, clear progression
       clearActiveProgram();
       setActiveProgram(null);
+      setCompletedProgram(program);
       speak(`That's the full ${program.name} program — every week, done. I'm proud of you.`, { priority: "transition" });
       return;
     }
@@ -1426,6 +1431,22 @@ function GymTwinAppLive() {
           animationHint={floatingHint}
           demoClipName={floatingDemoClip}
           message={displayedSpeech || null}
+        />
+      )}
+
+      {completedProgram && (
+        <ProgramCompleteModal
+          program={completedProgram}
+          workoutsCompleted={userStats.workoutsCompleted}
+          totalMinutes={userStats.totalMinutes}
+          suggestedNext={
+            // Natural progression ladder: base → conditioning → strength → repeat harder
+            PROGRAMS.find((p) =>
+              p.id === ({ "foundation-4": "shred-30", "shred-30": "strong-6", "strong-6": "shred-30" } as Record<string, string>)[completedProgram.id]
+            ) ?? null
+          }
+          onStartNext={(id) => { setCompletedProgram(null); handleStartProgram(id); }}
+          onClose={() => setCompletedProgram(null)}
         />
       )}
 
