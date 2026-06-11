@@ -21,6 +21,7 @@ export const defaultAvatarDisplaySettings: AvatarDisplaySettings = {
   coachVoiceVolume: "normal",
   cueVolume: "normal",
   duckExternalMusic: true,
+  coachAudioEnabled: false,
 };
 
 function isAvatarDisplayMode(value: unknown): value is AvatarDisplayMode {
@@ -93,6 +94,10 @@ export function sanitizeAvatarDisplaySettings(
       typeof value?.duckExternalMusic === "boolean"
         ? value.duckExternalMusic
         : defaultAvatarDisplaySettings.duckExternalMusic,
+    coachAudioEnabled:
+      typeof value?.coachAudioEnabled === "boolean"
+        ? value.coachAudioEnabled
+        : defaultAvatarDisplaySettings.coachAudioEnabled,
   };
 }
 

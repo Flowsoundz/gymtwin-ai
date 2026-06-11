@@ -72,6 +72,12 @@ export interface AvatarDisplaySettings {
   coachVoiceVolume: WorkoutAudioLevel;
   cueVolume: WorkoutAudioLevel;
   duckExternalMusic: boolean;
+  // Master switch for ALL GymTwin audio output (coach voice + sound cues).
+  // Off by default so external music apps (Spotify/Apple Music/etc.) keep
+  // playing — on iOS web there's no way to mix, so emitting any audio would
+  // stop the user's music. Turning this on lets the coach speak aloud (and
+  // will interrupt other audio on iPhone).
+  coachAudioEnabled: boolean;
 }
 
 export type AvatarAnimationCategory =

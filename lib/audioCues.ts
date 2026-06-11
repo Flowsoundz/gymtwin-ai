@@ -5,8 +5,25 @@ import type { WorkoutAudioLevel } from "@/types";
 
 let sharedAudioContext: AudioContext | null = null;
 
+// Master gate for GymTwin sound output. Off by default so we never create an
+// AudioContext (which on iOS web seizes the audio session and stops the user's
+// music). app/page.tsx flips this from the coachAudioEnabled setting. Even the
+// camera-sandbox cues route through getAudioContext(), so this one guard keeps
+// every tone silent — and external music alive — when audio is off.
+let coachAudioEnabled = false;
+
+export function setCoachAudioEnabled(enabled: boolean): void {
+  coachAudioEnabled = enabled;
+  // Releasing the context hands the audio session back so paused music can resume.
+  if (!enabled && sharedAudioContext) {
+    void sharedAudioContext.close().catch(() => undefined);
+    sharedAudioContext = null;
+  }
+}
+
 function getAudioContext(): AudioContext | null {
   if (typeof window === "undefined") return null;
+  if (!coachAudioEnabled) return null;
   const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!AudioContextCtor) return null;
   sharedAudioContext ??= new AudioContextCtor();

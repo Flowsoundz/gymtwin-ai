@@ -7,7 +7,8 @@ import type { CoachVoicePriority, CoachVoiceIntent } from "@/lib/voice/voiceInte
 export function useSpeechCoach(
   selectedCoach: CoachName,
   selectedAvatar: CoachAvatar = "Nova",
-  coachVoiceVolume: WorkoutAudioLevel = "normal"
+  coachVoiceVolume: WorkoutAudioLevel = "normal",
+  audioEnabled = true
 ) {
   const {
     isMuted,
@@ -16,11 +17,14 @@ export function useSpeechCoach(
     setDisplayedSpeech,
     speakText,
     speakIntent,
-  } = useCoachVoice({
-    selectedCoach,
-    selectedAvatar,
-    coachVoiceVolume,
-  });
+  } = useCoachVoice(
+    {
+      selectedCoach,
+      selectedAvatar,
+      coachVoiceVolume,
+    },
+    audioEnabled
+  );
 
   function speak(
     phrase: string,

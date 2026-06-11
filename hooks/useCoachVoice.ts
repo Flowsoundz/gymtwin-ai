@@ -14,7 +14,7 @@ import type {
   CoachVoicePriority,
 } from "@/lib/voice/voiceIntents";
 
-export function useCoachVoice(context: CoachVoiceContext) {
+export function useCoachVoice(context: CoachVoiceContext, audioEnabled = true) {
   const [isMuted, setIsMuted] = useState(false);
   const [displayedSpeech, setDisplayedSpeech] = useState(
     "Choose your coach and start your training session."
@@ -52,7 +52,10 @@ export function useCoachVoice(context: CoachVoiceContext) {
     if (!resolved) return;
 
     setDisplayedSpeech(resolved.caption);
-    if (isMuted) return;
+    // Caption always updates so the coach still "speaks" on screen, but when
+    // audio is off (default) or muted we emit no sound — keeping the user's
+    // external music app playing. No Audio element, TTS, or speechSynthesis.
+    if (!audioEnabled || isMuted) return;
     if (!shouldInterrupt(resolved.priority)) return;
 
     stopCurrentPlayback();

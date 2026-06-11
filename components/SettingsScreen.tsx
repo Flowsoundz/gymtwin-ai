@@ -581,6 +581,23 @@ export function SettingsScreen({
 
             <SettingsCard title="Workout Audio">
               <div className="space-y-4">
+                <label className="flex items-start justify-between gap-4 rounded-[1.25rem] border border-fuchsia-400/18 bg-gradient-to-r from-fuchsia-500/8 via-slate-900/72 to-cyan-500/8 px-4 py-4">
+                  <div>
+                    <p className="text-sm font-black text-white">Coach Audio</p>
+                    <p className="mt-1 text-xs leading-relaxed text-slate-400">
+                      {avatarDisplaySettings.coachAudioEnabled
+                        ? "Coach voice and sound cues play aloud. On iPhone this pauses other music apps while a cue plays."
+                        : "Off — GymTwin stays silent so Spotify, Apple Music, or any player keeps going. The coach still talks on screen with captions."}
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={avatarDisplaySettings.coachAudioEnabled}
+                    onChange={(event) => updateAvatarDisplaySettings({ coachAudioEnabled: event.target.checked })}
+                    className="mt-1 h-5 w-5 rounded border-white/15 bg-slate-950 text-fuchsia-500 accent-fuchsia-500"
+                  />
+                </label>
+
                 <div>
                   <p className="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Music Source</p>
                   <p className="mt-1 text-xs text-slate-400">GymTwin is designed to work beside your music, not interrupt it.</p>

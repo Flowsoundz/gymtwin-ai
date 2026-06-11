@@ -56,6 +56,7 @@ import {
   hasStoredActiveSession,
 } from "@/hooks/useActiveSession";
 import { useSpeechCoach } from "@/hooks/useSpeechCoach";
+import { setCoachAudioEnabled } from "@/lib/audioCues";
 import {
   clearWorkoutStorage,
   readLastWorkoutSummary,
@@ -251,7 +252,19 @@ function GymTwinAppLive() {
     speak,
     speakIntent,
     updateCoachLine,
-  } = useSpeechCoach(selectedCoach, selectedAvatar, avatarDisplaySettings.coachVoiceVolume);
+  } = useSpeechCoach(
+    selectedCoach,
+    selectedAvatar,
+    avatarDisplaySettings.coachVoiceVolume,
+    avatarDisplaySettings.coachAudioEnabled
+  );
+
+  // Keep the sound-cue engine's master gate in sync with the setting so tones
+  // (and the AudioContext itself) stay off — and external music keeps playing —
+  // until the user opts into coach audio.
+  useEffect(() => {
+    setCoachAudioEnabled(avatarDisplaySettings.coachAudioEnabled);
+  }, [avatarDisplaySettings.coachAudioEnabled]);
 
   const activeMovement = activeRoutine[movementIndex];
 
