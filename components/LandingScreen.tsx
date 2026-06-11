@@ -20,6 +20,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useCoachStore } from "@/store/useCoachStore";
 import type { AdaptiveProfile, BodyProfile, CoachAvatar, TraineeStats, WeeklyPlan, WeeklyPlanDayConfig, WorkoutSummaryData } from "@/types";
 import type { Macrocycle } from "@/types/macrocycle";
+import { PROGRAMS, getProgram, type ActiveProgramState } from "@/lib/programs";
 
 const FIRST_SESSION_GREETING = {
   headline: "Your AI coach is ready.",
@@ -56,6 +57,8 @@ type LandingScreenProps = {
   adaptiveProfile?: AdaptiveProfile | null;
   onStartPlanDay?: (config: WeeklyPlanDayConfig) => void;
   onStartQuickPill?: (pill: { label: string; durationMin: number }) => void;
+  activeProgram?: ActiveProgramState | null;
+  onStartProgram?: (programId: string) => void;
   primaryButton: string;
   secondaryButton: string;
 };
@@ -229,6 +232,8 @@ export function LandingScreen({
   adaptiveProfile,
   onStartPlanDay,
   onStartQuickPill,
+  activeProgram,
+  onStartProgram,
 }: LandingScreenProps) {
   const [activeTab, setActiveTab] = useState<NavTab>("home");
   const [heroInteractive, setHeroInteractive] = useState(false);
@@ -658,6 +663,28 @@ export function LandingScreen({
                     ))}
                   </div>
                 ) : null}
+                {/* Active program progress strip */}
+                {activeProgram && weeklyPlan && (() => {
+                  const prog = getProgram(activeProgram.programId);
+                  if (!prog) return null;
+                  const pct = Math.round(((activeProgram.currentWeek - 1) / prog.weeks.length) * 100);
+                  const theme = prog.weeks[Math.min(activeProgram.currentWeek - 1, prog.weeks.length - 1)];
+                  return (
+                    <div className="mb-3 rounded-2xl border border-violet-400/20 bg-violet-500/8 px-4 py-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="truncate text-xs font-black text-white">
+                          {prog.emoji} {prog.name} · Week {activeProgram.currentWeek} of {prog.weeks.length}
+                        </p>
+                        <span className="shrink-0 rounded-full border border-violet-400/25 bg-violet-500/12 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.16em] text-violet-200">
+                          {theme.theme}
+                        </span>
+                      </div>
+                      <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/8">
+                        <div className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-violet-500 transition-all" style={{ width: `${Math.max(pct, 4)}%` }} />
+                      </div>
+                    </div>
+                  );
+                })()}
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-[10px] font-black uppercase tracking-[0.28em] text-blue-400">Today&apos;s Plan</p>
@@ -742,11 +769,40 @@ export function LandingScreen({
                             </button>
                           ))}
                         </div>
+                        {onStartProgram && (
+                          <div className="mt-2 space-y-1.5">
+                            <p className="text-[9px] font-black uppercase tracking-[0.24em] text-slate-500">
+                              Or follow a program
+                            </p>
+                            {PROGRAMS.map((prog) => (
+                              <button
+                                key={prog.id}
+                                onClick={() => onStartProgram(prog.id)}
+                                className={`flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left transition active:scale-[0.99] ${
+                                  prog.accent === "cyan"
+                                    ? "border-cyan-400/20 bg-cyan-500/8 hover:bg-cyan-500/14"
+                                    : prog.accent === "fuchsia"
+                                      ? "border-fuchsia-400/20 bg-fuchsia-500/8 hover:bg-fuchsia-500/14"
+                                      : "border-violet-400/20 bg-violet-500/8 hover:bg-violet-500/14"
+                                }`}
+                              >
+                                <span className="min-w-0">
+                                  <span className="block truncate text-xs font-black text-white">
+                                    {prog.emoji} {prog.name}
+                                    <span className="ml-1.5 font-bold text-slate-500">{prog.weeks.length} wks</span>
+                                  </span>
+                                  <span className="block truncate text-[10px] text-slate-400">{prog.tagline}</span>
+                                </span>
+                                <span className="shrink-0 text-[10px] font-black uppercase tracking-wider text-slate-400">Start →</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
                         <button
                           onClick={onGenerateWeeklyPlan}
                           className="mt-1 text-xs bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 px-3 py-1.5 rounded-md transition-all"
                         >
-                          Generate a 7-day plan for your week
+                          Generate a custom 7-day plan instead
                         </button>
                       </div>
                     )}

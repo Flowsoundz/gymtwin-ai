@@ -79,6 +79,15 @@ import { getAchievementBadges } from "@/lib/achievementEngine";
 import { clearBodyProfile, readBodyProfile, saveBodyProfile } from "@/lib/bodyProfileStorage";
 import { generateWeeklyPlan } from "@/lib/weeklyPlanEngine";
 import { clearWeeklyPlan, markTodayComplete, readWeeklyPlan, saveWeeklyPlan } from "@/lib/weeklyPlanStorage";
+import {
+  clearActiveProgram,
+  generateProgramWeekPlan,
+  getProgram,
+  isProgramWeekComplete,
+  readActiveProgram,
+  saveActiveProgram,
+  type ActiveProgramState,
+} from "@/lib/programs";
 import { cleanMovementName } from "@/lib/workoutEngine";
 import { generatePersonalizedPlan, planToWorkoutMovements } from "@/lib/personalizedWorkoutEngine";
 import {
@@ -212,6 +221,7 @@ function GymTwinAppLive() {
   const [userStats, setUserStats] = useState<TraineeStats>({ workoutsCompleted: 0, streak: 0, lastWorkoutDate: null, totalMinutes: 0 });
   const [bodyProfile, setBodyProfile] = useState<BodyProfile | null>(null);
   const [weeklyPlan, setWeeklyPlan] = useState<WeeklyPlan | null>(null);
+  const [activeProgram, setActiveProgram] = useState<ActiveProgramState | null>(null);
   const [avatarDisplaySettings, setAvatarDisplaySettings] = useState<AvatarDisplaySettings>(
     defaultAvatarDisplaySettings
   );
@@ -511,6 +521,7 @@ function GymTwinAppLive() {
     setWorkoutHistory(readWorkoutHistory());
     setBodyProfile(readBodyProfile());
     setWeeklyPlan(readWeeklyPlan());
+    setActiveProgram(readActiveProgram());
     setTodayFoodLog(readTodayNutritionLog().consumed);
     setAvatarDisplaySettings(readAvatarDisplaySettings());
     setAdaptiveProfile(readAdaptiveProfile());
@@ -629,11 +640,63 @@ function GymTwinAppLive() {
   }, []);
 
   function handleGenerateWeeklyPlan() {
+    // A custom plan replaces any structured program in progress
+    clearActiveProgram();
+    setActiveProgram(null);
     const nextPlan = generateWeeklyPlan(selectedGoal, selectedLevel, selectedEquipment);
     setWeeklyPlan(nextPlan);
     saveWeeklyPlan(nextPlan);
     void syncWeeklyPlanToCloud(nextPlan);
   }
+
+  function handleStartProgram(programId: string) {
+    const program = getProgram(programId);
+    if (!program) return;
+    const state: ActiveProgramState = {
+      programId,
+      startedAt: new Date().toISOString(),
+      currentWeek: 1,
+      completedWeeks: 0,
+    };
+    const plan = generateProgramWeekPlan(program, 1, selectedLevel, selectedEquipment);
+    saveActiveProgram(state);
+    setActiveProgram(state);
+    setWeeklyPlan(plan);
+    saveWeeklyPlan(plan);
+    void syncWeeklyPlanToCloud(plan);
+    speak(program.weeks[0].coachNote, { priority: "transition" });
+  }
+
+  // Program progression: when every training day of the active program week is
+  // complete, roll into the next week (or finish the program after the last one).
+  useEffect(() => {
+    if (!activeProgram || !isProgramWeekComplete(weeklyPlan)) return;
+    const program = getProgram(activeProgram.programId);
+    if (!program) { clearActiveProgram(); setActiveProgram(null); return; }
+
+    if (activeProgram.currentWeek >= program.weeks.length) {
+      // Program complete 🎉 — leave the finished week visible, clear progression
+      clearActiveProgram();
+      setActiveProgram(null);
+      speak(`That's the full ${program.name} program — every week, done. I'm proud of you.`, { priority: "transition" });
+      return;
+    }
+
+    const nextWeek = activeProgram.currentWeek + 1;
+    const nextState: ActiveProgramState = {
+      ...activeProgram,
+      currentWeek: nextWeek,
+      completedWeeks: activeProgram.currentWeek,
+    };
+    const nextPlan = generateProgramWeekPlan(program, nextWeek, selectedLevel, selectedEquipment);
+    saveActiveProgram(nextState);
+    setActiveProgram(nextState);
+    setWeeklyPlan(nextPlan);
+    saveWeeklyPlan(nextPlan);
+    void syncWeeklyPlanToCloud(nextPlan);
+    speak(program.weeks[nextWeek - 1].coachNote, { priority: "transition" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weeklyPlan, activeProgram]);
 
   useEffect(() => {
     if (currentScreen !== "player" || activeRoutine.length === 0) return;
@@ -1117,6 +1180,8 @@ function GymTwinAppLive() {
           onGenerateWeeklyPlan={handleGenerateWeeklyPlan}
           onStartPlanDay={handleStartPlanDay}
           onStartQuickPill={handleStartQuickPill}
+          activeProgram={activeProgram}
+          onStartProgram={handleStartProgram}
           selectedAvatar={selectedAvatar}
           cameraTried={cameraTried}
           showSyncBanner={!supabaseUser && !syncBannerDismissed}
