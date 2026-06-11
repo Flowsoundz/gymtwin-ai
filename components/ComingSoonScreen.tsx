@@ -16,9 +16,19 @@ export function ComingSoonScreen() {
     <main className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.14),_transparent_22%),radial-gradient(circle_at_bottom_right,_rgba(168,85,247,0.16),_transparent_24%),linear-gradient(180deg,_#020617_0%,_#020617_46%,_#030712_100%)] px-4 py-8 text-white antialiased sm:px-6 lg:px-8">
       <div className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-6xl flex-col justify-between rounded-[2.25rem] border border-white/8 bg-[linear-gradient(180deg,rgba(15,23,42,0.82),rgba(2,6,23,0.94))] p-6 shadow-[0_30px_80px_rgba(15,23,42,0.5)] backdrop-blur-2xl sm:p-8 lg:p-10">
         <header className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.36em] text-cyan-300/90">AI Home Fitness</p>
-            <h1 className="mt-2 text-2xl font-black tracking-tight text-white sm:text-3xl">GymTwin AI</h1>
+          <div className="flex items-center gap-4">
+            <Image
+              src="/brand/gymtwin-mark.png"
+              alt="GymTwin"
+              width={96}
+              height={96}
+              priority
+              className="drop-shadow-[0_0_24px_rgba(99,102,241,0.35)]"
+            />
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.36em] text-cyan-300/90">AI Home Fitness</p>
+              <h1 className="mt-2 text-2xl font-black tracking-tight text-white sm:text-3xl">GymTwin AI</h1>
+            </div>
           </div>
           <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-[11px] font-black uppercase tracking-[0.2em] text-slate-300">
             Coming Soon

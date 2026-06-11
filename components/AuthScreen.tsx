@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { supabase } from "@/lib/supabase";
 
 type AuthMode = "login" | "signup" | "reset";
@@ -70,12 +71,16 @@ export function AuthScreen({ onSkip }: Props) {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-[#070d1a] px-5 py-10">
-      {/* Logo */}
-      <div className="mb-8 flex flex-col items-center gap-2">
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-purple-600 shadow-[0_0_32px_rgba(139,92,246,0.4)]">
-          <span className="text-xl font-black tracking-tight text-white">GT</span>
-        </div>
-        <h1 className="text-2xl font-black text-white">GymTwin AI</h1>
+      {/* Logo — black background melts into the dark UI via blend-screen */}
+      <div className="mb-6 flex flex-col items-center gap-1">
+        <Image
+          src="/brand/gymtwin-mark.png"
+          alt="GymTwin"
+          width={190}
+          height={190}
+          priority
+          className="drop-shadow-[0_0_24px_rgba(99,102,241,0.35)]"
+        />
         <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
           {mode === "login" ? "Sign in to sync your progress" : mode === "signup" ? "Create your account" : "Reset your password"}
         </p>
