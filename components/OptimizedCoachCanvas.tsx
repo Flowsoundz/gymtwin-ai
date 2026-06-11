@@ -409,6 +409,35 @@ useGLTF.preload("/models/animations/gestures/Weight_Shift_1.glb");
 useGLTF.preload("/models/animations/emotes/Cheering_1.glb");
 useGLTF.preload("/models/animations/emotes/Victory_1.glb");
 
+// Armature root scale of a GLB scene (1 when unscaled). The shared animation
+// clips were authored on a 0.01-scale (centimeter) Mixamo rig; coach models may
+// be meter-scale. Position keyframes are raw source-space values, so a clip
+// played on a differently-scaled rig launches the hips ~50m into the air.
+function getArmatureScale(root: Object3D | null | undefined): number {
+  let found = 1;
+  root?.traverse?.((o: Object3D) => {
+    if (found === 1 && /armature/i.test(o.name) && Math.abs(o.scale.x - 1) > 1e-6) {
+      found = o.scale.x;
+    }
+  });
+  return found;
+}
+
+// Rescale every .position track from the clip rig's space into the target
+// rig's space. factor === 1 (same space, e.g. Atlas + shared clips) is a no-op.
+function retargetClipTranslations(clips: AnimationClip[], factor: number): AnimationClip[] {
+  if (Math.abs(factor - 1) < 1e-6) return clips;
+  return clips.map((clip) => {
+    const adjusted = clip.clone();
+    for (const track of adjusted.tracks) {
+      if (track.name.endsWith(".position")) {
+        for (let i = 0; i < track.values.length; i += 1) track.values[i] *= factor;
+      }
+    }
+    return adjusted;
+  });
+}
+
 function CoachModelEngine({
   modelPath,
   animationName,
@@ -428,13 +457,31 @@ function CoachModelEngine({
     animations: AnimationClip[];
   };
   // Always call useGLTF to keep hook count stable — falls back to modelPath (cached) when no external anim
-  const { animations: extAnimations } = useGLTF(animationGLBPath ?? modelPath) as {
+  const { scene: extScene, animations: extAnimationsRaw } = useGLTF(animationGLBPath ?? modelPath) as {
+    scene: Object3D;
     animations: AnimationClip[];
   };
   // Same pattern for reactions — falls back to modelPath when no reaction queued
-  const { animations: reactionAnims } = useGLTF(reactionGLBPath ?? modelPath) as {
+  const { scene: reactionScene, animations: reactionAnimsRaw } = useGLTF(reactionGLBPath ?? modelPath) as {
+    scene: Object3D;
     animations: AnimationClip[];
   };
+
+  const targetScale = useMemo(() => getArmatureScale(scene), [scene]);
+  const extAnimations = useMemo(
+    () =>
+      animationGLBPath
+        ? retargetClipTranslations(extAnimationsRaw, getArmatureScale(extScene) / targetScale)
+        : extAnimationsRaw,
+    [animationGLBPath, extAnimationsRaw, extScene, targetScale]
+  );
+  const reactionAnims = useMemo(
+    () =>
+      reactionGLBPath
+        ? retargetClipTranslations(reactionAnimsRaw, getArmatureScale(reactionScene) / targetScale)
+        : reactionAnimsRaw,
+    [reactionGLBPath, reactionAnimsRaw, reactionScene, targetScale]
+  );
   const animations = animationGLBPath ? extAnimations : charAnimations;
 
   const cloned = useMemo(() => skeletonClone(scene), [scene]);
