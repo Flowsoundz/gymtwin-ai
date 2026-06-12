@@ -98,6 +98,7 @@ import {
   recordTwinProgress,
   type TwinRaceHud,
 } from "@/lib/twinRace";
+import { saveWorkoutToAppleHealth } from "@/lib/native";
 import { cleanMovementName } from "@/lib/workoutEngine";
 import { generatePersonalizedPlan, planToWorkoutMovements } from "@/lib/personalizedWorkoutEngine";
 import {
@@ -990,6 +991,11 @@ function GymTwinAppLive() {
     useCoachStore.getState().setRepProgress(0);
     // Victory emote plays on the summary screen's coach canvas
     useCoachStore.getState().setReactionGLBPath("/models/animations/emotes/Victory_1.glb");
+    // Apple Health rings credit (native shell only; silently a no-op on web)
+    void saveWorkoutToAppleHealth(
+      actualMins,
+      estimateWorkoutCaloriesBurned(actualMins, bodyProfile?.weightLbs ?? 180)
+    );
     speakIntent({ type: "session_complete" }); setCurrentScreen("summary");
   }
 

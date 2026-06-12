@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+		<key>NSHealthUpdateUsageDescription</key>
+	<string>GymTwin saves your completed workouts and calories to Apple Health so they count toward your rings.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>GymTwin can read basic fitness data to personalize your training.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>GymTwin uses your camera for on-device form tracking — no video is recorded or leaves your phone.</string>
 	<key>NSMicrophoneUsageDescription</key>
