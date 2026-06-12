@@ -17,3 +17,4 @@ export const EXERCISE_LOG_KEY = "gymtwin_exercise_log";
 export const EXERCISE_PR_KEY = "gymtwin_exercise_prs";
 export const EARNED_BADGE_IDS_KEY = "gymtwin_earned_badge_ids";
 export const ACTIVE_PROGRAM_KEY = "gymtwin_active_program";
+export const TWIN_BASELINE_KEY = "gymtwin_twin_baseline";

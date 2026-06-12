@@ -7,13 +7,15 @@ type Props = {
   program: TrainingProgram;
   workoutsCompleted: number;
   totalMinutes: number;
+  /** "Beat Your Twin" improvement vs week 1, e.g. +34. */
+  twinDeltaPct?: number | null;
   suggestedNext: TrainingProgram | null;
   onStartNext: (programId: string) => void;
   onClose: () => void;
 };
 
 // Renders the shareable 1080×1350 card on a canvas and returns it as a blob.
-async function renderShareCard(program: TrainingProgram, workouts: number, minutes: number): Promise<Blob | null> {
+async function renderShareCard(program: TrainingProgram, workouts: number, minutes: number, twinDeltaPct?: number | null): Promise<Blob | null> {
   const W = 1080, H = 1350;
   const canvas = document.createElement("canvas");
   canvas.width = W; canvas.height = H;
@@ -74,9 +76,18 @@ async function renderShareCard(program: TrainingProgram, workouts: number, minut
     ctx.fillText(label, x + bw / 2, 935);
   });
 
-  ctx.fillStyle = "#e2e8f0";
-  ctx.font = "700 44px -apple-system, 'Helvetica Neue', sans-serif";
-  ctx.fillText("Trained with an AI coach watching every rep.", W / 2, 1110);
+  if (typeof twinDeltaPct === "number" && twinDeltaPct > 0) {
+    ctx.fillStyle = "#34d399";
+    ctx.font = "900 58px -apple-system, 'Helvetica Neue', sans-serif";
+    ctx.fillText(`👥 +${twinDeltaPct}% vs my week-1 twin`, W / 2, 1100);
+    ctx.fillStyle = "#e2e8f0";
+    ctx.font = "700 38px -apple-system, 'Helvetica Neue', sans-serif";
+    ctx.fillText("Trained with an AI coach watching every rep.", W / 2, 1160);
+  } else {
+    ctx.fillStyle = "#e2e8f0";
+    ctx.font = "700 44px -apple-system, 'Helvetica Neue', sans-serif";
+    ctx.fillText("Trained with an AI coach watching every rep.", W / 2, 1110);
+  }
 
   ctx.fillStyle = "#a78bfa";
   ctx.font = "900 48px -apple-system, 'Helvetica Neue', sans-serif";
@@ -85,14 +96,14 @@ async function renderShareCard(program: TrainingProgram, workouts: number, minut
   return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
 }
 
-export function ProgramCompleteModal({ program, workoutsCompleted, totalMinutes, suggestedNext, onStartNext, onClose }: Props) {
+export function ProgramCompleteModal({ program, workoutsCompleted, totalMinutes, twinDeltaPct, suggestedNext, onStartNext, onClose }: Props) {
   const [sharing, setSharing] = useState(false);
   const [shared, setShared] = useState(false);
 
   const handleShare = useCallback(async () => {
     setSharing(true);
     try {
-      const blob = await renderShareCard(program, workoutsCompleted, totalMinutes);
+      const blob = await renderShareCard(program, workoutsCompleted, totalMinutes, twinDeltaPct);
       if (!blob) return;
       const download = () => {
         const url = URL.createObjectURL(blob);
@@ -150,6 +161,11 @@ export function ProgramCompleteModal({ program, workoutsCompleted, totalMinutes,
         <p className="mt-1 text-sm text-slate-400">
           {program.weeks.length} weeks · {workoutsCompleted} workouts · {totalMinutes} min trained
         </p>
+        {typeof twinDeltaPct === "number" && twinDeltaPct > 0 && (
+          <p className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-500/12 px-3 py-1 text-xs font-black text-emerald-300">
+            👥 +{twinDeltaPct}% faster than your week-1 twin
+          </p>
+        )}
 
         <div className="mt-5 flex flex-col gap-2.5">
           <button

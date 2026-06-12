@@ -91,6 +91,13 @@ import {
   type TrainingProgram,
 } from "@/lib/programs";
 import { ProgramCompleteModal } from "@/components/ProgramCompleteModal";
+import {
+  getTwinRaceHud,
+  isTestWeek,
+  readTwinBaseline,
+  recordTwinProgress,
+  type TwinRaceHud,
+} from "@/lib/twinRace";
 import { cleanMovementName } from "@/lib/workoutEngine";
 import { generatePersonalizedPlan, planToWorkoutMovements } from "@/lib/personalizedWorkoutEngine";
 import {
@@ -954,6 +961,18 @@ function GymTwinAppLive() {
     setLastWorkoutSummary(summaryPayload); saveLastWorkoutSummary(summaryPayload);
     const updatedHistory = [summaryPayload, ...workoutHistory].slice(0, 10); setWorkoutHistory(updatedHistory);
     saveWorkoutHistory(updatedHistory);
+
+    // Beat Your Twin: week 1 captures the pace baseline; the final (test) week
+    // races it and a positive delta gets a Nova callout + share-card stat.
+    if (activeProgram) {
+      const twinProgram = getProgram(activeProgram.programId);
+      if (twinProgram) {
+        const deltaPct = recordTwinProgress(twinProgram, activeProgram, summaryPayload);
+        if (deltaPct !== null && deltaPct > 0) {
+          speak(`You just beat your week-one twin by ${deltaPct} percent. That's what four weeks of work looks like.`, { priority: "encouragement" });
+        }
+      }
+    }
     if (supabaseUser) {
       void syncWorkoutSummaryToCloud(summaryPayload);
       void syncStatsToCloud(nextStats);
@@ -1049,6 +1068,17 @@ function GymTwinAppLive() {
     avatarDisplaySettings.mode === "floating_overlay";
 
   const elapsedMinutes = sessionStartedAt ? calculateActualMinutes(sessionStartedAt) : 0;
+
+  // Live "Beat Your Twin" race — only during the active program's test week,
+  // and only when a week-1 baseline exists for this program.
+  const twinRaceHud: TwinRaceHud | null = (() => {
+    if (currentScreen !== "player" || !activeProgram) return null;
+    const prog = getProgram(activeProgram.programId);
+    if (!prog || !isTestWeek(prog, activeProgram)) return null;
+    const baseline = readTwinBaseline();
+    if (!baseline || baseline.programId !== prog.id) return null;
+    return getTwinRaceHud(baseline, elapsedMinutes, totalAccumulatedReps + currentReps);
+  })();
   // Live calorie credit — recomputes every render (timers drive re-renders during player)
   const activeSessionCalories =
     currentScreen === "player" && sessionStartedAt
@@ -1313,6 +1343,7 @@ function GymTwinAppLive() {
           restCountdown={restCountdown}
           exerciseCountdown={exerciseCountdown}
           elapsedMinutes={elapsedMinutes}
+          twinRace={twinRaceHud}
           selectedCoach={selectedCoach}
           selectedAvatar={selectedAvatar}
           avatarDisplaySettings={avatarDisplaySettings}
@@ -1439,6 +1470,7 @@ function GymTwinAppLive() {
           program={completedProgram}
           workoutsCompleted={userStats.workoutsCompleted}
           totalMinutes={userStats.totalMinutes}
+          twinDeltaPct={readTwinBaseline()?.programId === completedProgram.id ? readTwinBaseline()?.lastDeltaPct ?? null : null}
           suggestedNext={
             // Natural progression ladder: base → conditioning → strength → repeat harder
             PROGRAMS.find((p) =>

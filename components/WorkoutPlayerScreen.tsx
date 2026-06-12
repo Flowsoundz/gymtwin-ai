@@ -53,6 +53,7 @@ type WorkoutPlayerScreenProps = {
   restCountdown: number;
   exerciseCountdown: number;
   elapsedMinutes: number;
+  twinRace?: { twinReps: number; yourReps: number; ahead: boolean } | null;
   selectedCoach: CoachName;
   selectedAvatar: CoachAvatar;
   avatarDisplaySettings: AvatarDisplaySettings;
@@ -98,6 +99,7 @@ export function WorkoutPlayerScreen({
   restCountdown,
   exerciseCountdown,
   elapsedMinutes,
+  twinRace,
   selectedCoach,
   selectedAvatar,
   avatarDisplaySettings,
@@ -1138,6 +1140,16 @@ export function WorkoutPlayerScreen({
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">{activeMovement.phase} phase</p>
               <p className="mt-0.5 text-sm font-bold text-slate-200">Movement {movementIndex + 1} / {activeRoutine.length} <span className="text-slate-600">·</span> {elapsedMinutes} min</p>
+              {twinRace && (
+                <p className={`mt-1 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-black uppercase tracking-[0.14em] ${
+                  twinRace.ahead
+                    ? "border-emerald-400/30 bg-emerald-500/12 text-emerald-300"
+                    : "border-fuchsia-400/30 bg-fuchsia-500/12 text-fuchsia-300"
+                }`}>
+                  👥 Twin race · you {twinRace.yourReps} vs twin {twinRace.twinReps}
+                  {twinRace.ahead ? " — ahead!" : " — chase!"}
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <button onClick={onToggleMute} className="flex h-9 w-9 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-sm transition hover:border-white/20 active:scale-95">{isMuted ? "🔇" : "🔊"}</button>
