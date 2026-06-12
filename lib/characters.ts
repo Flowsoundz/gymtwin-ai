@@ -16,6 +16,8 @@ export type Character = {
   rimColor: string;
   avatar: string;
   available: boolean;
+  /** Per-model light multiplier — dark-albedo models need extra key/fill. */
+  lightingBoost?: number;
 };
 
 export const CHARACTERS: Record<CharacterId, Character> = {
@@ -37,7 +39,8 @@ export const CHARACTERS: Record<CharacterId, Character> = {
     personality: "Performance coach. Disciplined, strong, results-first.",
     modelPath: "/models/gymtwin/male/GymTwin_Male_43K_Rigged_UPRIGHT.glb",
     accentColor: "#00aaff",
-    rimColor: "#0066ff",
+    rimColor: "#33ccff",
+    lightingBoost: 1.3,
     avatar: "/avatars/GTMMODEL.png",
     available: true,
   },

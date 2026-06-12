@@ -663,6 +663,8 @@ export function OptimizedCoachCanvas({
     : [1, Math.min(devicePixelRatio, 1.8)];
   const surfacePreset = getSurfacePreset(characterId, surface);
   const lightingPreset = getLightingPreset(surface);
+  // Dark-albedo models (Atlas's navy suit) absorb the rig — boost key/fills
+  const lightBoost = character.lightingBoost ?? 1;
   const resolvedCameraPosition = cameraPosition ?? surfacePreset.cameraPosition;
   const resolvedFov = fov ?? surfacePreset.fov;
   const orbitTarget = surfacePreset.target;
@@ -705,7 +707,7 @@ export function OptimizedCoachCanvas({
             <directionalLight
               castShadow
               position={[-2, 7, 5]}
-              intensity={lightingPreset.keyIntensity}
+              intensity={lightingPreset.keyIntensity * lightBoost}
               color="#d0e8ff"
               shadow-mapSize-width={2048}
               shadow-mapSize-height={2048}
@@ -720,11 +722,11 @@ export function OptimizedCoachCanvas({
             <directionalLight position={[-5, 3, -3]} intensity={lightingPreset.rimIntensity} color={character.rimColor} />
             <directionalLight position={[5, 2, -2]} intensity={lightingPreset.violetFillIntensity} color="#7740ff" />
             <pointLight position={[0, 0.05, 0.3]} intensity={lightingPreset.floorBounceIntensity} color={character.rimColor} distance={4.5} decay={2} />
-            <pointLight position={[0, 9, 1]} intensity={lightingPreset.topFillIntensity} color="#c8e0ff" distance={16} decay={2} />
-            {lightingPreset.faceFillIntensity > 0 && (
+            <pointLight position={[0, 9, 1]} intensity={lightingPreset.topFillIntensity * lightBoost} color="#c8e0ff" distance={16} decay={2} />
+            {(lightingPreset.faceFillIntensity > 0 || lightBoost > 1) && (
               <pointLight
                 position={[0, 1.85, 2.15]}
-                intensity={lightingPreset.faceFillIntensity}
+                intensity={Math.max(lightingPreset.faceFillIntensity, lightBoost > 1 ? 1.2 : lightingPreset.faceFillIntensity)}
                 color="#ffe7d6"
                 distance={4.2}
                 decay={2}
