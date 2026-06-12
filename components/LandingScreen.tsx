@@ -21,6 +21,7 @@ import { useCoachStore } from "@/store/useCoachStore";
 import type { AdaptiveProfile, BodyProfile, CoachAvatar, TraineeStats, WeeklyPlan, WeeklyPlanDayConfig, WorkoutSummaryData } from "@/types";
 import type { Macrocycle } from "@/types/macrocycle";
 import { PROGRAMS, getProgram, type ActiveProgramState } from "@/lib/programs";
+import { completeTodayChallenge, getTodayChallenge, isCompletedToday, readChallengeState } from "@/lib/dailyChallenge";
 
 const FIRST_SESSION_GREETING = {
   headline: "Your AI coach is ready.",
@@ -248,6 +249,16 @@ export function LandingScreen({
   // radio web player opens so the user never leaves the workout screen.
   const radioStreamUrl = process.env.NEXT_PUBLIC_FLOWSOUNDZ_STREAM_URL ?? "";
   const [radioEmbedOpen, setRadioEmbedOpen] = useState(false);
+  // Daily challenge — read after mount to avoid SSR/localStorage mismatch
+  const [challengeDone, setChallengeDone] = useState(false);
+  const [challengeStreak, setChallengeStreak] = useState(0);
+  const [challengeJustDone, setChallengeJustDone] = useState(false);
+  useEffect(() => {
+    const st = readChallengeState();
+    setChallengeDone(isCompletedToday(st));
+    setChallengeStreak(st.streak);
+  }, []);
+  const todayChallenge = getTodayChallenge();
 
   const { isModelLoaded } = useCoachStore();
   const displayedHeroPostureIndex = heroInteractive ? heroPostureIndex : 0;
@@ -832,6 +843,49 @@ export function LandingScreen({
                       </span>
                     </div>
                   </div>
+                </div>
+              </div>
+
+              {/* Daily Challenge — small variable-reward task, fresh every day */}
+              <div className={`rounded-2xl border px-4 py-3.5 transition-all ${
+                challengeDone
+                  ? "border-emerald-400/20 bg-emerald-500/8"
+                  : todayChallenge.doubleXp
+                    ? "border-amber-400/30 bg-amber-500/10 shadow-[0_0_24px_rgba(245,158,11,0.12)]"
+                    : "border-white/8 bg-slate-950/60"
+              }`}>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[9px] font-black uppercase tracking-[0.26em] text-slate-500">
+                      Daily Challenge{todayChallenge.doubleXp && !challengeDone ? " · ⭐ DOUBLE XP DAY" : ""}
+                      {challengeStreak > 1 ? ` · ${challengeStreak} day streak` : ""}
+                    </p>
+                    <p className={`mt-1 truncate text-sm font-black ${challengeDone ? "text-emerald-300 line-through decoration-2" : "text-white"}`}>
+                      {todayChallenge.emoji} {todayChallenge.label}
+                      <span className={`ml-2 font-bold ${challengeDone ? "text-emerald-400/70" : todayChallenge.doubleXp ? "text-amber-300" : "text-cyan-300"}`}>
+                        +{todayChallenge.xp} XP
+                      </span>
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (challengeDone) return;
+                      const next = completeTodayChallenge();
+                      setChallengeDone(true);
+                      setChallengeStreak(next.streak);
+                      setChallengeJustDone(true);
+                      window.setTimeout(() => setChallengeJustDone(false), 1200);
+                      useCoachStore.getState().setReactionGLBPath("/models/animations/gestures/Head_Nod_Yes_1.glb");
+                    }}
+                    disabled={challengeDone}
+                    className={`shrink-0 rounded-xl border px-3.5 py-2 text-[11px] font-black uppercase tracking-wider transition active:scale-95 ${
+                      challengeDone
+                        ? "border-emerald-400/25 bg-emerald-500/12 text-emerald-300"
+                        : "border-cyan-400/30 bg-cyan-500/12 text-cyan-200 hover:bg-cyan-500/20"
+                    } ${challengeJustDone ? "scale-110" : ""}`}
+                  >
+                    {challengeDone ? "Done ✓" : "I did it"}
+                  </button>
                 </div>
               </div>
 
