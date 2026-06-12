@@ -690,6 +690,7 @@ function GymTwinAppLive() {
       clearActiveProgram();
       setActiveProgram(null);
       setCompletedProgram(program);
+      useCoachStore.getState().setReactionGLBPath("/models/animations/emotes/Victory_1.glb");
       speak(`That's the full ${program.name} program — every week, done. I'm proud of you.`, { priority: "transition" });
       return;
     }
@@ -706,6 +707,7 @@ function GymTwinAppLive() {
     setWeeklyPlan(nextPlan);
     saveWeeklyPlan(nextPlan);
     void syncWeeklyPlanToCloud(nextPlan);
+    useCoachStore.getState().setReactionGLBPath("/models/animations/emotes/Cheering_1.glb");
     speak(program.weeks[nextWeek - 1].coachNote, { priority: "transition" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weeklyPlan, activeProgram]);
@@ -986,6 +988,8 @@ function GymTwinAppLive() {
     clearActiveSession(); setSessionStartedAt(null);
     useCoachStore.getState().setWorkoutPhase("celebrating");
     useCoachStore.getState().setRepProgress(0);
+    // Victory emote plays on the summary screen's coach canvas
+    useCoachStore.getState().setReactionGLBPath("/models/animations/emotes/Victory_1.glb");
     speakIntent({ type: "session_complete" }); setCurrentScreen("summary");
   }
 

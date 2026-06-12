@@ -142,6 +142,22 @@ export function WorkoutPlayerScreen({
     lastReactionRef.current = now;
     useCoachStore.getState().setReactionGLBPath(glbPath);
   }
+
+  // Twin race: celebrate the moment you overtake your week-1 self. Only fires
+  // on a genuine behind→ahead flip (start state is trivially "ahead" at 0–0).
+  const twinWasBehindRef = useRef(false);
+  useEffect(() => {
+    if (!twinRace) return;
+    if (!twinRace.ahead) {
+      twinWasBehindRef.current = true;
+      return;
+    }
+    if (twinWasBehindRef.current && twinRace.yourReps > 5) {
+      twinWasBehindRef.current = false;
+      triggerCoachReaction("/models/animations/emotes/Cheering_2.glb", 20000);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [twinRace?.ahead, twinRace?.yourReps]);
   useEffect(() => {
     const target = activeMovement.baseReps ?? 10;
     setRepProgress(currentReps / target);

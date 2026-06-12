@@ -407,6 +407,7 @@ useGLTF.preload("/models/animations/gestures/Head_Nod_Yes_1.glb");
 useGLTF.preload("/models/animations/gestures/Shaking_Head_No_1.glb");
 useGLTF.preload("/models/animations/gestures/Weight_Shift_1.glb");
 useGLTF.preload("/models/animations/emotes/Cheering_1.glb");
+useGLTF.preload("/models/animations/emotes/Cheering_2.glb");
 useGLTF.preload("/models/animations/emotes/Victory_1.glb");
 
 // Armature root scale of a GLB scene (1 when unscaled). The shared animation
