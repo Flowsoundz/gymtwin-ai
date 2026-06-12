@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { CharacterViewer } from "@/components/CharacterViewer";
 import { CHARACTERS } from "@/lib/characters";
+import { isNativeApp } from "@/lib/native";
 import { useCoachStore } from "@/store/useCoachStore";
 import type { CoachSize } from "@/store/useCoachStore";
 import Image from "next/image";
@@ -586,7 +587,9 @@ export function SettingsScreen({
                     <p className="text-sm font-black text-white">Coach Audio</p>
                     <p className="mt-1 text-xs leading-relaxed text-slate-400">
                       {avatarDisplaySettings.coachAudioEnabled
-                        ? "Coach voice and sound cues play aloud. On iPhone this pauses other music apps while a cue plays."
+                        ? isNativeApp()
+                          ? "Coach voice and cues play over your music — Spotify or Apple Music ducks while the coach talks, then comes right back."
+                          : "Coach voice and sound cues play aloud. On iPhone browsers this pauses other music apps while a cue plays."
                         : "Off — GymTwin stays silent so Spotify, Apple Music, or any player keeps going. The coach still talks on screen with captions."}
                     </p>
                   </div>

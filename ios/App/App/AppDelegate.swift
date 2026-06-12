@@ -1,4 +1,5 @@
 import UIKit
+import AVFAudio
 import Capacitor
 
 @UIApplicationMain
@@ -7,7 +8,20 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        // Coach voice + cues coexist with the user's music app: mixWithOthers
+        // keeps Spotify/Apple Music alive, duckOthers dips them while GymTwin
+        // audio plays (WebKit activates/deactivates the session around webview
+        // playback). Without this, any web audio kills background music — the
+        // exact limitation the web app's coach-audio-off default works around.
+        do {
+            try AVAudioSession.sharedInstance().setCategory(
+                .playback,
+                mode: .default,
+                options: [.mixWithOthers, .duckOthers]
+            )
+        } catch {
+            print("AVAudioSession setup failed: \(error)")
+        }
         return true
     }
 

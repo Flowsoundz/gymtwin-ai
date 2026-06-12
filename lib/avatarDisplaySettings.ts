@@ -1,4 +1,5 @@
 import { AVATAR_DISPLAY_SETTINGS_KEY } from "@/lib/storageKeys";
+import { isNativeApp } from "@/lib/native";
 import type {
   AvatarDisplayMode,
   AvatarDisplaySettings,
@@ -97,8 +98,16 @@ export function sanitizeAvatarDisplaySettings(
     coachAudioEnabled:
       typeof value?.coachAudioEnabled === "boolean"
         ? value.coachAudioEnabled
-        : defaultAvatarDisplaySettings.coachAudioEnabled,
+        : defaultCoachAudioEnabled(),
   };
+}
+
+// Web: off — any audio kills background music on iOS Safari, so the user must
+// opt in. Native shell: on — the iOS audio session mixes + ducks instead, so
+// the coach can speak over Spotify out of the box. An explicit user choice
+// (stored boolean) always wins over this default.
+function defaultCoachAudioEnabled(): boolean {
+  return isNativeApp();
 }
 
 export function readAvatarDisplaySettings(): AvatarDisplaySettings {
@@ -108,7 +117,7 @@ export function readAvatarDisplaySettings(): AvatarDisplaySettings {
 
   const raw = window.localStorage.getItem(AVATAR_DISPLAY_SETTINGS_KEY);
   if (!raw) {
-    return defaultAvatarDisplaySettings;
+    return { ...defaultAvatarDisplaySettings, coachAudioEnabled: defaultCoachAudioEnabled() };
   }
 
   try {
