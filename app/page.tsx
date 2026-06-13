@@ -59,6 +59,7 @@ import { useSpeechCoach } from "@/hooks/useSpeechCoach";
 import { setCoachAudioEnabled } from "@/lib/audioCues";
 import {
   clearWorkoutStorage,
+  normalizeUserStats,
   readLastWorkoutSummary,
   readUserStats,
   readWorkoutHistory,
@@ -91,6 +92,8 @@ import {
   type TrainingProgram,
 } from "@/lib/programs";
 import { ProgramCompleteModal } from "@/components/ProgramCompleteModal";
+import { getExperienceSnapshot, type ExperienceLevelName } from "@/lib/experienceLevels";
+import { aurasUnlockedAtLevel, type Aura } from "@/lib/cosmetics";
 import {
   getTwinRaceHud,
   isTestWeek,
@@ -99,8 +102,7 @@ import {
   type TwinRaceHud,
 } from "@/lib/twinRace";
 import { saveWorkoutToAppleHealth } from "@/lib/native";
-import { cleanMovementName } from "@/lib/workoutEngine";
-import { generatePersonalizedPlan, planToWorkoutMovements } from "@/lib/personalizedWorkoutEngine";
+import { cleanMovementName, generatePersonalizedPlan, planToWorkoutMovements } from "@/lib/personalizedWorkoutEngine";
 import {
   deriveWorkoutAdjustments,
   readAdaptiveProfile,
@@ -200,6 +202,13 @@ function DebugDiagnosticsReporter({ currentScreen }: { currentScreen: AppScreen 
 }
 
 const PREVIEW_TOKEN = process.env.NEXT_PUBLIC_PREVIEW_TOKEN;
+const DEFAULT_TRAINEE_STATS: TraineeStats = {
+  workoutsCompleted: 0,
+  streak: 0,
+  lastWorkoutDate: null,
+  totalMinutes: 0,
+  totalXp: 0,
+};
 
 export default function GymTwinApp() {
   const [unlocked, setUnlocked] = useState(false);
@@ -229,11 +238,12 @@ function GymTwinAppLive() {
   const [cameraTried, setCameraTried] = useState(false);
   const [showCameraExplainer, setShowCameraExplainer] = useState(false);
   const [firstHintsDismissed, setFirstHintsDismissed] = useState(false);
-  const [userStats, setUserStats] = useState<TraineeStats>({ workoutsCompleted: 0, streak: 0, lastWorkoutDate: null, totalMinutes: 0 });
+  const [userStats, setUserStats] = useState<TraineeStats>(DEFAULT_TRAINEE_STATS);
   const [bodyProfile, setBodyProfile] = useState<BodyProfile | null>(null);
   const [weeklyPlan, setWeeklyPlan] = useState<WeeklyPlan | null>(null);
   const [activeProgram, setActiveProgram] = useState<ActiveProgramState | null>(null);
   const [completedProgram, setCompletedProgram] = useState<TrainingProgram | null>(null);
+  const [levelUp, setLevelUp] = useState<{ name: ExperienceLevelName; auras: Aura[] } | null>(null);
   const [avatarDisplaySettings, setAvatarDisplaySettings] = useState<AvatarDisplaySettings>(
     defaultAvatarDisplaySettings
   );
@@ -430,7 +440,7 @@ function GymTwinAppLive() {
     clearBodyProfile();
     setAvatarDisplaySettings(defaultAvatarDisplaySettings);
     saveAvatarDisplaySettings(defaultAvatarDisplaySettings);
-    setUserStats({ workoutsCompleted: 0, streak: 0, lastWorkoutDate: null, totalMinutes: 0 });
+    setUserStats(DEFAULT_TRAINEE_STATS);
     setBodyProfile(null);
     setWeeklyPlan(null);
     setLastWorkoutSummary(null);
@@ -447,7 +457,7 @@ function GymTwinAppLive() {
     clearBodyProfile();
     setAvatarDisplaySettings(defaultAvatarDisplaySettings);
     saveAvatarDisplaySettings(defaultAvatarDisplaySettings);
-    setUserStats({ workoutsCompleted: 0, streak: 0, lastWorkoutDate: null, totalMinutes: 0 });
+    setUserStats(DEFAULT_TRAINEE_STATS);
     setBodyProfile(null);
     setWeeklyPlan(null);
     setLastWorkoutSummary(null);
@@ -492,7 +502,7 @@ function GymTwinAppLive() {
     clearBodyProfile();
     setAvatarDisplaySettings(defaultAvatarDisplaySettings);
     saveAvatarDisplaySettings(defaultAvatarDisplaySettings);
-    setUserStats({ workoutsCompleted: 0, streak: 0, lastWorkoutDate: null, totalMinutes: 0 });
+    setUserStats(DEFAULT_TRAINEE_STATS);
     setBodyProfile(null);
     setWeeklyPlan(null);
     setLastWorkoutSummary(null);
@@ -523,14 +533,19 @@ function GymTwinAppLive() {
   }, [selectedAvatar]);
 
   useEffect(() => {
+    const savedHistory = readWorkoutHistory();
     const savedStats = readUserStats();
+    const normalizedStats = normalizeUserStats(savedStats, savedHistory);
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (savedStats) setUserStats(savedStats);
+    setUserStats(normalizedStats);
+    if (savedStats == null || savedStats.totalXp !== normalizedStats.totalXp) {
+      saveUserStats(normalizedStats);
+    }
 
     const savedSummary = readLastWorkoutSummary();
     if (savedSummary) setLastWorkoutSummary(savedSummary);
 
-    setWorkoutHistory(readWorkoutHistory());
+    setWorkoutHistory(savedHistory);
     setBodyProfile(readBodyProfile());
     setWeeklyPlan(readWeeklyPlan());
     setActiveProgram(readActiveProgram());
@@ -600,12 +615,13 @@ function GymTwinAppLive() {
           }),
           pullStatsFromSupabase(user.id).then((remote) => {
             if (remote) {
-              const local = readUserStats() ?? { workoutsCompleted: 0, streak: 0, lastWorkoutDate: null, totalMinutes: 0 };
+              const local = normalizeUserStats(readUserStats(), readWorkoutHistory());
               const merged: TraineeStats = {
                 workoutsCompleted: Math.max(local.workoutsCompleted, remote.workoutsCompleted ?? 0),
                 streak: Math.max(local.streak, remote.streak ?? 0),
                 totalMinutes: Math.max(local.totalMinutes, remote.totalMinutes ?? 0),
                 lastWorkoutDate: remote.lastWorkoutDate ?? local.lastWorkoutDate,
+                totalXp: local.totalXp,
               };
               setUserStats(merged);
               saveUserStats(merged);
@@ -922,9 +938,6 @@ function GymTwinAppLive() {
     if (userStats.lastWorkoutDate === today) nextStreak = userStats.streak;
     else if (userStats.lastWorkoutDate === yesterday) nextStreak = userStats.streak + 1;
 
-    const nextStats = { workoutsCompleted: userStats.workoutsCompleted + 1, streak: nextStreak, lastWorkoutDate: today, totalMinutes: userStats.totalMinutes + actualMins };
-    setUserStats(nextStats); saveUserStats(nextStats);
-
     const muscleGroupSet = new Set<string>();
     for (const move of activeRoutine) {
       if (!["warmup", "cooldown", "mobility"].includes(move.category)) {
@@ -960,6 +973,24 @@ function GymTwinAppLive() {
       sessionPRs: sessionPRs.length > 0 ? sessionPRs : undefined,
     } satisfies WorkoutSummaryData, sessionCleanRepPctRef.current);
     sessionCleanRepPctRef.current = undefined;
+
+    const nextStats: TraineeStats = {
+      workoutsCompleted: userStats.workoutsCompleted + 1,
+      streak: nextStreak,
+      lastWorkoutDate: today,
+      totalMinutes: userStats.totalMinutes + actualMins,
+      totalXp: userStats.totalXp + (summaryPayload.xpEarned ?? 0),
+    };
+    setUserStats(nextStats);
+    saveUserStats(nextStats);
+
+    // Level-up moment: did this workout's XP cross a level threshold?
+    const prevLevel = getExperienceSnapshot(userStats.totalXp).currentLevel.name;
+    const newLevel = getExperienceSnapshot(nextStats.totalXp).currentLevel.name;
+    if (newLevel !== prevLevel) {
+      setLevelUp({ name: newLevel, auras: aurasUnlockedAtLevel(newLevel) });
+      useCoachStore.getState().setReactionGLBPath("/models/animations/emotes/Victory_1.glb");
+    }
 
     setLastWorkoutSummary(summaryPayload); saveLastWorkoutSummary(summaryPayload);
     const updatedHistory = [summaryPayload, ...workoutHistory].slice(0, 10); setWorkoutHistory(updatedHistory);
@@ -1490,6 +1521,36 @@ function GymTwinAppLive() {
           onStartNext={(id) => { setCompletedProgram(null); handleStartProgram(id); }}
           onClose={() => setCompletedProgram(null)}
         />
+      )}
+
+      {levelUp && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/75 px-6 backdrop-blur-sm" onClick={() => setLevelUp(null)}>
+          <div className="w-full max-w-sm rounded-3xl border border-cyan-400/30 bg-slate-950/95 p-6 text-center shadow-[0_0_70px_rgba(34,211,238,0.2)]" onClick={(e) => e.stopPropagation()}>
+            <p className="text-5xl">⭐</p>
+            <p className="mt-3 text-[10px] font-black uppercase tracking-[0.34em] text-cyan-300">Level Up</p>
+            <h2 className="mt-1 text-2xl font-black text-white">You&apos;re now {levelUp.name}</h2>
+            {levelUp.auras.length > 0 ? (
+              <div className="mt-4 rounded-2xl border border-violet-400/25 bg-violet-500/10 px-4 py-3">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-violet-300">New aura unlocked</p>
+                {levelUp.auras.map((a) => (
+                  <div key={a.id} className="mt-2 flex items-center justify-center gap-2">
+                    <span className="h-5 w-5 rounded-lg border border-white/30" style={{ background: a.accent ?? "#38bdf8" }} />
+                    <span className="text-sm font-black text-white">{a.name}</span>
+                  </div>
+                ))}
+                <p className="mt-2 text-[11px] text-slate-400">Equip it from the Aura Locker on your dashboard.</p>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-slate-400">Keep stacking XP — more rewards ahead.</p>
+            )}
+            <button
+              onClick={() => setLevelUp(null)}
+              className="mt-5 w-full rounded-2xl bg-gradient-to-r from-cyan-500 to-violet-600 py-3.5 text-sm font-black text-white shadow-[0_0_24px_rgba(34,211,238,0.35)] transition active:scale-[0.98]"
+            >
+              Let&apos;s go
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Camera Coach pre-permission explainer — shown once before the browser prompt */}

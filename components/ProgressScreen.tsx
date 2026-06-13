@@ -9,7 +9,9 @@ import { getAvatarLabel } from "@/lib/avatarAssets";
 import { readBodyProfileHistory, type BodyProfileHistoryEntry } from "@/lib/bodyProfileStorage";
 import { calculateBMI, getBMICategory, getBodyProfileSummary } from "@/lib/bodyMetrics";
 import { getCoachBrainResponse } from "@/lib/coachBrain";
+import { readChallengeState } from "@/lib/dailyChallenge";
 import { getDifficultyAdjustmentRecommendation } from "@/lib/difficultyAdjustmentEngine";
+import { getExperienceSnapshot } from "@/lib/experienceLevels";
 import { deriveProgressTrends, type TrendPoint, type TrendSeries } from "@/lib/progressTrends";
 import { getTodayWeeklyPlanLabel } from "@/lib/weeklyPlanEngine";
 import { useMemo, useState, type ReactNode } from "react";
@@ -536,6 +538,10 @@ export function ProgressScreen({
   );
   const recentWorkoutsToDisplay = trendData.safeHistory.slice(-5).reverse();
   const topExercises = useMemo<ExerciseSummary[]>(() => getTopLoggedExercises(10), [workoutHistory.length]);
+  const xpSnapshot = useMemo(
+    () => getExperienceSnapshot(userStats.totalXp + readChallengeState().totalXp),
+    [userStats.totalXp]
+  );
   const adaptiveAdjustments = useMemo(
     () => (adaptiveProfile ? deriveWorkoutAdjustments(adaptiveProfile) : null),
     [adaptiveProfile]
@@ -671,6 +677,31 @@ export function ProgressScreen({
             </div>
             <div className="col-span-2 rounded-[1.75rem] border border-indigo-400/22 bg-[linear-gradient(135deg,rgba(99,102,241,0.1),rgba(15,23,42,0.88))] p-5 text-center shadow-[0_0_28px_rgba(99,102,241,0.1),inset_0_1px_0_rgba(99,102,241,0.14)] lg:col-span-1">
               <StatCard value={userStats.totalMinutes} label="Real Training Minutes" colorClass="text-indigo-400" />
+            </div>
+          </section>
+
+          <section className="mb-6 rounded-[1.7rem] border border-cyan-400/14 bg-[linear-gradient(135deg,rgba(34,211,238,0.1),rgba(15,23,42,0.92))] p-5 shadow-[0_0_28px_rgba(34,211,238,0.08),inset_0_1px_0_rgba(255,255,255,0.04)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[11px] font-black uppercase tracking-[0.26em] text-cyan-300">Experience Level</p>
+                <h3 className="mt-2 text-2xl font-black text-white">{xpSnapshot.currentLevel.name}</h3>
+                <p className="mt-1 text-sm leading-relaxed text-slate-400">
+                  {xpSnapshot.totalXp} total XP banked across workouts and daily challenges.
+                </p>
+              </div>
+              <div className="rounded-full border border-cyan-400/18 bg-cyan-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-cyan-200">
+                {xpSnapshot.nextLevel ? `${xpSnapshot.xpToNextLevel} XP to go` : "Peak tier"}
+              </div>
+            </div>
+            <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-white/8">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-cyan-400 via-blue-400 to-violet-500 transition-all"
+                style={{ width: `${xpSnapshot.progressPercent}%` }}
+              />
+            </div>
+            <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500">
+              <span>{xpSnapshot.currentLevel.name}</span>
+              <span>{xpSnapshot.nextLevel ? xpSnapshot.nextLevel.name : "Twin"}</span>
             </div>
           </section>
 

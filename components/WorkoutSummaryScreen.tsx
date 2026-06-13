@@ -10,6 +10,7 @@ import { getAchievementBadges } from "@/lib/achievementEngine";
 import { getCoachAdaptationRecommendation } from "@/lib/coachAdaptationEngine";
 import { getCoachBrainResponse } from "@/lib/coachBrain";
 import { getDifficultyAdjustmentRecommendation } from "@/lib/difficultyAdjustmentEngine";
+import { getExperienceSnapshot } from "@/lib/experienceLevels";
 import {
   getNutritionRecipesForGoal,
   inferNutritionGoal,
@@ -307,6 +308,55 @@ export function WorkoutSummaryScreen({
               <StatCard value={lastWorkoutSummary.cleanRepEstimate ?? "--"} label="Clean Reps" colorClass="text-emerald-300" />
             </div>
           </section>
+
+          {(() => {
+            const totalXpAfterSession = userStats.totalXp;
+            const totalXpBeforeSession = Math.max(0, totalXpAfterSession - (lastWorkoutSummary.xpEarned ?? 0));
+            const currentLevel = getExperienceSnapshot(totalXpAfterSession);
+            const previousLevel = getExperienceSnapshot(totalXpBeforeSession);
+            const leveledUp = currentLevel.currentLevel.name !== previousLevel.currentLevel.name;
+
+            return (
+              <section className={`mb-6 rounded-[1.8rem] border p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] ${
+                leveledUp
+                  ? "border-amber-400/24 bg-[linear-gradient(135deg,rgba(245,158,11,0.12),rgba(15,23,42,0.92))]"
+                  : "border-cyan-400/14 bg-[linear-gradient(135deg,rgba(34,211,238,0.08),rgba(15,23,42,0.92))]"
+              }`}>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className={`text-[11px] font-black uppercase tracking-[0.26em] ${leveledUp ? "text-amber-300" : "text-cyan-300"}`}>
+                      {leveledUp ? "Level Up" : "Experience Level"}
+                    </p>
+                    <h3 className="mt-2 text-2xl font-black text-white">
+                      {leveledUp ? `${currentLevel.currentLevel.name} unlocked` : currentLevel.currentLevel.name}
+                    </h3>
+                    <p className="mt-1 text-sm leading-relaxed text-slate-300">
+                      {leveledUp
+                        ? `You climbed from ${previousLevel.currentLevel.name} to ${currentLevel.currentLevel.name} this session.`
+                        : `You now have ${currentLevel.totalXp} lifetime XP banked.`}
+                    </p>
+                  </div>
+                  <div className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${
+                    leveledUp
+                      ? "border-amber-400/24 bg-amber-500/12 text-amber-100"
+                      : "border-cyan-400/18 bg-cyan-500/10 text-cyan-100"
+                  }`}>
+                    {currentLevel.totalXp} XP
+                  </div>
+                </div>
+                <div className="mt-4 h-2.5 overflow-hidden rounded-full bg-white/8">
+                  <div
+                    className={`h-full rounded-full transition-all ${leveledUp ? "bg-gradient-to-r from-amber-400 via-orange-400 to-fuchsia-500" : "bg-gradient-to-r from-cyan-400 via-blue-400 to-violet-500"}`}
+                    style={{ width: `${currentLevel.progressPercent}%` }}
+                  />
+                </div>
+                <div className="mt-2 flex items-center justify-between text-[11px] text-slate-500">
+                  <span>{currentLevel.currentLevel.name}</span>
+                  <span>{currentLevel.nextLevel ? `${currentLevel.xpToNextLevel} XP to ${currentLevel.nextLevel.name}` : "Twin tier complete"}</span>
+                </div>
+              </section>
+            );
+          })()}
 
           {/* ── Session Breakdown: Muscle Groups + PRs ── */}
           {((lastWorkoutSummary.muscleGroups?.length ?? 0) > 0 || (lastWorkoutSummary.sessionPRs?.length ?? 0) > 0) && (

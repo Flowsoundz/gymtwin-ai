@@ -42,6 +42,7 @@ export interface TraineeStats {
   streak: number;
   lastWorkoutDate: string | null;
   totalMinutes: number;
+  totalXp: number;
 }
 
 export interface BodyProfile {

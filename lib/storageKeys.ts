@@ -19,3 +19,4 @@ export const EARNED_BADGE_IDS_KEY = "gymtwin_earned_badge_ids";
 export const ACTIVE_PROGRAM_KEY = "gymtwin_active_program";
 export const TWIN_BASELINE_KEY = "gymtwin_twin_baseline";
 export const DAILY_CHALLENGE_KEY = "gymtwin_daily_challenge";
+export const EQUIPPED_AURA_KEY = "gymtwin_equipped_aura";

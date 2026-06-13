@@ -26,6 +26,7 @@ export function getAchievementBadges({
     streak: 0,
     lastWorkoutDate: null,
     totalMinutes: 0,
+    totalXp: 0,
   };
 
   const allSessions = lastWorkoutSummary

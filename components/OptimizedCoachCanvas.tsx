@@ -638,6 +638,8 @@ type OptimizedCoachCanvasProps = {
   bloom?: boolean;
   /** Bypass "hidden" layout — use for in-workout demo panels where coach must always show */
   forceShow?: boolean;
+  /** Equipped-aura hex that recolors platform/floor/ring; falls back to coach's native accent. */
+  accentOverride?: string | null;
 };
 
 export function OptimizedCoachCanvas({
@@ -647,10 +649,14 @@ export function OptimizedCoachCanvas({
   fov,
   bloom = true,
   forceShow = false,
+  accentOverride = null,
 }: OptimizedCoachCanvasProps) {
   const { characterId, currentAnimation, displayLayout, coachSize, workoutPhase, repProgress, animationGLBPath, reactionGLBPath } =
     useCoachStore();
-  const character = CHARACTERS[characterId];
+  const baseCharacter = CHARACTERS[characterId];
+  const character = accentOverride
+    ? { ...baseCharacter, accentColor: accentOverride }
+    : baseCharacter;
   const devicePixelRatio = useSyncExternalStore(
     EMPTY_SUBSCRIBE,
     () => window.devicePixelRatio || 1.8,

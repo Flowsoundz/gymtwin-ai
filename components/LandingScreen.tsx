@@ -13,6 +13,7 @@ import {
   getPhaseLabel,
 } from "@/lib/macrocycleEngine";
 import { getAchievementBadges } from "@/lib/achievementEngine";
+import { getExperienceSnapshot } from "@/lib/experienceLevels";
 import { getTopLoggedExercises } from "@/lib/progressiveOverloadEngine";
 import { deriveProgressTrends } from "@/lib/progressTrends";
 import { getTodayWeeklyPlanLabel } from "@/lib/weeklyPlanEngine";
@@ -22,6 +23,7 @@ import type { AdaptiveProfile, BodyProfile, CoachAvatar, TraineeStats, WeeklyPla
 import type { Macrocycle } from "@/types/macrocycle";
 import { PROGRAMS, getProgram, type ActiveProgramState } from "@/lib/programs";
 import { completeTodayChallenge, getTodayChallenge, isCompletedToday, readChallengeState } from "@/lib/dailyChallenge";
+import { AURAS, getAura, isAuraUnlocked, readEquippedAuraId, saveEquippedAuraId } from "@/lib/cosmetics";
 
 const FIRST_SESSION_GREETING = {
   headline: "Your AI coach is ready.",
@@ -252,13 +254,19 @@ export function LandingScreen({
   // Daily challenge — read after mount to avoid SSR/localStorage mismatch
   const [challengeDone, setChallengeDone] = useState(false);
   const [challengeStreak, setChallengeStreak] = useState(0);
+  const [challengeTotalXp, setChallengeTotalXp] = useState(0);
   const [challengeJustDone, setChallengeJustDone] = useState(false);
   useEffect(() => {
     const st = readChallengeState();
     setChallengeDone(isCompletedToday(st));
     setChallengeStreak(st.streak);
+    setChallengeTotalXp(st.totalXp);
   }, []);
   const todayChallenge = getTodayChallenge();
+  // Equipped cosmetic aura — read after mount (localStorage), recolors the coach
+  const [equippedAuraId, setEquippedAuraId] = useState("default");
+  useEffect(() => { setEquippedAuraId(readEquippedAuraId()); }, []);
+  const equippedAura = getAura(equippedAuraId);
 
   const { isModelLoaded } = useCoachStore();
   const displayedHeroPostureIndex = heroInteractive ? heroPostureIndex : 0;
@@ -352,6 +360,10 @@ export function LandingScreen({
     const next = all.find((b) => !b.unlocked) ?? null;
     return { unlocked, total: all.length, next };
   }, [userStats, workoutHistory, latestWorkoutSummary]);
+  const xpSnapshot = useMemo(
+    () => getExperienceSnapshot(userStats.totalXp + challengeTotalXp),
+    [challengeTotalXp, userStats.totalXp]
+  );
   const handleNavTab = (tab: NavTab) => {
     setActiveTab(tab);
     if (tab === "progress")  onViewProgress();
@@ -520,10 +532,10 @@ export function LandingScreen({
                     <div className="absolute inset-0 bg-gradient-to-t from-[#010208]/90 via-[#010208]/20 to-transparent" />
                   </div>
                   <div
-                    className={`pointer-events-none absolute inset-[8%] z-[1] rounded-[2rem] bg-gradient-to-br blur-3xl hero-aura ${streakAuraClass}`}
+                    className={`pointer-events-none absolute inset-[8%] z-[1] rounded-[2rem] bg-gradient-to-br blur-3xl hero-aura ${equippedAuraId !== "default" ? equippedAura.heroGradient : streakAuraClass}`}
                     style={{ animationDuration: heroAuraDuration }}
                   />
-                  <OptimizedCoachCanvas height="h-full" surface="hero" />
+                  <OptimizedCoachCanvas height="h-full" surface="hero" accentOverride={equippedAura.accent} />
                   <div className="pointer-events-none absolute inset-x-5 top-5 z-[2] max-w-[18rem] rounded-2xl border border-white/10 bg-slate-950/42 px-4 py-3 backdrop-blur-xl">
                     <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-300">
                       {userStats.streak >= 7 ? "Streak Surge" : `${landingCoachName} Hero View`}
@@ -629,6 +641,67 @@ export function LandingScreen({
                   <NeonStatPill value={userStats.workoutsCompleted} label="Sessions" colorClass="text-blue-400" />
                   <NeonStatPill value={userStats.streak} label="Streak 🔥" colorClass="text-fuchsia-400" />
                   <NeonStatPill value={userStats.totalMinutes} label="Minutes" colorClass="text-violet-400" />
+                </div>
+                <div className="mt-3 rounded-2xl border border-cyan-400/14 bg-slate-950/55 px-4 py-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-300">Current Level</p>
+                      <p className="mt-1 text-lg font-black text-white">{xpSnapshot.currentLevel.name}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-black text-cyan-200">{xpSnapshot.totalXp} XP</p>
+                      <p className="text-[10px] text-slate-500">
+                        {xpSnapshot.nextLevel
+                          ? `${xpSnapshot.xpToNextLevel} XP to ${xpSnapshot.nextLevel.name}`
+                          : "Max level reached"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/8">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-cyan-400 via-blue-400 to-violet-500 transition-all"
+                      style={{ width: `${xpSnapshot.progressPercent}%` }}
+                    />
+                  </div>
+
+                  {/* Aura Locker — cosmetic payoff for XP; tap an unlocked aura to equip */}
+                  <div className="mt-4 border-t border-white/8 pt-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-black uppercase tracking-[0.22em] text-violet-300">Aura Locker</p>
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-slate-500">{equippedAura.name} equipped</p>
+                    </div>
+                    <div className="mt-2.5 flex flex-wrap gap-2">
+                      {AURAS.map((aura) => {
+                        const unlocked = isAuraUnlocked(aura, xpSnapshot.totalXp);
+                        const equipped = aura.id === equippedAuraId;
+                        const swatch = aura.accent ?? "#38bdf8";
+                        return (
+                          <button
+                            key={aura.id}
+                            type="button"
+                            disabled={!unlocked}
+                            onClick={() => { if (unlocked) { saveEquippedAuraId(aura.id); setEquippedAuraId(aura.id); } }}
+                            title={unlocked ? `${aura.name} — ${aura.blurb}` : `${aura.name} — unlock at ${aura.unlockLevel}`}
+                            className={`group relative flex h-9 w-9 items-center justify-center rounded-xl border transition active:scale-90 ${
+                              equipped ? "border-white scale-105" : unlocked ? "border-white/25 hover:border-white/60" : "border-white/8 opacity-40"
+                            }`}
+                            style={{ background: `radial-gradient(circle at 50% 40%, ${swatch}, ${swatch}33)` }}
+                          >
+                            {!unlocked && <span className="text-[11px]">🔒</span>}
+                            {equipped && <span className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-white text-[8px] font-black text-slate-900">✓</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="mt-2 text-[10px] leading-relaxed text-slate-500">
+                      {(() => {
+                        const nextLocked = AURAS.find((a) => !isAuraUnlocked(a, xpSnapshot.totalXp));
+                        return nextLocked
+                          ? `Next: ${nextLocked.name} unlocks at ${nextLocked.unlockLevel}.`
+                          : "Every aura unlocked. You're a Twin. 🔥";
+                      })()}
+                    </p>
+                  </div>
                 </div>
 
                 {/* Badge progress shelf */}
@@ -873,6 +946,7 @@ export function LandingScreen({
                       const next = completeTodayChallenge();
                       setChallengeDone(true);
                       setChallengeStreak(next.streak);
+                      setChallengeTotalXp(next.totalXp);
                       setChallengeJustDone(true);
                       window.setTimeout(() => setChallengeJustDone(false), 1200);
                       useCoachStore.getState().setReactionGLBPath("/models/animations/gestures/Head_Nod_Yes_1.glb");

@@ -28,6 +28,10 @@ interface ExerciseTemplate {
   harderOption: string;
 }
 
+export function cleanMovementName(name: string) {
+  return name.replace(/-instance-\d+$/, "");
+}
+
 // ─── Exercise Database ────────────────────────────────────────────────────────
 
 const ALL_GOALS: GoalCategory[] = ["fat_loss", "muscle_gain", "tone", "mobility"];

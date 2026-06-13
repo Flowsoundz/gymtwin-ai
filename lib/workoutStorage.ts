@@ -4,6 +4,35 @@ import {
   STATS_KEY,
 } from "@/lib/storageKeys";
 import type { TraineeStats, WorkoutSummaryData } from "@/types";
+import { sumWorkoutXp } from "@/lib/experienceLevels";
+
+function defaultStats(): TraineeStats {
+  return {
+    workoutsCompleted: 0,
+    streak: 0,
+    lastWorkoutDate: null,
+    totalMinutes: 0,
+    totalXp: 0,
+  };
+}
+
+export function normalizeUserStats(
+  stats: Partial<TraineeStats> | null | undefined,
+  workoutHistory: WorkoutSummaryData[] = []
+): TraineeStats {
+  const base = defaultStats();
+
+  return {
+    workoutsCompleted: typeof stats?.workoutsCompleted === "number" ? stats.workoutsCompleted : base.workoutsCompleted,
+    streak: typeof stats?.streak === "number" ? stats.streak : base.streak,
+    lastWorkoutDate: typeof stats?.lastWorkoutDate === "string" ? stats.lastWorkoutDate : base.lastWorkoutDate,
+    totalMinutes: typeof stats?.totalMinutes === "number" ? stats.totalMinutes : base.totalMinutes,
+    totalXp: Math.max(
+      typeof stats?.totalXp === "number" ? stats.totalXp : base.totalXp,
+      sumWorkoutXp(workoutHistory)
+    ),
+  };
+}
 
 export function readUserStats(): TraineeStats | null {
   if (typeof window === "undefined") return null;
@@ -12,7 +41,7 @@ export function readUserStats(): TraineeStats | null {
   if (!raw) return null;
 
   try {
-    return JSON.parse(raw) as TraineeStats;
+    return normalizeUserStats(JSON.parse(raw) as Partial<TraineeStats>);
   } catch {
     window.localStorage.removeItem(STATS_KEY);
     return null;
