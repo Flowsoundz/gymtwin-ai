@@ -1,6 +1,6 @@
 // GymTwin AI — Service Worker
 // Bump CACHE_VERSION on each deploy to invalidate stale precaches.
-const CACHE_VERSION = "v5";
+const CACHE_VERSION = "v6";
 const PRECACHE = `gt-static-${CACHE_VERSION}`;
 const RUNTIME_MODELS = `gt-models-${CACHE_VERSION}`;
 const RUNTIME_NEXT = `gt-next-${CACHE_VERSION}`;
@@ -63,8 +63,8 @@ self.addEventListener("fetch", (event) => {
 
   const path = url.pathname;
 
-  // MediaPipe WASM / task files — cache-first (immutable after first fetch)
-  if (path.startsWith("/mediapipe/") || path.startsWith("/models/")) {
+  // MediaPipe WASM / pose task files — cache-first (truly immutable)
+  if (path.startsWith("/mediapipe/") || path.endsWith(".task")) {
     event.respondWith(cacheFirst(request, PRECACHE));
     return;
   }
@@ -75,9 +75,13 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // 3D models and avatar images — cache-first on demand (large, rarely change)
-  if (path.match(/\.(glb|gltf|png|jpg|jpeg|webp|svg)$/i)) {
-    event.respondWith(cacheFirst(request, RUNTIME_MODELS));
+  // 3D models and avatar images — stale-while-revalidate. Cache-first trapped
+  // users on outdated coach GLBs after model fixes (only a hard refresh
+  // bypassed it). SWR serves the cached copy instantly but revalidates in the
+  // background; Vercel's ETags make the recheck a 304, so updates self-heal
+  // by the next load without re-downloading unchanged files.
+  if (path.startsWith("/models/") || path.match(/\.(glb|gltf|png|jpg|jpeg|webp|svg)$/i)) {
+    event.respondWith(staleWhileRevalidate(request, RUNTIME_MODELS));
     return;
   }
 
